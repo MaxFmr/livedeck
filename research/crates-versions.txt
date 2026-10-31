@@ -1,0 +1,22 @@
+# relevé du 2026-10-31 — crate version_stable date_maj
+cpal 0.18.2 2026-08-16
+midir 0.11.1 2026-10-10
+wmidi 4.0.11 2026-04-19
+rtrb 0.4.1 2026-10-25
+triple_buffer 9.0.0 2026-02-22
+eframe 0.37.0 2026-10-15
+egui 0.37.0 2026-10-15
+symphonia 0.6.1 2026-08-13
+rubato 5.0.1 2026-10-01
+serde 1.0.229 2026-07-18
+toml 1.1.8+spec-1.1.0 2026-10-09
+thiserror 2.0.21 2026-09-23
+anyhow 1.0.104 2026-07-18
+tracing 0.1.44 2025-12-18
+assert_no_alloc 1.1.2 2021-08-03
+criterion 0.8.2 2026-02-04
+hound 3.5.1 2023-09-25
+no_denormals 0.3.0 2025-09-11
+objc2-foundation 0.3.2 2025-10-04
+rusty_link 0.4.9 2026-04-02
+fundsp 0.23.0 2026-01-07

@@ -1,0 +1,51 @@
+[workspace]
+resolver = "3"
+members = ["crates/engine", "crates/io", "crates/app", "tools/midi-sniff"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Versions pinned as surveyed in docs/rust/stack.md (2026-10-31).
+# Check docs.rs for the exact version before writing code against these APIs.
+[workspace.dependencies]
+engine = { path = "crates/engine" }
+io = { path = "crates/io" }
+cpal = "0.18.2"
+midir = "0.11.1"
+wmidi = "4.0.11"
+rtrb = "0.4.1"
+triple_buffer = "9.0.0"
+eframe = "0.37.0"
+egui = "0.37.0"
+serde = { version = "1.0", features = ["derive"] }
+toml = "1.1"
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+assert_no_alloc = "1.1.2"
+criterion = "0.8"
+hound = "3.5"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "warn"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = "line-tables-only"
+
+# Keep audio playable in debug builds.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev.package.engine]
+opt-level = 2
