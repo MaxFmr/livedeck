@@ -1,0 +1,63 @@
+# LiveDeck — mapping du DJControl Mix
+#
+# Chaque [[bind]] relie un contrôle à une action. Modifiable sans recompiler : relancer l'app.
+#
+# Contrôles : a.<x> / b.<x> pour les decks (play, cue, sync, pfl, volume, filter, bass, tempo,
+#   jog.edge, jog.top, pad.<hotcue|sampler|fx|loop>.<1-4>), mixer.<crossfader|master|headphone>, vinyl.
+#   shift = true : la même touche avec Shift tenu.
+# Actions disponibles (itération 008 ; les actions musicales arrivent avec les decks, 010+) :
+#   transport_toggle, transport_restart, tap_tempo, metronome_toggle   → boutons et pads
+#   tempo (range = [min, max] en BPM), master_gain, metronome_level    → faders et potards
+#   tempo_nudge (step = BPM par cran)                                  → jogs
+#   pickup = true : soft-takeover (le contrôle ne prend la main qu'en rejoignant la valeur actuelle).
+
+# --- Transport ---
+[[bind]]
+control = "a.play"
+action = "transport_toggle"
+
+[[bind]]
+control = "b.play"
+action = "transport_toggle"
+
+[[bind]]
+control = "a.play"
+shift = true
+action = "transport_restart"
+
+[[bind]]
+control = "a.sync"
+action = "tap_tempo"
+
+[[bind]]
+control = "a.pfl"
+action = "metronome_toggle"
+
+# --- Tempo ---
+[[bind]]
+control = "a.tempo"
+action = "tempo"
+range = [60.0, 200.0]
+pickup = true
+
+[[bind]]
+control = "a.jog.edge"
+action = "tempo_nudge"
+step = 0.1
+
+[[bind]]
+control = "a.jog.top"
+action = "tempo_nudge"
+# 248 crans par tour : 0,25 BPM/cran ≈ 60 BPM par tour (1,0 était beaucoup trop sensible, essai 008).
+step = 0.25
+
+# --- Niveaux ---
+[[bind]]
+control = "mixer.master"
+action = "master_gain"
+pickup = true
+
+[[bind]]
+control = "a.volume"
+action = "metronome_level"
+pickup = true

@@ -1,25 +1,31 @@
 //! LiveDeck application: UI (eframe/egui) and thread wiring.
 //!
-//! Iteration 005: the main thread is the control thread. It owns the `EngineHandle`, reads keyboard
-//! commands, shows the engine state and rebuilds the audio stream if the device goes away.
+//! The main thread is the control thread: it owns the `EngineHandle`, maps controller gestures
+//! through `config/mapping.toml`, reads keyboard commands, shows the engine state and rebuilds the
+//! audio stream if the device goes away.
 
 use std::io::BufRead;
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use assert_no_alloc::assert_no_alloc;
-use engine::Engine;
 use engine::link::{self, Command, EngineEvent, EngineHandle};
+use engine::{Engine, Param};
 use io::audio::{AudioOutput, start_output};
-use io::controller::{Button, ControllerEvent, Deck, Led};
+use io::controller::{ControllerEvent, Deck, Led};
 use io::link::{ControllerLink, LinkEvent};
+use io::mapping::{Action, DEFAULT_MAPPING, Mapping, Target};
 
 const USAGE: &str = "\
 LiveDeck — métronome piloté (test de la plomberie temps réel)
 
-USAGE: app [--bpm <60-200>] [--buffer <frames>] [--seconds <n>] [--quiet] [--no-metronome]
+USAGE: app [--bpm <60-200>] [--buffer <frames>] [--mapping <fichier>] [--seconds <n>] [--quiet]
+           [--no-metronome]
+
+  --mapping       fichier de mapping (défaut : config/mapping.toml, sinon le mapping intégré)
 
   --seconds       s'arrête après n secondes (endurance)
   --quiet         n'affiche pas chaque temps, seulement les bilans et les incidents
@@ -43,6 +49,17 @@ struct Wanted {
     playing: bool,
     bpm: f64,
     metronome: bool,
+    master_gain: f32,
+    metronome_level: f32,
+}
+
+/// Control-thread state.
+struct Session {
+    wanted: Wanted,
+    mapping: Mapping,
+    /// Last values echoed to the console (continuous controls are echoed by steps only).
+    shown_bpm: f64,
+    shown_levels: [f32; 2],
 }
 
 struct Args {
@@ -51,6 +68,7 @@ struct Args {
     seconds: Option<f64>,
     quiet: bool,
     metronome: bool,
+    mapping: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -60,6 +78,7 @@ fn parse_args() -> Result<Args, String> {
         seconds: None,
         quiet: false,
         metronome: true,
+        mapping: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -79,6 +98,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--quiet" => args.quiet = true,
             "--no-metronome" => args.metronome = false,
+            "--mapping" => args.mapping = Some(PathBuf::from(value("--mapping")?)),
             "-h" | "--help" => {
                 println!("{USAGE}");
                 std::process::exit(0);
@@ -101,6 +121,11 @@ fn open(buffers: &[u32], wanted: Wanted) -> Result<(AudioOutput, EngineHandle), 
     .map_err(|e| e.to_string())?;
     let mut handle = handle.ok_or("le moteur n'a pas été construit")?;
     handle.send(Command::Metronome(wanted.metronome));
+    handle.send(Command::SetParam(Param::MasterGain, wanted.master_gain));
+    handle.send(Command::SetParam(
+        Param::MetronomeLevel,
+        wanted.metronome_level,
+    ));
     if wanted.playing {
         handle.send(Command::Start);
     }
@@ -132,73 +157,155 @@ fn toggle_play(wanted: &mut Wanted, handle: &mut EngineHandle) {
     );
 }
 
-/// Controller → action. Iteration 007 only maps Play; the configurable mapping arrives in 008.
+fn set_tempo(s: &mut Session, handle: &mut EngineHandle, bpm: f64, from_software: bool) {
+    s.wanted.bpm = bpm.clamp(engine::clock::MIN_BPM, engine::clock::MAX_BPM);
+    handle.send(Command::SetTempo(s.wanted.bpm));
+    if (s.wanted.bpm - s.shown_bpm).abs() >= 1.0 {
+        s.shown_bpm = s.wanted.bpm;
+        println!("  ♩ tempo {:.1} BPM", s.wanted.bpm);
+    }
+    if from_software {
+        // Controls bound to the tempo must meet the new value before taking over (pickup).
+        s.mapping.software_changed(Target::Tempo, s.wanted.bpm);
+    }
+}
+
+fn toggle_metronome(s: &mut Session, handle: &mut EngineHandle) {
+    s.wanted.metronome = !s.wanted.metronome;
+    handle.send(Command::Metronome(s.wanted.metronome));
+    println!(
+        "métronome {}",
+        if s.wanted.metronome { "on" } else { "off" }
+    );
+}
+
+/// Controller gesture → mapped action.
 fn handle_controller(
+    ts_us: u64,
     event: ControllerEvent,
-    wanted: &mut Wanted,
+    s: &mut Session,
     handle: &mut EngineHandle,
     quiet: bool,
 ) {
-    match event {
-        ControllerEvent::Button {
-            button: Button::Play,
-            shift: false,
-            pressed: true,
-            ..
-        } => toggle_play(wanted, handle),
-        // Continuous controls flood the console: only discrete gestures are echoed.
+    let discrete = !matches!(
+        event,
         ControllerEvent::Mixer { .. }
-        | ControllerEvent::Knob { .. }
-        | ControllerEvent::Tempo { .. }
-        | ControllerEvent::Jog { .. } => {}
-        other if !quiet => println!("  🎛 {other}"),
-        _ => {}
+            | ControllerEvent::Knob { .. }
+            | ControllerEvent::Tempo { .. }
+            | ControllerEvent::Jog { .. }
+    );
+    // Continuous controls flood the console: only discrete gestures are echoed.
+    if discrete && !quiet {
+        println!("  🎛 {event}");
+    }
+    let Some(action) = s.mapping.handle(ts_us, event) else {
+        return;
+    };
+    match action {
+        Action::TransportToggle => toggle_play(&mut s.wanted, handle),
+        Action::TransportRestart => {
+            s.wanted.playing = true;
+            handle.send(Command::Start);
+            println!("⏮ reprise à la mesure 1");
+        }
+        Action::MetronomeToggle => toggle_metronome(s, handle),
+        // Absolute tempo comes from the bound fader (hardware) or tap tempo (already registered
+        // as a software change by the mapping).
+        Action::SetTempo(bpm) => set_tempo(s, handle, bpm, false),
+        Action::NudgeTempo(delta) => {
+            let bpm = s.wanted.bpm + delta;
+            set_tempo(s, handle, bpm, true);
+        }
+        Action::SetLevel(target, value) => {
+            let (param, slot, name) = match target {
+                Target::MasterGain => {
+                    s.wanted.master_gain = value;
+                    (Param::MasterGain, 0, "master")
+                }
+                Target::MetronomeLevel => {
+                    s.wanted.metronome_level = value;
+                    (Param::MetronomeLevel, 1, "métronome")
+                }
+                Target::Tempo => return,
+            };
+            if let Some(shown) = s.shown_levels.get_mut(slot)
+                && (value - *shown).abs() >= 0.1
+            {
+                *shown = value;
+                println!("  🔊 niveau {name} {:.0} %", value * 100.0);
+            }
+            handle.send(Command::SetParam(param, value));
+        }
     }
 }
 
 /// Applies one keyboard line; returns false to quit.
-fn handle_line(line: &str, wanted: &mut Wanted, handle: &mut EngineHandle) -> bool {
+fn handle_line(line: &str, s: &mut Session, handle: &mut EngineHandle) -> bool {
     let line = line.trim().to_lowercase();
     let line = line.as_str();
-    let tempo = |wanted: &mut Wanted, handle: &mut EngineHandle, bpm: f64| {
-        wanted.bpm = bpm.clamp(engine::clock::MIN_BPM, engine::clock::MAX_BPM);
-        handle.send(Command::SetTempo(wanted.bpm));
-        println!("tempo {:.0} BPM", wanted.bpm);
+    let tempo = |s: &mut Session, handle: &mut EngineHandle, bpm: f64| {
+        set_tempo(s, handle, bpm, true);
+        println!("tempo {:.0} BPM", s.wanted.bpm);
     };
     match line {
         "q" => return false,
-        "p" => toggle_play(wanted, handle),
-        "m" => {
-            wanted.metronome = !wanted.metronome;
-            handle.send(Command::Metronome(wanted.metronome));
-            println!("métronome {}", if wanted.metronome { "on" } else { "off" });
-        }
+        "p" => toggle_play(&mut s.wanted, handle),
+        "m" => toggle_metronome(s, handle),
         "" => {}
+        // Markers written into the session log by test scripts (tools/try-mapping.sh).
+        marker if marker.starts_with('#') => println!("── {marker}"),
         steps if steps.chars().all(|c| c == '+') => {
-            tempo(wanted, handle, wanted.bpm + steps.len() as f64);
+            tempo(s, handle, s.wanted.bpm + steps.len() as f64);
         }
         steps if steps.chars().all(|c| c == '-') => {
-            tempo(wanted, handle, wanted.bpm - steps.len() as f64);
+            tempo(s, handle, s.wanted.bpm - steps.len() as f64);
         }
         other => match other.strip_prefix("t ").map(|v| v.trim().parse::<f64>()) {
-            Some(Ok(bpm)) => tempo(wanted, handle, bpm),
+            Some(Ok(bpm)) => tempo(s, handle, bpm),
             _ => println!("commande inconnue : {other} (p, +, -, t <bpm>, m, q)"),
         },
     }
     true
 }
 
+/// Loads the mapping: explicit path, else `config/mapping.toml` if present, else the built-in one.
+fn load_mapping(path: Option<&PathBuf>) -> Result<(Mapping, String), String> {
+    let default_path = PathBuf::from("config/mapping.toml");
+    match path {
+        Some(p) => Mapping::load(p).map(|m| (m, p.display().to_string())),
+        None if default_path.exists() => {
+            Mapping::load(&default_path).map(|m| (m, default_path.display().to_string()))
+        }
+        None => Mapping::from_toml_str(DEFAULT_MAPPING).map(|m| (m, "intégré".to_string())),
+    }
+    .map_err(|e| e.to_string())
+}
+
 fn run() -> Result<(), String> {
     let args = parse_args()?;
     let _awake = io::system::keep_alive("LiveDeck live session");
-    let mut wanted = Wanted {
-        playing: true,
-        bpm: args
-            .bpm
-            .clamp(engine::clock::MIN_BPM, engine::clock::MAX_BPM),
-        metronome: args.metronome,
+    let (mapping, mapping_source) = load_mapping(args.mapping.as_ref())?;
+    let mut s = Session {
+        wanted: Wanted {
+            playing: true,
+            bpm: args
+                .bpm
+                .clamp(engine::clock::MIN_BPM, engine::clock::MAX_BPM),
+            metronome: args.metronome,
+            master_gain: 1.0,
+            metronome_level: 0.7,
+        },
+        mapping,
+        shown_bpm: 0.0,
+        shown_levels: [-1.0; 2],
     };
-    let (mut output, mut handle) = open(&args.buffers, wanted)?;
+    println!("Mapping : {mapping_source} ({} liaisons)", s.mapping.len());
+    s.mapping.software_changed(Target::Tempo, s.wanted.bpm);
+    s.mapping
+        .software_changed(Target::MasterGain, f64::from(s.wanted.master_gain));
+    s.mapping
+        .software_changed(Target::MetronomeLevel, f64::from(s.wanted.metronome_level));
+    let (mut output, mut handle) = open(&args.buffers, s.wanted)?;
     let session = Instant::now();
     let mut seen_xruns = 0;
     let mut seen_changes = 0;
@@ -237,13 +344,13 @@ fn run() -> Result<(), String> {
                         "🎛 contrôleur débranché — le son continue, en attente de reconnexion…"
                     );
                 }
-                LinkEvent::Input { event, .. } => {
-                    handle_controller(event, &mut wanted, &mut handle, args.quiet);
+                LinkEvent::Input { ts_us, event } => {
+                    handle_controller(ts_us, event, &mut s, &mut handle, args.quiet);
                 }
             }
         }
         while let Ok(line) = keys.try_recv() {
-            if !handle_line(&line, &mut wanted, &mut handle) {
+            if !handle_line(&line, &mut s, &mut handle) {
                 return Ok(());
             }
         }
@@ -266,7 +373,7 @@ fn run() -> Result<(), String> {
             }
         }
         for deck in [Deck::A, Deck::B] {
-            link.leds_mut().set(Led::Play(deck), wanted.playing);
+            link.leds_mut().set(Led::Play(deck), s.wanted.playing);
         }
         let xruns = output.stats.xruns.load(Ordering::Relaxed);
         if xruns != seen_xruns {
@@ -293,7 +400,7 @@ fn run() -> Result<(), String> {
             drop(output);
             loop {
                 sleep(Duration::from_millis(500));
-                match open(&args.buffers, wanted) {
+                match open(&args.buffers, s.wanted) {
                     Ok(reopened) => {
                         (output, handle) = reopened;
                         break;
@@ -305,6 +412,13 @@ fn run() -> Result<(), String> {
         if last_report.elapsed() >= Duration::from_secs(5) {
             last_report = Instant::now();
             let snap = handle.snapshot();
+            if let Some(hw) = s.mapping.pending_pickup(Target::Tempo) {
+                println!(
+                    "  ⇅ fader Tempo à {:.0} % : le ramener vers {:.0} BPM pour reprendre la main",
+                    hw * 100.0,
+                    s.wanted.bpm
+                );
+            }
             println!(
                 "  [{:.0} BPM │ charge max {:.1} % │ xruns {} │ NaN {} │ commandes {} │ contrôleur {}]",
                 snap.bpm,

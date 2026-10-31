@@ -9,7 +9,7 @@
 use rtrb::{Consumer, Producer, RingBuffer};
 use triple_buffer::{Input, Output, triple_buffer};
 
-use crate::{BEATS_PER_BAR, Engine};
+use crate::{BEATS_PER_BAR, Engine, Param};
 
 /// Everything the audio thread can be asked to do. Small and `Copy`: no heap, no drop.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -19,6 +19,8 @@ pub enum Command {
     /// Absolute tempo, clamped to the clock range.
     SetTempo(f64),
     Metronome(bool),
+    /// Normalized 0..=1 value of a continuous parameter.
+    SetParam(Param, f32),
 }
 
 const _: () = assert!(core::mem::size_of::<Command>() <= 32);
@@ -131,6 +133,7 @@ impl AudioEngine {
             Command::Stop => self.engine.stop(),
             Command::SetTempo(bpm) => self.engine.set_tempo(bpm),
             Command::Metronome(on) => self.engine.set_metronome(on),
+            Command::SetParam(param, value) => self.engine.set_param(param, value),
         }
     }
 
@@ -231,6 +234,18 @@ mod tests {
         // Nobody drains events: they must be dropped and counted, not block or panic.
         run(&mut audio, 375 * 300);
         assert!(handle.snapshot().dropped_events > 0);
+    }
+
+    #[test]
+    fn master_gain_glides_to_silence() {
+        let (mut audio, mut handle) = pair();
+        handle.send(Command::Start);
+        handle.send(Command::SetParam(Param::MasterGain, 0.0));
+        let mut buf = [0.0_f32; 256];
+        // ~10 ms time constant: after 100 ms the output is silent.
+        run(&mut audio, 38);
+        audio.process(&mut buf, 2);
+        assert!(buf.iter().all(|s| s.abs() < 1.0e-4));
     }
 
     #[test]

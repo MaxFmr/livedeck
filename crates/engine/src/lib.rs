@@ -15,10 +15,19 @@ pub mod clock;
 pub mod limiter;
 pub mod link;
 pub mod metronome;
+pub mod smooth;
 
 use clock::Clock;
 use limiter::Limiter;
 use metronome::Click;
+use smooth::Smoothed;
+
+/// Continuous parameters, normalized 0..=1 (curves are applied by the engine).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Param {
+    MasterGain,
+    MetronomeLevel,
+}
 
 /// Beats per bar (4/4 only for now).
 pub const BEATS_PER_BAR: u64 = 4;
@@ -39,6 +48,8 @@ pub struct Engine {
     click: Click,
     limiter: Limiter,
     metronome: bool,
+    master_gain: Smoothed,
+    metronome_level: Smoothed,
     /// Mono mix bus, allocated once; blocks larger than this are processed in slices.
     mono: Vec<f32>,
 }
@@ -52,6 +63,8 @@ impl Engine {
             click: Click::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             metronome: true,
+            master_gain: Smoothed::new(1.0, sample_rate, 0.01),
+            metronome_level: Smoothed::new(gain_curve(0.7), sample_rate, 0.01),
             mono: vec![0.0; max_block.max(64)],
         }
     }
@@ -70,6 +83,15 @@ impl Engine {
 
     pub fn set_metronome(&mut self, on: bool) {
         self.metronome = on;
+    }
+
+    /// Sets a normalized (0..=1) parameter; it glides there in ~10 ms.
+    pub fn set_param(&mut self, param: Param, value: f32) {
+        let value = gain_curve(value);
+        match param {
+            Param::MasterGain => self.master_gain.set(value),
+            Param::MetronomeLevel => self.metronome_level.set(value),
+        }
     }
 
     #[must_use]
@@ -102,7 +124,11 @@ impl Engine {
                 break;
             };
             mono.fill(0.0);
+            self.click.gain = self.metronome_level.skip(n);
             render_mono(&mut self.clock, &mut self.click, self.metronome, mono);
+            for sample in mono.iter_mut() {
+                *sample *= self.master_gain.tick();
+            }
             self.limiter.process(mono);
             for (frame, &sample) in frames_out.by_ref().take(n).zip(mono.iter()) {
                 for (ch, slot) in frame.iter_mut().enumerate() {
@@ -111,6 +137,16 @@ impl Engine {
             }
         }
     }
+}
+
+/// Perceptual fader law: 0..=1 → amplitude (x², so the middle of the travel is about -12 dB).
+fn gain_curve(x: f32) -> f32 {
+    let x = if x.is_finite() {
+        x.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    x * x
 }
 
 /// Renders one slice, splitting it at beat boundaries so clicks start on the exact sample.

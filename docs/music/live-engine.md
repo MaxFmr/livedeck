@@ -129,20 +129,25 @@ continus en 14 bits (filtres et volumes sans paliers).
 
 ## Fichier de mapping
 
-`config/mapping.toml` décrit `message MIDI → action` pour pouvoir réaffecter sans recompiler :
+`config/mapping.toml` (implémenté en 008, `crates/io/src/mapping.rs`) relie un **contrôle nommé** à une
+action, sans recompiler :
 
 ```toml
 [[bind]]
-midi = { status = 0x96, note = 0x00 }   # deck A, pad 1, mode Hot Cue
-action = "rhythm.pattern"
-args = { index = 0 }
-quantize = "bar"
+control = "a.tempo"          # a./b. + play, cue, sync, pfl, volume, filter, bass, tempo,
+action = "tempo"             #   jog.edge, jog.top, pad.<hotcue|sampler|fx|loop>.<1-4> ;
+range = [60.0, 200.0]        # mixer.<crossfader|master|headphone> ; vinyl
+pickup = true                # soft-takeover
 
 [[bind]]
-midi = { status = 0xB1, cc = 0x08, lsb = 0x28 }   # Tempo A en 14 bits
-action = "rhythm.density"
-pickup = true
+control = "a.play"
+shift = true                 # même touche avec Shift
+action = "transport_restart"
 ```
+
+Actions disponibles aujourd'hui : `transport_toggle`, `transport_restart`, `tap_tempo`,
+`metronome_toggle`, `tempo`, `tempo_nudge` (`step`), `master_gain`, `metronome_level`. Les actions
+musicales (patterns, mutes, accords…) s'ajoutent avec les decks (010+), sur le même modèle.
 
 ## Théorie utile (rappels)
 

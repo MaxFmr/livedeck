@@ -10,6 +10,8 @@ publish.workspace = true
 cpal.workspace = true
 midir.workspace = true
 rtrb.workspace = true
+serde.workspace = true
+toml.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -6,14 +6,14 @@
 
 use core::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Deck {
     A,
     B,
 }
 
 /// Pad mode selected by the hardware mode buttons (the controller remembers it).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PadMode {
     HotCue,
     Sampler,
@@ -21,7 +21,7 @@ pub enum PadMode {
     Loop,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Button {
     Sync,
     Cue,
@@ -30,21 +30,21 @@ pub enum Button {
     Pfl,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MixerControl {
     Crossfader,
     Master,
     Headphone,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DeckKnob {
     Volume,
     Filter,
     Bass,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum JogSurface {
     /// Outer ring (pitch bend in DJ software).
     Edge,

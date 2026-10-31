@@ -7,6 +7,7 @@ pub mod audio;
 pub mod controller;
 pub mod leds;
 pub mod link;
+pub mod mapping;
 pub mod system;
 
 /// Substring identifying the DJControl Mix among CoreMIDI port names (case-insensitive).
