@@ -13,6 +13,7 @@
 
 pub mod clock;
 pub mod limiter;
+pub mod link;
 pub mod metronome;
 
 use clock::Clock;
@@ -37,6 +38,7 @@ pub struct Engine {
     clock: Clock,
     click: Click,
     limiter: Limiter,
+    metronome: bool,
     /// Mono mix bus, allocated once; blocks larger than this are processed in slices.
     mono: Vec<f32>,
 }
@@ -49,6 +51,7 @@ impl Engine {
             clock: Clock::new(sample_rate, bpm),
             click: Click::new(sample_rate),
             limiter: Limiter::new(sample_rate),
+            metronome: true,
             mono: vec![0.0; max_block.max(64)],
         }
     }
@@ -59,6 +62,19 @@ impl Engine {
 
     pub fn stop(&mut self) {
         self.clock.stop();
+    }
+
+    pub fn set_tempo(&mut self, bpm: f64) {
+        self.clock.set_bpm(bpm);
+    }
+
+    pub fn set_metronome(&mut self, on: bool) {
+        self.metronome = on;
+    }
+
+    #[must_use]
+    pub fn metronome_enabled(&self) -> bool {
+        self.metronome
     }
 
     #[must_use]
@@ -86,7 +102,7 @@ impl Engine {
                 break;
             };
             mono.fill(0.0);
-            render_mono(&mut self.clock, &mut self.click, mono);
+            render_mono(&mut self.clock, &mut self.click, self.metronome, mono);
             self.limiter.process(mono);
             for (frame, &sample) in frames_out.by_ref().take(n).zip(mono.iter()) {
                 for (ch, slot) in frame.iter_mut().enumerate() {
@@ -98,7 +114,7 @@ impl Engine {
 }
 
 /// Renders one slice, splitting it at beat boundaries so clicks start on the exact sample.
-fn render_mono(clock: &mut Clock, click: &mut Click, mono: &mut [f32]) {
+fn render_mono(clock: &mut Clock, click: &mut Click, metronome: bool, mono: &mut [f32]) {
     let mut rest = mono;
     while !rest.is_empty() {
         let len = rest.len();
@@ -110,7 +126,9 @@ fn render_mono(clock: &mut Clock, click: &mut Click, mono: &mut [f32]) {
         click.render_add(segment);
         clock.advance(segment_len);
         if let Some(beat) = beat {
-            click.trigger(beat % BEATS_PER_BAR == 0);
+            if metronome {
+                click.trigger(beat % BEATS_PER_BAR == 0);
+            }
             clock.consume_beat();
         }
         rest = tail;

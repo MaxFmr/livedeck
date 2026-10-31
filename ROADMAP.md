@@ -22,13 +22,13 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait (avec renvoi au journa
 ## Phase 1 — Moteur audio squelette
 
 - [x] Sortie cpal F32 48 kHz, buffer 128 (repli 256). → [004](docs/iterations/004-audio-clock.md)
-- [ ] Reconstruction du stream sur changement de périphérique (005).
+- [x] Survie au débranchement de la carte son (re-routage macOS ; reconstruction codée). → [005](docs/iterations/005-rt-plumbing.md)
 - [x] Horloge (position en échantillons), transport start/stop, métronome synthétique. → [004](docs/iterations/004-audio-clock.md)
-- [ ] Files `Command` / `Garbage` / `EngineEvent` (rtrb), `EngineSnapshot` (triple_buffer).
+- [x] Files `Command` / `EngineEvent` (rtrb), `EngineSnapshot` (triple_buffer). → [005](docs/iterations/005-rt-plumbing.md) (`Garbage` reportée aux samples, 015)
 - [x] Limiteur de sécurité master + garde NaN. → [004](docs/iterations/004-audio-clock.md)
 - [ ] Instrumentation : charge du callback (max glissant), compteur de xruns.
 - [ ] Tests hors ligne (rendu, pas de NaN, crête), test sous `assert_no_alloc`, bench criterion.
-- [ ] App Nap / veille désactivées pendant la session (🔍 à valider).
+- [x] App Nap / veille désactivées pendant la session. → [005](docs/iterations/005-rt-plumbing.md)
 
 **Sortie** : 10 min de métronome à 128 frames, 0 xrun, charge < 10 %, RSS mesuré.
 

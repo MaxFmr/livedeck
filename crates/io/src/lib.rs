@@ -5,6 +5,7 @@
 
 pub mod audio;
 pub mod controller;
+pub mod system;
 
 /// Substring identifying the DJControl Mix among CoreMIDI port names (case-insensitive).
 pub const CONTROLLER_PORT_HINT: &str = "djcontrol";

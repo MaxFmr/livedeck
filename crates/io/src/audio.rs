@@ -5,7 +5,7 @@
 //! the wrapper added here only reads `Instant` once per block and touches atomics.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::time::Instant;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -23,6 +23,8 @@ pub struct AudioStats {
     pub xruns: AtomicU32,
     pub errors: AtomicU32,
     pub callbacks: AtomicU64,
+    /// The device disappeared or the stream became unusable: the control thread must rebuild it.
+    pub invalidated: AtomicBool,
 }
 
 impl AudioStats {
@@ -129,13 +131,21 @@ where
             data_stats.max_frames.fetch_max(frames, Ordering::Relaxed);
             data_stats.callbacks.fetch_add(1, Ordering::Relaxed);
         },
-        move |err: cpal::Error| {
-            let counter = if err.kind() == ErrorKind::Xrun {
-                &err_stats.xruns
-            } else {
-                &err_stats.errors
-            };
-            counter.fetch_add(1, Ordering::Relaxed);
+        move |err: cpal::Error| match err.kind() {
+            ErrorKind::Xrun => {
+                err_stats.xruns.fetch_add(1, Ordering::Relaxed);
+            }
+            // A stream on the default device follows it by itself (`DeviceChanged`): nothing to do.
+            ErrorKind::DeviceChanged => {}
+            kind => {
+                err_stats.errors.fetch_add(1, Ordering::Relaxed);
+                if matches!(
+                    kind,
+                    ErrorKind::DeviceNotAvailable | ErrorKind::StreamInvalidated
+                ) {
+                    err_stats.invalidated.store(true, Ordering::Relaxed);
+                }
+            }
         },
         None,
     )?;

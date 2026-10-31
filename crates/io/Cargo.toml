@@ -10,5 +10,8 @@ publish.workspace = true
 cpal.workspace = true
 thiserror.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation.workspace = true
+
 [lints]
 workspace = true

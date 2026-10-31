@@ -2,8 +2,10 @@
 //!
 //! Runs on: audio thread.
 
-/// Transport and tempo. Beat `n` starts at sample `round(n * samples_per_beat)`, computed from the
-/// beat index each time so rounding never accumulates.
+/// Transport and tempo. Beat `n` starts at sample
+/// `anchor_sample + round((n - anchor_beat) * samples_per_beat)`, computed from the beat index each
+/// time so rounding never accumulates. A tempo change moves the anchor to the current position, so
+/// the beat phase stays continuous.
 #[derive(Debug, Clone, Copy)]
 pub struct Clock {
     sample_rate: f64,
@@ -13,6 +15,8 @@ pub struct Clock {
     position: u64,
     /// Index of the next beat to be reached.
     next_beat: u64,
+    anchor_sample: u64,
+    anchor_beat: f64,
 }
 
 pub const MIN_BPM: f64 = 60.0;
@@ -27,7 +31,20 @@ impl Clock {
             playing: false,
             position: 0,
             next_beat: 0,
+            anchor_sample: 0,
+            anchor_beat: 0.0,
         }
+    }
+
+    /// Changes the tempo without moving the current beat position.
+    pub fn set_bpm(&mut self, bpm: f64) {
+        let bpm = bpm.clamp(MIN_BPM, MAX_BPM);
+        if bpm == self.bpm || !bpm.is_finite() {
+            return;
+        }
+        self.anchor_beat = self.beats();
+        self.anchor_sample = self.position;
+        self.bpm = bpm;
     }
 
     #[must_use]
@@ -53,7 +70,16 @@ impl Clock {
     /// Current position in beats (for display).
     #[must_use]
     pub fn beats(&self) -> f64 {
-        self.position as f64 / self.samples_per_beat()
+        self.anchor_beat + (self.position - self.anchor_sample) as f64 / self.samples_per_beat()
+    }
+
+    /// Beat index of the last processed sample, `None` before the first one.
+    #[must_use]
+    pub fn last_sample_beat(&self) -> Option<u64> {
+        let last = self.position.checked_sub(1)?;
+        let beats = self.anchor_beat
+            + last.saturating_sub(self.anchor_sample) as f64 / self.samples_per_beat();
+        Some(beats.floor() as u64)
     }
 
     /// Starts from the top: the first beat falls on the next processed sample.
@@ -61,6 +87,8 @@ impl Clock {
         self.playing = true;
         self.position = 0;
         self.next_beat = 0;
+        self.anchor_sample = 0;
+        self.anchor_beat = 0.0;
     }
 
     pub fn stop(&mut self) {
@@ -68,7 +96,8 @@ impl Clock {
     }
 
     fn beat_sample(&self, beat: u64) -> u64 {
-        (beat as f64 * self.samples_per_beat()).round() as u64
+        let beats_from_anchor = (beat as f64 - self.anchor_beat).max(0.0);
+        self.anchor_sample + (beats_from_anchor * self.samples_per_beat()).round() as u64
     }
 
     /// Offset (in samples, within the next `frames`) and index of the next beat, if it falls inside.
@@ -130,6 +159,18 @@ mod tests {
             clock.position() + offset as u64,
             (expected_next as f64 * spb).round() as u64
         );
+    }
+
+    #[test]
+    fn tempo_change_keeps_phase() {
+        let mut clock = Clock::new(48_000, 120.0);
+        clock.start();
+        clock.consume_beat(); // beat 0 at sample 0
+        clock.advance(12_000); // half a beat at 120 BPM
+        clock.set_bpm(60.0);
+        assert!((clock.beats() - 0.5).abs() < 1e-9);
+        // The remaining half beat now lasts 24 000 samples (60 BPM).
+        assert_eq!(clock.next_beat_within(30_000), Some((24_000, 1)));
     }
 
     #[test]
