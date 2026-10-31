@@ -34,10 +34,10 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait (avec renvoi au journa
 
 ## Phase 2 — Contrôleur → commandes
 
-- [ ] Connexion midir + hot-plug (reconnexion auto + renvoi du dump et des LEDs).
+- [x] Connexion midir + hot-plug (reconnexion auto + renvoi du dump et des LEDs). → [007](docs/iterations/007-controller-live.md)
 - [ ] `config/mapping.toml` → table de dispatch précompilée ; actions typées.
 - [ ] Fader Tempo 14 bits, jogs relatifs lissés, soft-takeover (pickup).
-- [ ] **Retour LEDs (exigence utilisateur)** : état LED des 4 modes de pads × 2 decks + Sync/Cue/Play/Vinyl
+- [~] **Retour LEDs (exigence utilisateur)** — banque + diff + renvoi par mode faits en 007 ; reste le clignotement « en attente » et les états musicaux (008–009) : état LED des 4 modes de pads × 2 decks + Sync/Cue/Play/Vinyl
       tenu sur le thread de contrôle, diff envoyé via `led_message`, renvoi du mode affiché à chaque
       `PadModeSelect`, clignotement logiciel pour « en attente » (tout-ou-rien seulement), port gardé ouvert.
 - [ ] Mesure de latence geste → son (enregistrement micro du clic du pad + son, ou boucle MIDI).

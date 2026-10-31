@@ -13,6 +13,8 @@ use assert_no_alloc::assert_no_alloc;
 use engine::Engine;
 use engine::link::{self, Command, EngineEvent, EngineHandle};
 use io::audio::{AudioOutput, start_output};
+use io::controller::{Button, ControllerEvent, Deck, Led};
+use io::link::{ControllerLink, LinkEvent};
 
 const USAGE: &str = "\
 LiveDeck — métronome piloté (test de la plomberie temps réel)
@@ -113,6 +115,47 @@ fn open(buffers: &[u32], wanted: Wanted) -> Result<(AudioOutput, EngineHandle), 
     Ok((output, handle))
 }
 
+fn toggle_play(wanted: &mut Wanted, handle: &mut EngineHandle) {
+    wanted.playing = !wanted.playing;
+    handle.send(if wanted.playing {
+        Command::Start
+    } else {
+        Command::Stop
+    });
+    println!(
+        "{}",
+        if wanted.playing {
+            "▶ lecture"
+        } else {
+            "■ arrêt"
+        }
+    );
+}
+
+/// Controller → action. Iteration 007 only maps Play; the configurable mapping arrives in 008.
+fn handle_controller(
+    event: ControllerEvent,
+    wanted: &mut Wanted,
+    handle: &mut EngineHandle,
+    quiet: bool,
+) {
+    match event {
+        ControllerEvent::Button {
+            button: Button::Play,
+            shift: false,
+            pressed: true,
+            ..
+        } => toggle_play(wanted, handle),
+        // Continuous controls flood the console: only discrete gestures are echoed.
+        ControllerEvent::Mixer { .. }
+        | ControllerEvent::Knob { .. }
+        | ControllerEvent::Tempo { .. }
+        | ControllerEvent::Jog { .. } => {}
+        other if !quiet => println!("  🎛 {other}"),
+        _ => {}
+    }
+}
+
 /// Applies one keyboard line; returns false to quit.
 fn handle_line(line: &str, wanted: &mut Wanted, handle: &mut EngineHandle) -> bool {
     let line = line.trim().to_lowercase();
@@ -124,22 +167,7 @@ fn handle_line(line: &str, wanted: &mut Wanted, handle: &mut EngineHandle) -> bo
     };
     match line {
         "q" => return false,
-        "p" => {
-            wanted.playing = !wanted.playing;
-            handle.send(if wanted.playing {
-                Command::Start
-            } else {
-                Command::Stop
-            });
-            println!(
-                "{}",
-                if wanted.playing {
-                    "▶ lecture"
-                } else {
-                    "■ arrêt"
-                }
-            );
-        }
+        "p" => toggle_play(wanted, handle),
         "m" => {
             wanted.metronome = !wanted.metronome;
             handle.send(Command::Metronome(wanted.metronome));
@@ -185,18 +213,60 @@ fn run() -> Result<(), String> {
         }
     });
 
+    let mut link = ControllerLink::new();
+    let mut link_events = Vec::new();
+    // Beat flashes on Sync (downbeat) / Cue (other beats), switched off after FLASH.
+    const FLASH: Duration = Duration::from_millis(120);
+    let mut flash_until: Option<Instant> = None;
+
     let mut last_report = Instant::now();
     loop {
+        link.poll(|event| link_events.push(event));
+        for event in link_events.drain(..) {
+            match event {
+                LinkEvent::Connected { port, leds } => println!(
+                    "🎛 contrôleur connecté : {port}{}",
+                    if leds {
+                        ""
+                    } else {
+                        " (sans sortie : LEDs inactives)"
+                    }
+                ),
+                LinkEvent::Disconnected => {
+                    println!(
+                        "🎛 contrôleur débranché — le son continue, en attente de reconnexion…"
+                    );
+                }
+                LinkEvent::Input { event, .. } => {
+                    handle_controller(event, &mut wanted, &mut handle, args.quiet);
+                }
+            }
+        }
         while let Ok(line) = keys.try_recv() {
             if !handle_line(&line, &mut wanted, &mut handle) {
                 return Ok(());
             }
         }
         while let Some(EngineEvent::Beat { bar, beat }) = handle.next_event() {
+            for deck in [Deck::A, Deck::B] {
+                link.leds_mut().set(Led::Sync(deck), beat == 1);
+                link.leds_mut().set(Led::Cue(deck), beat != 1);
+            }
+            flash_until = Some(Instant::now() + FLASH);
             if !args.quiet {
                 let marker = if beat == 1 { "●" } else { "○" };
                 println!("{marker} mesure {bar:>3} · temps {beat}");
             }
+        }
+        if flash_until.is_some_and(|t| Instant::now() >= t) {
+            flash_until = None;
+            for deck in [Deck::A, Deck::B] {
+                link.leds_mut().set(Led::Sync(deck), false);
+                link.leds_mut().set(Led::Cue(deck), false);
+            }
+        }
+        for deck in [Deck::A, Deck::B] {
+            link.leds_mut().set(Led::Play(deck), wanted.playing);
         }
         let xruns = output.stats.xruns.load(Ordering::Relaxed);
         if xruns != seen_xruns {
@@ -236,15 +306,21 @@ fn run() -> Result<(), String> {
             last_report = Instant::now();
             let snap = handle.snapshot();
             println!(
-                "  [{:.0} BPM │ charge max {:.1} % │ xruns {} │ NaN {} │ commandes {}]",
+                "  [{:.0} BPM │ charge max {:.1} % │ xruns {} │ NaN {} │ commandes {} │ contrôleur {}]",
                 snap.bpm,
                 output.stats.take_max_load(output.info.sample_rate) * 100.0,
                 output.stats.xruns.load(Ordering::Relaxed),
                 snap.nan_count,
-                snap.commands
+                snap.commands,
+                if link.is_connected() {
+                    format!("ok, {} perdus", link.dropped())
+                } else {
+                    "absent".to_string()
+                }
             );
         }
-        sleep(Duration::from_millis(20));
+        // Control loop period: bounds the latency of controller gestures that go through it.
+        sleep(Duration::from_millis(2));
     }
 }
 
