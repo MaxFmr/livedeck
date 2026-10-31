@@ -3,6 +3,7 @@
 //! Runs on: control thread and CoreMIDI callback thread. Never on the audio thread.
 //! Controller facts: docs/hardware/djcontrol-mix.md.
 
+pub mod audio;
 pub mod controller;
 
 /// Substring identifying the DJControl Mix among CoreMIDI port names (case-insensitive).

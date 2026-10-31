@@ -21,10 +21,11 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait (avec renvoi au journa
 
 ## Phase 1 — Moteur audio squelette
 
-- [ ] Sortie cpal F32 48 kHz, buffer 128 (repli 256), reconstruction du stream sur changement de périphérique.
-- [ ] Horloge (position en échantillons), transport start/stop, métronome synthétique.
+- [x] Sortie cpal F32 48 kHz, buffer 128 (repli 256). → [004](docs/iterations/004-audio-clock.md)
+- [ ] Reconstruction du stream sur changement de périphérique (005).
+- [x] Horloge (position en échantillons), transport start/stop, métronome synthétique. → [004](docs/iterations/004-audio-clock.md)
 - [ ] Files `Command` / `Garbage` / `EngineEvent` (rtrb), `EngineSnapshot` (triple_buffer).
-- [ ] Limiteur de sécurité master + garde NaN.
+- [x] Limiteur de sécurité master + garde NaN. → [004](docs/iterations/004-audio-clock.md)
 - [ ] Instrumentation : charge du callback (max glissant), compteur de xruns.
 - [ ] Tests hors ligne (rendu, pas de NaN, crête), test sous `assert_no_alloc`, bench criterion.
 - [ ] App Nap / veille désactivées pendant la session (🔍 à valider).
