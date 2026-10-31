@@ -14,8 +14,14 @@ use cpal::{BufferSize, ErrorKind, SampleFormat, StreamConfig, SupportedBufferSiz
 pub const PREFERRED_SAMPLE_RATE: u32 = 48_000;
 
 /// Counters shared between the audio callback and the rest of the app.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct AudioStats {
+    /// Stream start, reference for the `*_at_ms` timestamps.
+    pub started: Instant,
+    /// Time of the last xrun, in ms since `started` (0 = none yet).
+    pub last_xrun_at_ms: AtomicU64,
+    /// The OS re-routed the default-device stream by itself (e.g. headphones, interface unplugged).
+    pub device_changes: AtomicU32,
     /// Worst callback duration since last `take_max_load`, in nanoseconds.
     max_callback_ns: AtomicU64,
     /// Largest block seen, in frames.
@@ -27,7 +33,29 @@ pub struct AudioStats {
     pub invalidated: AtomicBool,
 }
 
+impl Default for AudioStats {
+    fn default() -> Self {
+        Self {
+            started: Instant::now(),
+            last_xrun_at_ms: AtomicU64::new(0),
+            device_changes: AtomicU32::new(0),
+            max_callback_ns: AtomicU64::new(0),
+            max_frames: AtomicU32::new(0),
+            xruns: AtomicU32::new(0),
+            errors: AtomicU32::new(0),
+            callbacks: AtomicU64::new(0),
+            invalidated: AtomicBool::new(false),
+        }
+    }
+}
+
 impl AudioStats {
+    fn ms_since_start(&self) -> u64 {
+        u64::try_from(self.started.elapsed().as_millis())
+            .unwrap_or(u64::MAX)
+            .max(1)
+    }
+
     /// Returns the worst callback load (fraction of the block duration) and resets it.
     pub fn take_max_load(&self, sample_rate: u32) -> f64 {
         let ns = self.max_callback_ns.swap(0, Ordering::Relaxed) as f64;
@@ -134,9 +162,14 @@ where
         move |err: cpal::Error| match err.kind() {
             ErrorKind::Xrun => {
                 err_stats.xruns.fetch_add(1, Ordering::Relaxed);
+                err_stats
+                    .last_xrun_at_ms
+                    .store(err_stats.ms_since_start(), Ordering::Relaxed);
             }
-            // A stream on the default device follows it by itself (`DeviceChanged`): nothing to do.
-            ErrorKind::DeviceChanged => {}
+            // A stream on the default device follows it by itself: only counted.
+            ErrorKind::DeviceChanged => {
+                err_stats.device_changes.fetch_add(1, Ordering::Relaxed);
+            }
             kind => {
                 err_stats.errors.fetch_add(1, Ordering::Relaxed);
                 if matches!(

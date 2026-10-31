@@ -108,8 +108,11 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
 impl AudioEngine {
     /// Audio callback body: applies pending commands, renders, publishes state.
     pub fn process(&mut self, out: &mut [f32], channels: usize) {
-        // Bounded: never more than the queue capacity per block.
-        while let Ok(command) = self.commands.pop() {
+        // Bounded even if the control thread keeps pushing while we drain.
+        for _ in 0..COMMAND_CAPACITY {
+            let Ok(command) = self.commands.pop() else {
+                break;
+            };
             self.apply(command);
         }
         self.engine.process(out, channels);

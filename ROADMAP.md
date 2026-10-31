@@ -26,11 +26,11 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait (avec renvoi au journa
 - [x] Horloge (position en échantillons), transport start/stop, métronome synthétique. → [004](docs/iterations/004-audio-clock.md)
 - [x] Files `Command` / `EngineEvent` (rtrb), `EngineSnapshot` (triple_buffer). → [005](docs/iterations/005-rt-plumbing.md) (`Garbage` reportée aux samples, 015)
 - [x] Limiteur de sécurité master + garde NaN. → [004](docs/iterations/004-audio-clock.md)
-- [ ] Instrumentation : charge du callback (max glissant), compteur de xruns.
-- [ ] Tests hors ligne (rendu, pas de NaN, crête), test sous `assert_no_alloc`, bench criterion.
+- [x] Instrumentation : charge du callback (max glissant), compteur et horodatage des xruns. → [006](docs/iterations/006-safety-nets.md)
+- [x] Tests hors ligne (rendu, pas de NaN, crête), test sous `assert_no_alloc`, bench criterion. → [006](docs/iterations/006-safety-nets.md)
 - [x] App Nap / veille désactivées pendant la session. → [005](docs/iterations/005-rt-plumbing.md)
 
-**Sortie** : 10 min de métronome à 128 frames, 0 xrun, charge < 10 %, RSS mesuré.
+**Sortie** : 10 min de métronome à 128 frames, 0 xrun, charge < 10 %, RSS mesuré. ✅ (600 s, 0 xrun, 0,9 %, 11,6 Mo)
 
 ## Phase 2 — Contrôleur → commandes
 
@@ -104,4 +104,5 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait (avec renvoi au journa
 |---|---|
 | 2026-10-31 | Harnais créé : base de connaissances, skills, roadmap. Phase 0 à démarrer. |
 | 2026-10-31 | Plan détaillé validé (itérations 001–019, validation par l'utilisateur à chaque itération, tous styles via presets, synthèse puis samples). Itération 001 terminée. |
+| 2026-10-31 | **Phase 1 terminée** (004–006) : sortie audio, horloge, commandes sans verrou, garde anti-allocation ; endurance 10 min 0 xrun, 0,9 % de charge, 11,6 Mo. Prochaine : phase 2, itération 007. |
 | 2026-10-31 | **Phase 0 terminée** (002 sniffer, 003 vérité matérielle) : continus en 14 bits, LEDs cartographiées (pads, transport, Vinyl), toucher du jog à filtrer. Prochaine : phase 1, itération 004. |

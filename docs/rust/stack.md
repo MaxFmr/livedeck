@@ -61,6 +61,15 @@ mémoire.** Ces API changent à chaque mineure ; vérifier sur docs.rs pour la v
 - Comparer RSS/CPU des rendus `glow` et `wgpu` (feature d'eframe) en phase 5 ; garder le plus sobre.
 - Polices : en embarquer une seule (sous-ensemble Latin) via `FontDefinitions`.
 
+### assert_no_alloc 1.1.2
+- Feature `disable_release` par défaut : `AllocDisabler` **n'existe pas en release**. Déclarer l'allocateur
+  global et les tests qui l'utilisent sous `#[cfg(debug_assertions)]` ; `assert_no_alloc(|| …)` reste
+  disponible (no-op) en release.
+
+### criterion 0.8
+- `criterion::black_box` déprécié → `std::hint::black_box`.
+- Comparer les benchs à alimentation égale (secteur/batterie : +48 % mesuré sur M1).
+
 ### symphonia 0.6
 - Activer uniquement les codecs nécessaires (features) pour réduire binaire et temps de compilation.
 

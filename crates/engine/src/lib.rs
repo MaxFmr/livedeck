@@ -122,6 +122,8 @@ fn render_mono(clock: &mut Clock, click: &mut Click, metronome: bool, mono: &mut
             Some((offset, beat)) => (offset, Some(beat)),
             None => (len, None),
         };
+        // `segment_len <= len` by construction; clamped anyway so the split can never panic.
+        let segment_len = segment_len.min(len);
         let (segment, tail) = rest.split_at_mut(segment_len);
         click.render_add(segment);
         clock.advance(segment_len);

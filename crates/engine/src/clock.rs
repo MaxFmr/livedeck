@@ -70,7 +70,8 @@ impl Clock {
     /// Current position in beats (for display).
     #[must_use]
     pub fn beats(&self) -> f64 {
-        self.anchor_beat + (self.position - self.anchor_sample) as f64 / self.samples_per_beat()
+        self.anchor_beat
+            + self.position.saturating_sub(self.anchor_sample) as f64 / self.samples_per_beat()
     }
 
     /// Beat index of the last processed sample, `None` before the first one.

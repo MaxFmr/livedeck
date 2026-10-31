@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 engine.workspace = true
 io.workspace = true
+assert_no_alloc.workspace = true
 
 [lints]
 workspace = true
