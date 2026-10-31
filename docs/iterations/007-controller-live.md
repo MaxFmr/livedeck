@@ -37,7 +37,9 @@ LEDs, avec un premier geste utile : Play lance/arrête le transport.
     (120 ms) ; gestes discrets affichés ; bilan avec l'état du contrôleur ; boucle de contrôle à 2 ms.
   - 33 tests verts, clippy debug/release propre.
 - Mesures : charge 0,2–0,4 %, 0 xrun, 0 message MIDI perdu pendant l'essai.
-- Essai utilisateur : « tout marche » ✅ (Play, LEDs, gestes, débranchement/rebranchement).
+- Essai utilisateur : « tout marche » ✅ pour les LEDs, les gestes et la reconnexion ; **Play non testé**
+  pendant cet essai (le bilan final montrait « commandes 2 ») → vérifié à part : essai de 35 s journalisé
+  dans `target/play-test.txt`, Play A puis B ▶/■/▶, commandes 3 → 6 ✅.
 
 ## Appris / à reporter dans la doc
 - Le panneau Terminal de l'app affiche la sortie avec retard : se fier au retour de l'utilisateur ou à un
