@@ -71,7 +71,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 ## Piste D — Design (parallèle à partir de la phase 2)
 
 - [x] D1 Intention et références (avec l'utilisateur). → [D1](docs/design/D1-intention.md)
-- [ ] D2 Architecture d'information (inventaire de l'état à afficher).
+- [x] D2 Architecture d'information (inventaire de l'état à afficher). → [D2](docs/design/D2-information.md)
 - [ ] D3 2–3 maquettes basse fidélité (artifacts HTML).
 - [ ] D4 Maquette haute fidélité interactive, validée par l'utilisateur.
 - [ ] D5 Système de design → `theme.rs`.
