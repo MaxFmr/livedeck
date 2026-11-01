@@ -83,11 +83,11 @@ continus en 14 bits (filtres et volumes sans paliers).
 | Contrôle | Fonction |
 |---|---|
 | Pads **Hot Cue** | patterns de batterie A/B/C/D (quantifiés) · Shift : variations |
-| Pads **Sampler** | one-shots / fills (crash, roll, riser) · Shift : banque suivante |
-| Pads **FX** | mutes : kick / snare / hats / basse · Shift : solo |
-| Pads **Loop** | beat-repeat 1/4, 1/8, 1/16, 1/32 (maintenu) · Shift : reverse/gate |
+| Pads **Sampler** | fills 1–4 (roll snare, roll perc, break kick, montée hats), de la noire suivante à la fin de mesure · Shift : sons seuls kick, snare, hats |
+| Pads **FX** | mutes immédiats : kick / snare+clap / hats / perc (basse en 013) · Shift : solo |
+| Pads **Loop** | beat-repeat 1/4, 1/8, 1/16, 1/32 (maintenu) : roule le dernier coup dès la frontière suivante ; pad plus court = subdivise ce qu'on entend, relâcher = retour en phase au pad tenu · Shift : reverse/gate |
 | Jog bord | swing (−/+) |
-| Jog dessus + rotation | parcours des patterns de basse |
+| Jog dessus + rotation | tempo (en attendant les patterns de basse, 013) |
 | Jog Shift + rotation | densité (élagage ordonné des pas par probabilité) |
 | Tempo | densité de la batterie (0 = kick seul → 1 = complet) |
 | Filter | filtre DJ du bus rythme |

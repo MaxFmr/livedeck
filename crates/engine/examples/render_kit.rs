@@ -1,5 +1,6 @@
 //! Renders the drum kit for listening: `target/renders/kit.wav` (each voice alone, then a few bars
-//! of groove) and `target/renders/patterns.wav` (the sequencer's patterns A–D, two bars each).
+//! of groove), `target/renders/patterns.wav` (the sequencer's patterns A–D, two bars each) and
+//! `target/renders/gestures.wav` (density, fills and beat-repeat on groove B).
 //! Offline, so it may allocate and write files.
 //!
 //! cargo run -p engine --example render_kit --release
@@ -10,6 +11,7 @@ use std::path::Path;
 
 use engine::Engine;
 use engine::drums::DrumVoice;
+use engine::repeat::Division;
 
 const SR: u32 = 48_000;
 const BPM: f64 = 120.0;
@@ -95,7 +97,40 @@ fn main() -> io::Result<()> {
             engine.process(chunk, 2);
         }
     }
-    save(&dir.join("patterns.wav"), &patterns)
+    save(&dir.join("patterns.wav"), &patterns)?;
+
+    // Live gestures on groove B: density 100 → 60 → 30 → 0 % (a bar each), fills 1–4 (one bar
+    // each, launched on beat 1 so they run from beat 2), then beat-repeat 1/4, 1/8, 1/16, 1/32
+    // (half a bar each, from beat 3) — 12 bars.
+    let mut engine = Engine::new(SR, 512, BPM);
+    engine.set_metronome(false);
+    engine.queue_pattern(1);
+    engine.start();
+    let mut gestures = Vec::new();
+    let mut play = |engine: &mut Engine, frames: usize| {
+        let start = gestures.len();
+        gestures.resize(start + frames * 2, 0.0);
+        for chunk in gestures[start..].chunks_mut(256) {
+            engine.process(chunk, 2);
+        }
+    };
+    for density in [1.0, 0.6, 0.3, 0.0] {
+        engine.set_density(density);
+        play(&mut engine, bar);
+    }
+    engine.set_density(1.0);
+    for fill in 0..4 {
+        play(&mut engine, sixteenth);
+        engine.queue_fill(fill);
+        play(&mut engine, bar - sixteenth);
+    }
+    for division in [4, 8, 16, 32] {
+        play(&mut engine, bar / 2);
+        engine.beat_repeat(Division::from_denominator(division));
+        play(&mut engine, bar / 2);
+        engine.beat_repeat(None);
+    }
+    save(&dir.join("gestures.wav"), &gestures)
 }
 
 fn save(path: &Path, audio: &[f32]) -> io::Result<()> {

@@ -10,6 +10,7 @@ publish.workspace = true
 engine.workspace = true
 io.workspace = true
 assert_no_alloc.workspace = true
+rtrb.workspace = true
 
 [lints]
 workspace = true

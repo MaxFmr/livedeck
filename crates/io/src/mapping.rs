@@ -11,6 +11,8 @@ use std::fmt;
 use std::path::Path;
 
 use engine::drums::DrumVoice;
+use engine::repeat::Division;
+use engine::sequencer::voice_bit;
 use serde::Deserialize;
 
 use crate::controller::{
@@ -70,6 +72,17 @@ pub enum Action {
     QueuePattern(u8),
     /// Swing change, as a fraction (0.01 = 1 %).
     NudgeSwing(f32),
+    /// Mutes or unmutes a group of drum voices (bit `i` = `DrumVoice::ALL[i]`).
+    ToggleMute(u8),
+    /// Drum fill, 0-based.
+    Fill(u8),
+    /// Beat-repeat pad pressed (`held`) or released.
+    BeatRepeat {
+        division: Division,
+        held: bool,
+    },
+    /// Drum density 0..=1.
+    SetDensity(f32),
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -87,6 +100,10 @@ pub enum ActionName {
     Drum,
     Pattern,
     Swing,
+    Mute,
+    Fill,
+    BeatRepeat,
+    DrumDensity,
     Tempo,
     TempoNudge,
     MasterGain,
@@ -112,6 +129,12 @@ struct BindSpec {
     voice: Option<String>,
     /// Pattern (1–4) launched by `pattern`.
     pattern: Option<u8>,
+    /// Voices silenced together by `mute`.
+    voices: Option<Vec<String>>,
+    /// Fill (1–4) played by `fill`.
+    fill: Option<u8>,
+    /// Note value repeated by `beat_repeat`: 4, 8, 16 or 32 (1/4 … 1/32).
+    division: Option<u8>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,6 +165,10 @@ pub enum MappingError {
     UnknownVoice { control: String, voice: String },
     #[error("« {0} » : pattern attendu entre 1 et 4")]
     BadPattern(String),
+    #[error("« {0} » : fill attendu entre 1 et 4")]
+    BadFill(String),
+    #[error("« {0} » : division attendue parmi 4, 8, 16, 32")]
+    BadDivision(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -160,6 +187,11 @@ struct Binding {
     voice: DrumVoice,
     /// 0-based.
     pattern: u8,
+    /// Voices of `mute`, bit `i` = `DrumVoice::ALL[i]`.
+    mask: u8,
+    /// 0-based.
+    fill: u8,
+    division: Division,
 }
 
 /// Soft-takeover state of one absolute control.
@@ -219,6 +251,25 @@ impl Mapping {
                 Some(p @ 1..=4) => p - 1,
                 Some(_) => return Err(MappingError::BadPattern(b.control)),
             };
+            let fill = match b.fill {
+                None => 0,
+                Some(f @ 1..=4) => f - 1,
+                Some(_) => return Err(MappingError::BadFill(b.control)),
+            };
+            let division = match b.division {
+                None => Division::Sixteenth,
+                Some(n) => Division::from_denominator(n)
+                    .ok_or_else(|| MappingError::BadDivision(b.control.clone()))?,
+            };
+            let mut mask = 0;
+            for name in b.voices.iter().flatten() {
+                let voice =
+                    DrumVoice::from_name(name).ok_or_else(|| MappingError::UnknownVoice {
+                        control: b.control.clone(),
+                        voice: name.clone(),
+                    })?;
+                mask |= voice_bit(voice);
+            }
             let binding = Binding {
                 action: b.action,
                 pickup: b.pickup,
@@ -226,6 +277,9 @@ impl Mapping {
                 step: b.step.unwrap_or(0.1),
                 voice,
                 pattern,
+                mask,
+                fill,
+                division,
             };
             if bindings.insert(id, binding).is_some() {
                 return Err(MappingError::Duplicate(b.control));
@@ -259,12 +313,21 @@ impl Mapping {
         self.bindings.is_empty()
     }
 
-    /// Controls launching a drum pattern (without Shift), with the pattern index (0-based).
-    pub fn pattern_controls(&self) -> impl Iterator<Item = (Control, u8)> + '_ {
+    /// Controls bound to `action` without Shift, with their value: pattern or fill index
+    /// (0-based), voice mask of a mute, denominator of a beat-repeat.
+    pub fn indexed(&self, action: ActionName) -> impl Iterator<Item = (Control, u8)> + '_ {
         self.bindings
             .iter()
-            .filter(|(id, b)| !id.shift && b.action == ActionName::Pattern)
-            .map(|(id, b)| (id.control, b.pattern))
+            .filter(move |(id, b)| !id.shift && b.action == action)
+            .map(|(id, b)| {
+                let value = match b.action {
+                    ActionName::Fill => b.fill,
+                    ActionName::Mute => b.mask,
+                    ActionName::BeatRepeat => b.division.denominator(),
+                    _ => b.pattern,
+                };
+                (id.control, value)
+            })
     }
 
     /// Controls bound to `action` without Shift (the layer their LED shows).
@@ -328,6 +391,13 @@ impl Mapping {
             (ActionName::Pattern, Input::Press(true)) => {
                 Some(Action::QueuePattern(binding.pattern))
             }
+            (ActionName::Mute, Input::Press(true)) => Some(Action::ToggleMute(binding.mask)),
+            (ActionName::Fill, Input::Press(true)) => Some(Action::Fill(binding.fill)),
+            (ActionName::BeatRepeat, Input::Press(held)) => Some(Action::BeatRepeat {
+                division: binding.division,
+                held,
+            }),
+            (ActionName::DrumDensity, Input::Absolute(v)) => Some(Action::SetDensity(v)),
             (ActionName::Swing, Input::Relative(ticks)) => Some(Action::NudgeSwing(
                 ticks as f32 * binding.step as f32 / 100.0,
             )),
@@ -498,8 +568,12 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::TapTempo
         | ActionName::MetronomeToggle
         | ActionName::Drum
-        | ActionName::Pattern => matches!(kind, Kind::Press),
+        | ActionName::Pattern
+        | ActionName::Mute
+        | ActionName::Fill
+        | ActionName::BeatRepeat => matches!(kind, Kind::Press),
         ActionName::Tempo
+        | ActionName::DrumDensity
         | ActionName::MasterGain
         | ActionName::MetronomeLevel
         | ActionName::DrumLevel => {
@@ -693,26 +767,28 @@ mod tests {
     }
 
     #[test]
-    fn sampler_pads_play_drums_and_light_their_led() {
+    fn sampler_pads_fill_and_play_drums_with_shift() {
         let mut m = mapping();
-        let pad = |pressed| ControllerEvent::Pad {
+        let pad = |pressed, shift| ControllerEvent::Pad {
             deck: Deck::A,
             mode: PadMode::Sampler,
             pad: 0,
-            shift: false,
+            shift,
             pressed,
             velocity: if pressed { 127 } else { 0 },
         };
+        assert_eq!(m.handle(40, pad(true, false)), Some(Action::Fill(0)));
+        assert_eq!(m.handle(41, pad(false, false)), None);
         assert_eq!(
-            m.handle(42, pad(true)),
+            m.handle(42, pad(true, true)),
             Some(Action::Drum {
                 voice: DrumVoice::Kick,
                 velocity: 1.0,
                 ts_us: 42
             })
         );
-        assert_eq!(m.handle(43, pad(false)), None);
-        let leds: Vec<_> = m.bound(ActionName::Drum).filter_map(led_of).collect();
+        assert_eq!(m.handle(43, pad(false, true)), None);
+        let leds: Vec<_> = m.bound(ActionName::Fill).filter_map(led_of).collect();
         assert!(leds.contains(&Led::Pad {
             deck: Deck::A,
             mode: PadMode::Sampler,
@@ -749,7 +825,7 @@ mod tests {
             Some(Action::NudgeSwing(d)) => assert!((d - 0.01).abs() < 1.0e-6),
             other => panic!("{other:?}"),
         }
-        let pads: Vec<_> = m.pattern_controls().collect();
+        let pads: Vec<_> = m.indexed(ActionName::Pattern).collect();
         assert_eq!(pads.len(), 4);
         assert!(pads.contains(&(Control::Pad(Deck::A, PadMode::HotCue, 3), 3)));
         assert!(
@@ -757,6 +833,57 @@ mod tests {
                 "[[bind]]\ncontrol = \"a.pad.fx.1\"\naction = \"pattern\"\npattern = 9"
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn fx_pads_mute_groups_and_loop_pads_repeat_while_held() {
+        let mut m = mapping();
+        let pad = |mode, pad, pressed| ControllerEvent::Pad {
+            deck: Deck::A,
+            mode,
+            pad,
+            shift: false,
+            pressed,
+            velocity: 127,
+        };
+        let snare_clap = voice_bit(DrumVoice::Snare) | voice_bit(DrumVoice::Clap);
+        assert_eq!(
+            m.handle(0, pad(PadMode::Fx, 1, true)),
+            Some(Action::ToggleMute(snare_clap))
+        );
+        assert_eq!(m.handle(0, pad(PadMode::Fx, 1, false)), None);
+        assert_eq!(
+            m.handle(0, pad(PadMode::Loop, 2, true)),
+            Some(Action::BeatRepeat {
+                division: Division::Sixteenth,
+                held: true
+            })
+        );
+        assert_eq!(
+            m.handle(0, pad(PadMode::Loop, 2, false)),
+            Some(Action::BeatRepeat {
+                division: Division::Sixteenth,
+                held: false
+            })
+        );
+        let mutes: Vec<_> = m.indexed(ActionName::Mute).collect();
+        assert!(mutes.contains(&(Control::Pad(Deck::A, PadMode::Fx, 1), snare_clap)));
+        assert!(
+            Mapping::from_toml_str(
+                "[[bind]]\ncontrol = \"a.pad.loop.1\"\naction = \"beat_repeat\"\ndivision = 3"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn tempo_fader_sets_density_directly() {
+        let mut m = mapping();
+        assert_eq!(m.handle(0, tempo_event(0)), Some(Action::SetDensity(0.0)));
+        assert_eq!(
+            m.handle(0, tempo_event(MAX_14BIT)),
+            Some(Action::SetDensity(1.0))
         );
     }
 
@@ -824,7 +951,10 @@ mod tests {
 
     #[test]
     fn tempo_fader_waits_for_pickup() {
-        let mut m = mapping();
+        let mut m = Mapping::from_toml_str(
+            "[[bind]]\ncontrol = \"a.tempo\"\naction = \"tempo\"\nrange = [60.0, 200.0]\npickup = true",
+        )
+        .expect("valid");
         // Software tempo is 120 BPM = 0.43 of the 60..200 range.
         m.software_changed(Target::Tempo, 120.0);
         // Fader at the bottom: ignored.
@@ -893,10 +1023,6 @@ mod tests {
             panic!("third tap");
         };
         assert!((bpm - 120.0).abs() < 1e-9);
-        assert!(
-            m.handle(0, tempo_event(0)).is_none(),
-            "after a tap, the tempo fader waits for pickup"
-        );
         // A pause longer than 2 s restarts the sequence.
         assert_eq!(m.handle(5_000 * MS, sync), None);
     }

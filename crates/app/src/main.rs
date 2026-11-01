@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use assert_no_alloc::assert_no_alloc;
 use engine::drums::DrumVoice;
 use engine::link::{self, BlockTime, Command, EngineEvent, EngineHandle, EngineSnapshot};
+use engine::repeat::Division;
 use engine::{Engine, Param};
 use io::audio::{AudioOutput, BlockStamp, start_output};
 use io::controller::{ControllerEvent, Deck, Led, PadMode};
@@ -23,18 +24,21 @@ use io::mapping::{
     Action, ActionName, Control, DEFAULT_MAPPING, Mapping, Target, identify, led_of,
 };
 use io::system::host_time_us;
+use rtrb::{Consumer, RingBuffer};
 
 const USAGE: &str = "\
 LiveDeck — deck rythme (séquenceur de batterie) et métronome
 
 USAGE: app [--bpm <60-200>] [--buffer <frames>] [--mapping <fichier>] [--seconds <n>] [--quiet]
-           [--no-metronome]
+           [--no-metronome] [--record <wav>]
 
   --mapping       fichier de mapping (défaut : config/mapping.toml, sinon le mapping intégré)
 
   --seconds       s'arrête après n secondes (endurance)
   --quiet         n'affiche pas chaque temps, seulement les bilans et les incidents
   --no-metronome  démarre métronome coupé (le moteur tourne en silence)
+  --record <wav>  enregistre la sortie (voie gauche = son, voie droite = beat-repeat engagé),
+                  60 s au plus, écrit à la sortie
 
 Commandes (taper puis Entrée) :
   p        lecture / arrêt
@@ -43,7 +47,11 @@ Commandes (taper puis Entrée) :
   h        kick (comme le pad Hot Cue 1 du deck A)
   q        quitter
 
-Deck A : pads Hot Cue = patterns A–D (à la mesure suivante), jog bord = swing,\npads Sampler = kick, snare, hats ; deck B : pads Hot Cue = clap, perc.\nChaque son joué au pad affiche sa latence geste → son.";
+Deck A : pads Hot Cue = patterns A–D (à la mesure suivante), pads Sampler = fills
+(Shift : kick, snare, hats), pads FX = mutes kick / snare+clap / hats / perc,
+pads Loop tenus = beat-repeat 1/4 … 1/32, fader Tempo = densité, jog bord = swing,
+jog dessus = tempo. Deck B : pads Hot Cue = clap, perc.
+Chaque son joué au pad affiche sa latence geste → son.";
 
 // Debug builds abort on any allocation inside `assert_no_alloc` (the audio callback); release
 // builds use the system allocator unchanged.
@@ -63,6 +71,9 @@ struct Wanted {
     /// Drum pattern asked for (0-based) and swing (0.5..=0.75).
     pattern: u8,
     swing: f32,
+    /// Muted drum voices (bit `i` = `DrumVoice::ALL[i]`) and density 0..=1.
+    mutes: u8,
+    density: f32,
 }
 
 /// Control-thread state.
@@ -73,6 +84,9 @@ struct Session {
     shown_bpm: f64,
     shown_levels: [f32; 3],
     shown_swing: f32,
+    shown_density: f32,
+    /// Beat-repeat pads held, last pressed last: releasing it falls back to the previous one.
+    repeats_held: Vec<Division>,
     leds: LedRoles,
     /// LEDs of pads currently held down (lit while held).
     held: Vec<Led>,
@@ -93,19 +107,27 @@ struct LedRoles {
     tap_tempo: Vec<Led>,
     /// Pads launching drum patterns, with the pattern index.
     patterns: Vec<(Led, u8)>,
+    /// Fill pads with the fill index, mute pads with their voice mask.
+    fills: Vec<(Led, u8)>,
+    mutes: Vec<(Led, u8)>,
 }
 
 impl LedRoles {
     fn of(mapping: &Mapping) -> Self {
         let leds = |action| mapping.bound(action).filter_map(led_of).collect();
+        let indexed = |action| {
+            mapping
+                .indexed(action)
+                .filter_map(|(control, v)| led_of(control).map(|led| (led, v)))
+                .collect()
+        };
         Self {
             transport: leds(ActionName::TransportToggle),
             metronome: leds(ActionName::MetronomeToggle),
             tap_tempo: leds(ActionName::TapTempo),
-            patterns: mapping
-                .pattern_controls()
-                .filter_map(|(control, p)| led_of(control).map(|led| (led, p)))
-                .collect(),
+            patterns: indexed(ActionName::Pattern),
+            fills: indexed(ActionName::Fill),
+            mutes: indexed(ActionName::Mute),
         }
     }
 }
@@ -142,6 +164,7 @@ struct Args {
     quiet: bool,
     metronome: bool,
     mapping: Option<PathBuf>,
+    record: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -152,6 +175,7 @@ fn parse_args() -> Result<Args, String> {
         quiet: false,
         metronome: true,
         mapping: None,
+        record: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -172,6 +196,7 @@ fn parse_args() -> Result<Args, String> {
             "--quiet" => args.quiet = true,
             "--no-metronome" => args.metronome = false,
             "--mapping" => args.mapping = Some(PathBuf::from(value("--mapping")?)),
+            "--record" => args.record = Some(PathBuf::from(value("--record")?)),
             "-h" | "--help" => {
                 println!("{USAGE}");
                 std::process::exit(0);
@@ -182,23 +207,102 @@ fn parse_args() -> Result<Args, String> {
     Ok(args)
 }
 
+/// Output recording (`--record`): the audio callback pushes interleaved (sound, beat-repeat
+/// engaged) frames into a ring; the control thread drains it into a buffer allocated up front.
+struct Recording {
+    path: PathBuf,
+    sample_rate: u32,
+    frames: Vec<f32>,
+    ring: Option<Consumer<f32>>,
+}
+
+const RECORD_SECONDS: usize = 60;
+
+impl Recording {
+    fn drain(&mut self) {
+        let Some(ring) = self.ring.as_mut() else {
+            return;
+        };
+        while let Ok(x) = ring.pop() {
+            if self.frames.len() < self.frames.capacity() {
+                self.frames.push(x);
+            }
+        }
+    }
+
+    /// Writes a 16-bit stereo WAV.
+    fn save(&mut self) -> std::io::Result<()> {
+        self.drain();
+        let data_len = u32::try_from(self.frames.len() * 2).unwrap_or(u32::MAX);
+        let sr = self.sample_rate;
+        let mut out = Vec::with_capacity(44 + self.frames.len() * 2);
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&(36 + data_len).to_le_bytes());
+        out.extend_from_slice(b"WAVEfmt ");
+        out.extend_from_slice(&16u32.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&2u16.to_le_bytes());
+        out.extend_from_slice(&sr.to_le_bytes());
+        out.extend_from_slice(&(sr * 4).to_le_bytes());
+        out.extend_from_slice(&4u16.to_le_bytes());
+        out.extend_from_slice(&16u16.to_le_bytes());
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&data_len.to_le_bytes());
+        for s in &self.frames {
+            out.extend_from_slice(&((s.clamp(-1.0, 1.0) * 32_767.0) as i16).to_le_bytes());
+        }
+        std::fs::write(&self.path, out)
+    }
+}
+
 /// Builds the engine at the device rate, starts the stream and replays the wanted state.
-fn open(buffers: &[u32], wanted: Wanted) -> Result<(AudioOutput, EngineHandle), String> {
+fn open(
+    buffers: &[u32],
+    wanted: Wanted,
+    recording: Option<&mut Recording>,
+) -> Result<(AudioOutput, EngineHandle), String> {
     let mut handle = None;
+    let record = recording.is_some();
+    let mut ring = None;
+    let mut rate = 0;
     let output = start_output(buffers, |info| {
         let engine = Engine::new(info.sample_rate, 4096, wanted.bpm);
         let (mut audio, control) = link::connect(engine);
         handle = Some(control);
+        rate = info.sample_rate;
+        // One second of margin: the control thread drains it every few ms.
+        let mut tap = record.then(|| {
+            let (tx, rx) = RingBuffer::<f32>::new(info.sample_rate as usize * 2);
+            ring = Some(rx);
+            tx
+        });
         move |data: &mut [f32], channels: usize, stamp: BlockStamp| {
             let time = BlockTime {
                 called_us: stamp.called_us,
                 callback_us: stamp.callback_us,
                 playback_us: stamp.playback_us,
             };
-            assert_no_alloc(|| audio.process_at(data, channels, time));
+            assert_no_alloc(|| {
+                audio.process_at(data, channels, time);
+                if let Some(tap) = tap.as_mut() {
+                    let marker = if audio.engine().beat_repeat_engaged() {
+                        0.5
+                    } else {
+                        0.0
+                    };
+                    for frame in data.chunks_exact(channels.max(1)) {
+                        let _ = tap.push(frame.first().copied().unwrap_or(0.0));
+                        let _ = tap.push(marker);
+                    }
+                }
+            });
         }
     })
     .map_err(|e| e.to_string())?;
+    if let Some(r) = recording {
+        r.ring = ring;
+        r.sample_rate = rate;
+    }
     let mut handle = handle.ok_or("le moteur n'a pas été construit")?;
     handle.send(Command::Metronome(wanted.metronome));
     handle.send(Command::SetParam(Param::MasterGain, wanted.master_gain));
@@ -209,6 +313,8 @@ fn open(buffers: &[u32], wanted: Wanted) -> Result<(AudioOutput, EngineHandle), 
     handle.send(Command::SetParam(Param::DrumLevel, wanted.drum_level));
     handle.send(Command::QueuePattern(wanted.pattern));
     handle.send(Command::SetSwing(wanted.swing));
+    handle.send(Command::SetMutes(wanted.mutes));
+    handle.send(Command::SetDensity(wanted.density));
     if wanted.playing {
         handle.send(Command::Start);
     }
@@ -332,6 +438,60 @@ fn handle_controller(
                 println!("  ≈ swing {:.0} %", s.wanted.swing * 100.0);
             }
         }
+        Action::ToggleMute(mask) => {
+            // A partly muted group is unmuted as a whole.
+            let all_muted = s.wanted.mutes & mask == mask;
+            if all_muted {
+                s.wanted.mutes &= !mask;
+            } else {
+                s.wanted.mutes |= mask;
+            }
+            handle.send(Command::SetMutes(s.wanted.mutes));
+            println!(
+                "  {} {}",
+                if all_muted { "🔈" } else { "🔇" },
+                voice_names(mask)
+            );
+        }
+        Action::Fill(index) => {
+            handle.send(Command::Fill(index));
+            println!(
+                "  ↯ fill {} (de la prochaine noire à la fin de la mesure)",
+                index + 1
+            );
+        }
+        Action::BeatRepeat { division, held } => {
+            let was = s.repeats_held.last().copied();
+            s.repeats_held.retain(|&d| d != division);
+            if held {
+                s.repeats_held.push(division);
+                handle.send(Command::BeatRepeat(Some(division)));
+                println!("  ⟳ beat-repeat 1/{}", division.denominator());
+            } else if let Some(&back) = s.repeats_held.last() {
+                // Back to the pad still held (its own loop, in phase); releasing a pad that was
+                // not the one heard only forgets its loop.
+                handle.send(Command::BeatRepeatBack {
+                    released: division,
+                    back,
+                });
+                if was == Some(division) {
+                    println!("  ⟳ beat-repeat 1/{} (retour)", back.denominator());
+                }
+            } else {
+                handle.send(Command::BeatRepeat(None));
+                println!("  ⟳ beat-repeat relâché");
+            }
+        }
+        Action::SetDensity(value) => {
+            s.wanted.density = value;
+            handle.send(Command::SetDensity(value));
+            // By 10 % steps, plus the ends of the travel.
+            let at_end = (value == 0.0 || value == 1.0) && value != s.shown_density;
+            if (value - s.shown_density).abs() >= 0.1 || at_end {
+                s.shown_density = value;
+                println!("  ▥ densité {:.0} %", value * 100.0);
+            }
+        }
         Action::NudgeTempo(delta) => {
             let bpm = s.wanted.bpm + delta;
             set_tempo(s, handle, bpm, true);
@@ -361,6 +521,17 @@ fn handle_controller(
             handle.send(Command::SetParam(param, value));
         }
     }
+}
+
+/// "snare + clap" for a voice mask.
+fn voice_names(mask: u8) -> String {
+    DrumVoice::ALL
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| mask & (1 << i) != 0)
+        .map(|(_, v)| v.name())
+        .collect::<Vec<_>>()
+        .join(" + ")
 }
 
 /// Plays a drum voice; its latency is printed when the engine reports it.
@@ -465,6 +636,19 @@ fn update_leds(leds: &mut LedBank, s: &Session, snap: &EngineSnapshot, beats: f6
         };
         leds.set_state(led, state);
     }
+    for &(led, index) in &s.leds.fills {
+        // Waiting for the next beat: blinks fast; playing: lit.
+        let state = match snap.fill {
+            Some((f, true)) if f == index => LedState::On,
+            Some((f, false)) if f == index => LedState::BlinkFast,
+            _ => LedState::Off,
+        };
+        leds.set_state(led, state);
+    }
+    for &(led, mask) in &s.leds.mutes {
+        // Lit = the group plays (like a channel on a console).
+        leds.set(led, snap.mutes & mask != mask);
+    }
     for &led in &s.held {
         leds.set(led, true);
     }
@@ -529,12 +713,16 @@ fn run() -> Result<(), String> {
             drum_level: 0.8,
             pattern: 0,
             swing: 0.54,
+            mutes: 0,
+            density: 1.0,
         },
         leds: LedRoles::of(&mapping),
         mapping,
         shown_bpm: 0.0,
         shown_levels: [-1.0; 3],
         shown_swing: 0.54,
+        shown_density: 1.0,
+        repeats_held: Vec::new(),
         held: Vec::new(),
         pending_hits: Vec::new(),
         latency: Latency::default(),
@@ -548,7 +736,13 @@ fn run() -> Result<(), String> {
         .software_changed(Target::MetronomeLevel, f64::from(s.wanted.metronome_level));
     s.mapping
         .software_changed(Target::DrumLevel, f64::from(s.wanted.drum_level));
-    let (mut output, mut handle) = open(&args.buffers, s.wanted)?;
+    let mut recording = args.record.clone().map(|path| Recording {
+        path,
+        sample_rate: 48_000,
+        frames: Vec::with_capacity(48_000 * 2 * RECORD_SECONDS),
+        ring: None,
+    });
+    let (mut output, mut handle) = open(&args.buffers, s.wanted, recording.as_mut())?;
     let session = Instant::now();
     let mut seen_xruns = 0;
     let mut seen_changes = 0;
@@ -601,7 +795,7 @@ fn run() -> Result<(), String> {
         }
         while let Ok(line) = keys.try_recv() {
             if !handle_line(&line, &mut s, &mut handle) {
-                finish(&s);
+                finish(&s, recording.as_mut());
                 return Ok(());
             }
         }
@@ -624,6 +818,9 @@ fn run() -> Result<(), String> {
             stopped_since.elapsed().as_secs_f64() * s.wanted.bpm / 60.0
         };
         update_leds(link.leds_mut(), &s, &snap, beats);
+        if let Some(r) = recording.as_mut() {
+            r.drain();
+        }
         if (snap.pattern, snap.pending_pattern) != shown_pattern {
             shown_pattern = (snap.pattern, snap.pending_pattern);
             let name = |p: u8| char::from(b'A' + p);
@@ -654,7 +851,7 @@ fn run() -> Result<(), String> {
             .seconds
             .is_some_and(|s| session.elapsed().as_secs_f64() >= s)
         {
-            finish(&s);
+            finish(&s, recording.as_mut());
             return Ok(());
         }
         if output.stats.invalidated.load(Ordering::Relaxed) {
@@ -662,7 +859,7 @@ fn run() -> Result<(), String> {
             drop(output);
             loop {
                 sleep(Duration::from_millis(500));
-                match open(&args.buffers, s.wanted) {
+                match open(&args.buffers, s.wanted, recording.as_mut()) {
                     Ok(reopened) => {
                         (output, handle) = reopened;
                         break;
@@ -706,8 +903,18 @@ fn run() -> Result<(), String> {
     }
 }
 
-/// End-of-session summary.
-fn finish(s: &Session) {
+/// End-of-session summary; writes the recording if any.
+fn finish(s: &Session, recording: Option<&mut Recording>) {
+    if let Some(r) = recording {
+        match r.save() {
+            Ok(()) => println!(
+                "⏺ enregistrement : {} ({:.1} s)",
+                r.path.display(),
+                r.frames.len() as f64 / 2.0 / f64::from(r.sample_rate)
+            ),
+            Err(e) => println!("⚠ enregistrement non écrit : {e}"),
+        }
+    }
     if let Some(summary) = s.latency.summary() {
         println!("⏱ latence geste → son, {summary}");
     }

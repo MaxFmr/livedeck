@@ -10,6 +10,7 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use triple_buffer::{Input, Output, triple_buffer};
 
 use crate::drums::DrumVoice;
+use crate::repeat::Division;
 use crate::{BEATS_PER_BAR, Engine, Param};
 
 /// Everything the audio thread can be asked to do. Small and `Copy`: no heap, no drop.
@@ -28,6 +29,19 @@ pub enum Command {
     SetSwing(f32),
     /// Drum sequencer on/off.
     Sequencer(bool),
+    /// Muted drum voices, bit `i` = `DrumVoice::ALL[i]`.
+    SetMutes(u8),
+    /// Drum density 0..=1.
+    SetDensity(f32),
+    /// Drum fill (0-based) from the next beat to the end of the bar.
+    Fill(u8),
+    /// Beat-repeat of the drum bus: a Loop pad pressed; `None` = every pad released.
+    BeatRepeat(Option<Division>),
+    /// The Loop pad of `released` is let go, the one of `back` is still held.
+    BeatRepeatBack {
+        released: Division,
+        back: Division,
+    },
     /// Plays a drum voice now (velocity 0..=1). A non-zero `gesture_us` (host time of the
     /// gesture) comes back in `EngineEvent::Hit` to measure gesture → sound latency.
     Drum {
@@ -78,6 +92,11 @@ pub struct EngineSnapshot {
     pub swing: f32,
     /// Step (0..16) of the bar about to play.
     pub step: u8,
+    pub mutes: u8,
+    pub density: f32,
+    /// Fill waiting or playing (0-based), and whether it has started.
+    pub fill: Option<(u8, bool)>,
+    pub beat_repeat: bool,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -140,10 +159,20 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         pending_pattern: engine.sequencer().pending(),
         swing: engine.sequencer().swing(),
         step: engine.sequencer().step_in_bar(),
+        mutes: engine.sequencer().mutes(),
+        density: engine.sequencer().density(),
+        fill: engine.sequencer().fill(),
+        beat_repeat: engine.beat_repeat_engaged(),
     }
 }
 
 impl AudioEngine {
+    /// The engine, read-only (diagnostics from the audio callback).
+    #[must_use]
+    pub fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
     /// Audio callback body without timing information (offline rendering, tests).
     pub fn process(&mut self, out: &mut [f32], channels: usize) {
         self.process_at(out, channels, BlockTime::default());
@@ -177,6 +206,13 @@ impl AudioEngine {
             Command::QueuePattern(index) => self.engine.queue_pattern(index),
             Command::SetSwing(swing) => self.engine.set_swing(swing),
             Command::Sequencer(on) => self.engine.set_sequencer(on),
+            Command::SetMutes(mutes) => self.engine.set_mutes(mutes),
+            Command::SetDensity(density) => self.engine.set_density(density),
+            Command::Fill(index) => self.engine.queue_fill(index),
+            Command::BeatRepeat(division) => self.engine.beat_repeat(division),
+            Command::BeatRepeatBack { released, back } => {
+                self.engine.beat_repeat_back(released, back);
+            }
             Command::SetParam(param, value) => self.engine.set_param(param, value),
             Command::Drum {
                 voice,
@@ -346,6 +382,50 @@ mod tests {
         run(&mut audio, 750);
         let snap = handle.snapshot();
         assert_eq!((snap.pattern, snap.pending_pattern), (2, None));
+    }
+
+    #[test]
+    fn fill_mutes_and_repeat_are_published() {
+        let (mut audio, mut handle) = pair();
+        handle.send(Command::Start);
+        handle.send(Command::SetMutes(0b10));
+        handle.send(Command::SetDensity(0.3));
+        run(&mut audio, 10);
+        handle.send(Command::Fill(1));
+        handle.send(Command::BeatRepeat(Some(Division::Eighth)));
+        run(&mut audio, 1);
+        let snap = handle.snapshot();
+        assert_eq!((snap.mutes, snap.density), (0b10, 0.3));
+        assert_eq!(snap.fill, Some((1, false)));
+        assert!(snap.beat_repeat);
+        handle.send(Command::BeatRepeat(None));
+        run(&mut audio, 1);
+        assert!(!handle.snapshot().beat_repeat);
+    }
+
+    #[test]
+    fn beat_repeat_loops_the_drum_bus() {
+        // Metronome off: only the drums sound. Repeat 1/16 from the start, held for a bar.
+        let (mut audio, mut handle) = pair();
+        handle.send(Command::Metronome(false));
+        // Quiet enough for the limiter to stay out of the way.
+        handle.send(Command::SetParam(Param::MasterGain, 0.5));
+        handle.send(Command::Start);
+        handle.send(Command::BeatRepeat(Some(Division::Sixteenth)));
+        let mut out: Vec<f32> = Vec::new();
+        let mut buf = [0.0_f32; 256];
+        for _ in 0..750 {
+            audio.process(&mut buf, 2);
+            out.extend(buf.iter().step_by(2).copied());
+        }
+        // 1/16 at 120 BPM = 6 000 samples: turns 2 and 3 are identical (the kick of step 0).
+        let turn = |k: usize| &out[k * 6_000 + 100..(k + 1) * 6_000 - 100];
+        assert!(turn(2).iter().any(|s| s.abs() > 0.02));
+        let diff = turn(2)
+            .iter()
+            .zip(turn(3))
+            .fold(0.0_f32, |m, (a, b)| m.max((a - b).abs()));
+        assert!(diff < 1.0e-4, "{diff}");
     }
 
     #[test]

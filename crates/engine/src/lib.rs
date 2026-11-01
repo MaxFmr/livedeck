@@ -17,6 +17,7 @@ pub mod dsp;
 pub mod limiter;
 pub mod link;
 pub mod metronome;
+pub mod repeat;
 pub mod sequencer;
 pub mod smooth;
 
@@ -24,6 +25,7 @@ use clock::Clock;
 use drums::{DrumKit, DrumVoice};
 use limiter::Limiter;
 use metronome::Click;
+use repeat::{BeatRepeat, Division};
 use sequencer::Sequencer;
 use smooth::Smoothed;
 
@@ -59,8 +61,15 @@ pub struct Engine {
     master_gain: Smoothed,
     metronome_level: Smoothed,
     drum_level: Smoothed,
+    repeat: BeatRepeat,
+    /// Clock position of the last drum hit (sequencer or pad) since the transport started.
+    last_hit: Option<u64>,
+    /// Length of a roll waiting for the next hit (no hit in the current division at the press).
+    roll_pending: Option<usize>,
     /// Mono mix bus, allocated once; blocks larger than this are processed in slices.
     mono: Vec<f32>,
+    /// Drum bus (before the drum level), same size as `mono`.
+    drum_bus: Vec<f32>,
 }
 
 impl Engine {
@@ -77,17 +86,29 @@ impl Engine {
             master_gain: Smoothed::new(1.0, sample_rate, 0.01),
             metronome_level: Smoothed::new(gain_curve(0.7), sample_rate, 0.01),
             drum_level: Smoothed::new(gain_curve(0.8), sample_rate, 0.01),
+            // One beat at the slowest tempo: the longest division repeated.
+            repeat: BeatRepeat::new(
+                (f64::from(sample_rate) * 60.0 / clock::MIN_BPM).ceil() as usize
+            ),
+            last_hit: None,
+            roll_pending: None,
             mono: vec![0.0; max_block.max(64)],
+            drum_bus: vec![0.0; max_block.max(64)],
         }
     }
 
     pub fn start(&mut self) {
         self.clock.start();
         self.sequencer.reset();
+        self.repeat.release();
+        self.last_hit = None;
+        self.roll_pending = None;
     }
 
     pub fn stop(&mut self) {
         self.clock.stop();
+        self.repeat.release();
+        self.roll_pending = None;
     }
 
     pub fn set_tempo(&mut self, bpm: f64) {
@@ -111,6 +132,13 @@ impl Engine {
     /// Plays a drum voice from the next rendered sample, playing or not.
     pub fn trigger_drum(&mut self, voice: DrumVoice, velocity: f32) {
         self.drums.trigger(voice, velocity);
+        if self.clock.is_playing() {
+            let now = self.clock.position();
+            self.last_hit = Some(now);
+            if let Some(len) = self.roll_pending.take() {
+                self.repeat.engage(now, len, now + len as u64);
+            }
+        }
     }
 
     pub fn drums_mut(&mut self) -> &mut DrumKit {
@@ -120,6 +148,69 @@ impl Engine {
     /// Queues drum pattern `index` (0-based) for the next bar (now if stopped).
     pub fn queue_pattern(&mut self, index: u8) {
         self.sequencer.queue(index, self.clock.is_playing());
+    }
+
+    /// Fill `index` (0-based) from the next beat to the end of the bar; ignored when stopped.
+    pub fn queue_fill(&mut self, index: u8) {
+        self.sequencer.queue_fill(index, self.clock.is_playing());
+    }
+
+    /// Muted drum voices (bit `i` = `DrumVoice::ALL[i]`), from the next step.
+    pub fn set_mutes(&mut self, mutes: u8) {
+        self.sequencer.set_mutes(mutes);
+    }
+
+    /// Drum density, 0 (kicks on the beat) ..= 1 (every step).
+    pub fn set_density(&mut self, density: f32) {
+        self.sequencer.set_density(density);
+    }
+
+    /// A Loop pad is pressed: a shorter division than the loop heard subdivides it; otherwise a
+    /// new slice of `division` of the groove, from the last hit, loops from its next boundary.
+    /// `None` (every pad released) goes back to the groove. Ignored when stopped.
+    pub fn beat_repeat(&mut self, division: Option<Division>) {
+        self.roll_pending = None;
+        let Some(division) = division.filter(|_| self.clock.is_playing()) else {
+            self.repeat.release();
+            return;
+        };
+        let len = (division.beats() * self.clock.samples_per_beat())
+            .round()
+            .max(1.0) as u64;
+        // Shorter than the loop heard: subdivide it (roll what is heard).
+        if self.repeat.subdivide(len as usize) {
+            return;
+        }
+        let now = self.clock.position();
+        // Roll the last hit if it falls within one division before the press: the roll follows
+        // what is being played. An older hit would replay the past (heard in the 012 test, at low
+        // density): then the roll waits for the next hit instead.
+        match self.last_hit.filter(|&hit| now.saturating_sub(hit) < len) {
+            Some(hit) => self.repeat.engage(hit, len as usize, hit + len),
+            None => {
+                self.repeat.cancel_pending();
+                self.roll_pending = Some(len as usize);
+            }
+        }
+    }
+
+    /// The Loop pad of `released` is let go while the one of `back` is still held: back to the
+    /// loop of `back` (in phase if it is kept, else a new slice).
+    pub fn beat_repeat_back(&mut self, released: Division, back: Division) {
+        self.roll_pending = None;
+        if !self.clock.is_playing() {
+            self.repeat.release();
+            return;
+        }
+        let len = |d: Division| (d.beats() * self.clock.samples_per_beat()).round() as usize;
+        if !self.repeat.go_back(len(released), len(back)) {
+            self.beat_repeat(Some(back));
+        }
+    }
+
+    #[must_use]
+    pub fn beat_repeat_engaged(&self) -> bool {
+        self.repeat.engaged() || self.roll_pending.is_some()
     }
 
     /// Drum sequencer on/off (the bar position keeps running).
@@ -163,12 +254,15 @@ impl Engine {
                 break;
             }
             let n = remaining.min(self.mono.len());
-            let Some(mono) = self.mono.get_mut(..n) else {
+            let (Some(mono), Some(bus)) = (self.mono.get_mut(..n), self.drum_bus.get_mut(..n))
+            else {
                 break;
             };
             mono.fill(0.0);
+            bus.fill(0.0);
             self.click.gain = self.metronome_level.skip(n);
             let drum_gain = self.drum_level.skip(n);
+            let start = self.clock.position();
             render_mono(
                 Voices {
                     clock: &mut self.clock,
@@ -176,10 +270,17 @@ impl Engine {
                     metronome: self.metronome,
                     sequencer: &mut self.sequencer,
                     drums: &mut self.drums,
-                    drum_gain,
+                    last_hit: &mut self.last_hit,
+                    roll_pending: &mut self.roll_pending,
+                    repeat: &mut self.repeat,
                 },
                 mono,
+                bus,
             );
+            self.repeat.process(bus, start);
+            for (sample, &drum) in mono.iter_mut().zip(bus.iter()) {
+                *sample += drum * drum_gain;
+            }
             for sample in mono.iter_mut() {
                 *sample *= self.master_gain.tick();
             }
@@ -210,13 +311,16 @@ struct Voices<'a> {
     metronome: bool,
     sequencer: &'a mut Sequencer,
     drums: &'a mut DrumKit,
-    drum_gain: f32,
+    last_hit: &'a mut Option<u64>,
+    roll_pending: &'a mut Option<usize>,
+    repeat: &'a mut BeatRepeat,
 }
 
-/// Renders one slice, splitting it at beats and sequencer steps so every click and drum hit starts
-/// on its exact sample.
-fn render_mono(v: Voices<'_>, mono: &mut [f32]) {
+/// Renders one slice (click into `mono`, drums into `bus`), splitting it at beats and sequencer
+/// steps so every click and drum hit starts on its exact sample.
+fn render_mono(v: Voices<'_>, mono: &mut [f32], bus: &mut [f32]) {
     let mut rest = mono;
+    let mut bus_rest = bus;
     while !rest.is_empty() {
         let len = rest.len();
         let beat = v.clock.next_beat_within(len);
@@ -226,8 +330,9 @@ fn render_mono(v: Voices<'_>, mono: &mut [f32]) {
         // Both offsets are < len by construction; clamped anyway so the split can never panic.
         let segment_len = beat_at.min(step_at).min(len);
         let (segment, tail) = rest.split_at_mut(segment_len);
+        let (bus_segment, bus_tail) = bus_rest.split_at_mut(segment_len.min(bus_rest.len()));
         v.click.render_add(segment);
-        v.drums.render_add(segment, v.drum_gain);
+        v.drums.render_add(bus_segment, 1.0);
         v.clock.advance(segment_len);
         if let Some((_, beat)) = beat
             && beat_at == segment_len
@@ -237,10 +342,15 @@ fn render_mono(v: Voices<'_>, mono: &mut [f32]) {
             }
             v.clock.consume_beat();
         }
-        if step_at == segment_len && step.is_some() {
-            v.sequencer.fire(v.drums);
+        if step_at == segment_len && step.is_some() && v.sequencer.fire(v.drums) != 0 {
+            let hit = v.clock.position();
+            *v.last_hit = Some(hit);
+            if let Some(len) = v.roll_pending.take() {
+                v.repeat.engage(hit, len, hit + len as u64);
+            }
         }
         rest = tail;
+        bus_rest = bus_tail;
     }
 }
 
@@ -322,6 +432,33 @@ mod tests {
         let out = render(&mut engine, 128, 1, 128);
         assert!(out[0] != 0.0, "the kick click starts on the first sample");
         assert!(out.iter().any(|s| s.abs() > 0.3));
+    }
+
+    #[test]
+    fn roll_waits_for_the_next_hit_when_the_last_one_is_old() {
+        // Density 0 on pattern A: kicks on beats 1 and 3 only (samples 0 and 48 000).
+        let mut engine = Engine::new(SR, 128, 120.0);
+        engine.set_metronome(false);
+        engine.set_param(Param::MasterGain, 0.5);
+        engine.set_density(0.0);
+        engine.start();
+        render(&mut engine, 24_000, 1, 128);
+        // Pressed on beat 2: the kick of beat 1 is a whole beat old, longer than a 1/16.
+        engine.beat_repeat(Division::from_denominator(16));
+        assert!(engine.beat_repeat_engaged());
+        let out = render(&mut engine, 48_000, 1, 128);
+        // Live until the kick of beat 3 (24 000 samples on), then that kick rolls every 6 000.
+        assert!(
+            out[..23_000].iter().all(|s| s.abs() < 0.05),
+            "no old kick replayed"
+        );
+        let turn = |k: usize| &out[24_000 + k * 6_000 + 500..24_000 + (k + 1) * 6_000 - 1_000];
+        assert!(turn(2).iter().any(|s| s.abs() > 0.1));
+        let diff = turn(2)
+            .iter()
+            .zip(turn(3))
+            .fold(0.0_f32, |m, (a, b)| m.max((a - b).abs()));
+        assert!(diff < 1.0e-3, "{diff}");
     }
 
     #[test]

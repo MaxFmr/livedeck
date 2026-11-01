@@ -5,6 +5,7 @@
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use engine::drums::DrumVoice;
 use engine::link::{self, BlockTime, Command};
+use engine::repeat::Division;
 use engine::{Engine, Param};
 
 #[global_allocator]
@@ -38,6 +39,24 @@ fn ten_seconds_of_audio_without_allocation() {
             60 => {
                 handle.send(Command::QueuePattern((i / 200 % 4) as u8));
                 handle.send(Command::SetSwing(0.5 + (i % 50) as f32 / 200.0));
+            }
+            70 => {
+                handle.send(Command::SetMutes((i / 200 % 64) as u8));
+                handle.send(Command::SetDensity((i % 200) as f32 / 200.0));
+                handle.send(Command::Fill((i / 200 % 4) as u8));
+                handle.send(Command::BeatRepeat(Division::from_denominator(
+                    [4, 8, 16, 32][i / 200 % 4],
+                )));
+            }
+            90 => {
+                handle.send(Command::BeatRepeat(Some(Division::Sixteenth)));
+                handle.send(Command::BeatRepeatBack {
+                    released: Division::Sixteenth,
+                    back: Division::Quarter,
+                });
+            }
+            110 => {
+                handle.send(Command::BeatRepeat(None));
             }
             170 => {
                 for voice in DrumVoice::ALL {

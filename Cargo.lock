@@ -70,6 +70,7 @@ dependencies = [
  "assert_no_alloc",
  "engine",
  "io",
+ "rtrb",
 ]
 
 [[package]]
