@@ -9,6 +9,7 @@
 use rtrb::{Consumer, Producer, RingBuffer};
 use triple_buffer::{Input, Output, triple_buffer};
 
+use crate::drums::DrumVoice;
 use crate::{BEATS_PER_BAR, Engine, Param};
 
 /// Everything the audio thread can be asked to do. Small and `Copy`: no heap, no drop.
@@ -21,9 +22,11 @@ pub enum Command {
     Metronome(bool),
     /// Normalized 0..=1 value of a continuous parameter.
     SetParam(Param, f32),
-    /// Plays the test sound now; `gesture_us` (host time of the gesture) comes back in
-    /// `EngineEvent::Hit` to measure gesture → sound latency.
-    Hit {
+    /// Plays a drum voice now (velocity 0..=1). A non-zero `gesture_us` (host time of the
+    /// gesture) comes back in `EngineEvent::Hit` to measure gesture → sound latency.
+    Drum {
+        voice: DrumVoice,
+        velocity: f32,
         gesture_us: u64,
     },
 }
@@ -35,7 +38,8 @@ const _: () = assert!(core::mem::size_of::<Command>() <= 32);
 pub enum EngineEvent {
     /// The last block played into a new beat (1-based bar and beat).
     Beat { bar: u64, beat: u8 },
-    /// A `Command::Hit` started sounding at the first sample of the block stamped `time`.
+    /// A `Command::Drum` with a gesture time started sounding at the first sample of the block
+    /// stamped `time`.
     Hit { gesture_us: u64, time: BlockTime },
 }
 
@@ -155,9 +159,15 @@ impl AudioEngine {
             Command::SetTempo(bpm) => self.engine.set_tempo(bpm),
             Command::Metronome(on) => self.engine.set_metronome(on),
             Command::SetParam(param, value) => self.engine.set_param(param, value),
-            Command::Hit { gesture_us } => {
-                self.engine.trigger_hit();
-                self.push_event(EngineEvent::Hit { gesture_us, time });
+            Command::Drum {
+                voice,
+                velocity,
+                gesture_us,
+            } => {
+                self.engine.trigger_drum(voice, velocity);
+                if gesture_us != 0 {
+                    self.push_event(EngineEvent::Hit { gesture_us, time });
+                }
             }
         }
     }
@@ -282,7 +292,11 @@ mod tests {
     #[test]
     fn hit_reports_the_block_times() {
         let (mut audio, mut handle) = pair();
-        handle.send(Command::Hit { gesture_us: 1_000 });
+        handle.send(Command::Drum {
+            voice: DrumVoice::Snare,
+            velocity: 1.0,
+            gesture_us: 1_000,
+        });
         let mut buf = [0.0_f32; 256];
         let time = BlockTime {
             called_us: 1_500,

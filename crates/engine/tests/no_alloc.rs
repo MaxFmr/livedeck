@@ -3,6 +3,7 @@
 #![cfg(debug_assertions)]
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
+use engine::drums::DrumVoice;
 use engine::link::{self, BlockTime, Command};
 use engine::{Engine, Param};
 
@@ -35,9 +36,13 @@ fn ten_seconds_of_audio_without_allocation() {
                 handle.send(Command::SetParam(Param::MasterGain, 0.5));
             }
             170 => {
-                handle.send(Command::Hit {
-                    gesture_us: i as u64,
-                });
+                for voice in DrumVoice::ALL {
+                    handle.send(Command::Drum {
+                        voice,
+                        velocity: 1.0,
+                        gesture_us: i as u64,
+                    });
+                }
             }
             _ => {}
         }

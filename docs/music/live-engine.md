@@ -146,7 +146,8 @@ action = "transport_restart"
 ```
 
 Actions disponibles aujourd'hui : `transport_toggle`, `transport_restart`, `tap_tempo`,
-`metronome_toggle`, `tempo`, `tempo_nudge` (`step`), `master_gain`, `metronome_level`. Les actions
+`metronome_toggle`, `drum` (`voice` = kick, snare, closed_hat, open_hat, clap, perc), `tempo`,
+`tempo_nudge` (`step`), `master_gain`, `metronome_level`, `drum_level`. Les actions
 musicales (patterns, mutes, accords…) s'ajoutent avec les decks (010+), sur le même modèle.
 
 ## Théorie utile (rappels)

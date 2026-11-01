@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 
+use engine::drums::DrumVoice;
 use serde::Deserialize;
 
 use crate::controller::{
@@ -50,6 +51,7 @@ pub enum Target {
     Tempo,
     MasterGain,
     MetronomeLevel,
+    DrumLevel,
 }
 
 /// Result of a mapped gesture, applied by the control thread.
@@ -58,8 +60,10 @@ pub enum Action {
     TransportToggle,
     TransportRestart,
     MetronomeToggle,
-    /// Test sound (latency measurement); `ts_us` is the gesture's CoreMIDI host time.
-    TestHit {
+    /// Plays a drum voice; `ts_us` is the gesture's CoreMIDI host time (latency measurement).
+    Drum {
+        voice: DrumVoice,
+        velocity: f32,
         ts_us: u64,
     },
     SetTempo(f64),
@@ -76,11 +80,12 @@ pub enum ActionName {
     TransportRestart,
     TapTempo,
     MetronomeToggle,
-    TestHit,
+    Drum,
     Tempo,
     TempoNudge,
     MasterGain,
     MetronomeLevel,
+    DrumLevel,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,6 +102,8 @@ struct BindSpec {
     range: Option<[f64; 2]>,
     /// Amount per jog tick for `tempo_nudge` (BPM).
     step: Option<f64>,
+    /// Voice played by `drum` (kick, snare, closed_hat, open_hat, clap, perc).
+    voice: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,6 +128,10 @@ pub enum MappingError {
     Incompatible { control: String, action: String },
     #[error("« {0} » est lié deux fois (même couche shift)")]
     Duplicate(String),
+    #[error(
+        "« {control} » : voix de batterie « {voice} » inconnue (kick, snare, closed_hat, open_hat, clap, perc)"
+    )]
+    UnknownVoice { control: String, voice: String },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -136,6 +147,7 @@ struct Binding {
     pickup: bool,
     range: [f64; 2],
     step: f64,
+    voice: DrumVoice,
 }
 
 /// Soft-takeover state of one absolute control.
@@ -181,11 +193,18 @@ impl Mapping {
                 control,
                 shift: b.shift,
             };
+            let voice_name = b.voice.as_deref().unwrap_or("kick");
+            let voice =
+                DrumVoice::from_name(voice_name).ok_or_else(|| MappingError::UnknownVoice {
+                    control: b.control.clone(),
+                    voice: voice_name.to_string(),
+                })?;
             let binding = Binding {
                 action: b.action,
                 pickup: b.pickup,
                 range: b.range.unwrap_or([60.0, 200.0]),
                 step: b.step.unwrap_or(0.1),
+                voice,
             };
             if bindings.insert(id, binding).is_some() {
                 return Err(MappingError::Duplicate(b.control));
@@ -272,7 +291,11 @@ impl Mapping {
             (ActionName::TransportToggle, Input::Press(true)) => Some(Action::TransportToggle),
             (ActionName::TransportRestart, Input::Press(true)) => Some(Action::TransportRestart),
             (ActionName::MetronomeToggle, Input::Press(true)) => Some(Action::MetronomeToggle),
-            (ActionName::TestHit, Input::Press(true)) => Some(Action::TestHit { ts_us }),
+            (ActionName::Drum, Input::Press(true)) => Some(Action::Drum {
+                voice: binding.voice,
+                velocity: velocity_of(event),
+                ts_us,
+            }),
             (ActionName::TapTempo, Input::Press(true)) => self.tap(ts_us),
             (ActionName::TempoNudge, Input::Relative(ticks)) => {
                 Some(Action::NudgeTempo(f64::from(ticks) * binding.step))
@@ -287,7 +310,10 @@ impl Mapping {
                 self.take_over(id, binding.pickup, soft, v)
                     .then(|| Action::SetTempo(to_bpm(v)))
             }
-            (ActionName::MasterGain | ActionName::MetronomeLevel, Input::Absolute(v)) => {
+            (
+                ActionName::MasterGain | ActionName::MetronomeLevel | ActionName::DrumLevel,
+                Input::Absolute(v),
+            ) => {
                 let target = target_of(binding.action)?;
                 let soft = self.soft.get(&target).copied();
                 self.take_over(id, binding.pickup, soft, v)
@@ -360,7 +386,9 @@ fn normalized(binding: &Binding, target: Target, value: f64) -> f32 {
             let [lo, hi] = binding.range;
             ((value - lo) / (hi - lo)).clamp(0.0, 1.0) as f32
         }
-        Target::MasterGain | Target::MetronomeLevel => value.clamp(0.0, 1.0) as f32,
+        Target::MasterGain | Target::MetronomeLevel | Target::DrumLevel => {
+            value.clamp(0.0, 1.0) as f32
+        }
     }
 }
 
@@ -375,6 +403,7 @@ fn target_of(action: ActionName) -> Option<Target> {
     match action {
         ActionName::Tempo | ActionName::TempoNudge | ActionName::TapTempo => Some(Target::Tempo),
         ActionName::MasterGain => Some(Target::MasterGain),
+        ActionName::DrumLevel => Some(Target::DrumLevel),
         ActionName::MetronomeLevel => Some(Target::MetronomeLevel),
         _ => None,
     }
@@ -394,8 +423,11 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::TransportRestart
         | ActionName::TapTempo
         | ActionName::MetronomeToggle
-        | ActionName::TestHit => matches!(kind, Kind::Press),
-        ActionName::Tempo | ActionName::MasterGain | ActionName::MetronomeLevel => {
+        | ActionName::Drum => matches!(kind, Kind::Press),
+        ActionName::Tempo
+        | ActionName::MasterGain
+        | ActionName::MetronomeLevel
+        | ActionName::DrumLevel => {
             matches!(kind, Kind::Absolute)
         }
         ActionName::TempoNudge => matches!(kind, Kind::Relative),
@@ -404,6 +436,14 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
 
 fn normalize(value: u16) -> f32 {
     f32::from(value) / f32::from(MAX_14BIT)
+}
+
+/// Pad velocity as 0..=1 (the DJControl Mix always sends 127); buttons play at full velocity.
+fn velocity_of(event: ControllerEvent) -> f32 {
+    match event {
+        ControllerEvent::Pad { velocity, .. } => f32::from(velocity.min(127)) / 127.0,
+        _ => 1.0,
+    }
 }
 
 /// The LED of a control, if it has one (the headphone button and continuous controls have none).
@@ -578,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn pads_play_the_test_hit_and_light_their_led() {
+    fn pads_play_drums_and_light_their_led() {
         let mut m = mapping();
         let pad = |pressed| ControllerEvent::Pad {
             deck: Deck::A,
@@ -588,9 +628,16 @@ mod tests {
             pressed,
             velocity: if pressed { 127 } else { 0 },
         };
-        assert_eq!(m.handle(42, pad(true)), Some(Action::TestHit { ts_us: 42 }));
+        assert_eq!(
+            m.handle(42, pad(true)),
+            Some(Action::Drum {
+                voice: DrumVoice::Kick,
+                velocity: 1.0,
+                ts_us: 42
+            })
+        );
         assert_eq!(m.handle(43, pad(false)), None);
-        let leds: Vec<_> = m.bound(ActionName::TestHit).filter_map(led_of).collect();
+        let leds: Vec<_> = m.bound(ActionName::Drum).filter_map(led_of).collect();
         assert!(leds.contains(&Led::Pad {
             deck: Deck::A,
             mode: PadMode::HotCue,
@@ -602,6 +649,18 @@ mod tests {
                 .count(),
             2,
             "Play A and B, not the Shift layer"
+        );
+    }
+
+    #[test]
+    fn unknown_drum_voice_is_named() {
+        let result = Mapping::from_toml_str(
+            "[[bind]]\ncontrol = \"a.pad.fx.1\"\naction = \"drum\"\nvoice = \"cowbell\"",
+        );
+        assert!(
+            result
+                .err()
+                .is_some_and(|e| e.to_string().contains("cowbell"))
         );
     }
 

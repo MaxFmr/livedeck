@@ -12,6 +12,7 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use assert_no_alloc::assert_no_alloc;
+use engine::drums::DrumVoice;
 use engine::link::{self, BlockTime, Command, EngineEvent, EngineHandle};
 use engine::{Engine, Param};
 use io::audio::{AudioOutput, BlockStamp, start_output};
@@ -39,10 +40,10 @@ Commandes (taper puis Entrée) :
   p        lecture / arrêt
   + / -    tempo ±1 BPM par signe (+++ = +3)
   t <bpm>  tempo exact         m        métronome on/off
-  h        son de test (comme un pad Hot Cue)
+  h        kick (comme le pad Hot Cue 1 du deck A)
   q        quitter
 
-Pads Hot Cue : son de test, avec la latence geste → son mesurée à chaque frappe.";
+Pads Hot Cue : batterie (A : kick, snare, hat fermé, hat ouvert ; B : clap, perc), avec la\nlatence geste → son mesurée à chaque frappe.";
 
 // Debug builds abort on any allocation inside `assert_no_alloc` (the audio callback); release
 // builds use the system allocator unchanged.
@@ -58,6 +59,7 @@ struct Wanted {
     metronome: bool,
     master_gain: f32,
     metronome_level: f32,
+    drum_level: f32,
 }
 
 /// Control-thread state.
@@ -66,7 +68,7 @@ struct Session {
     mapping: Mapping,
     /// Last values echoed to the console (continuous controls are echoed by steps only).
     shown_bpm: f64,
-    shown_levels: [f32; 2],
+    shown_levels: [f32; 3],
     leds: LedRoles,
     /// LEDs of pads currently held down (lit while held).
     held: Vec<Led>,
@@ -194,6 +196,7 @@ fn open(buffers: &[u32], wanted: Wanted) -> Result<(AudioOutput, EngineHandle), 
         Param::MetronomeLevel,
         wanted.metronome_level,
     ));
+    handle.send(Command::SetParam(Param::DrumLevel, wanted.drum_level));
     if wanted.playing {
         handle.send(Command::Start);
     }
@@ -296,7 +299,11 @@ fn handle_controller(
             println!("⏮ reprise à la mesure 1");
         }
         Action::MetronomeToggle => toggle_metronome(s, handle),
-        Action::TestHit { ts_us } => test_hit(s, handle, ts_us),
+        Action::Drum {
+            voice,
+            velocity,
+            ts_us,
+        } => play_drum(s, handle, voice, velocity, ts_us),
         // Absolute tempo comes from the bound fader (hardware) or tap tempo (already registered
         // as a software change by the mapping).
         Action::SetTempo(bpm) => set_tempo(s, handle, bpm, false),
@@ -314,6 +321,10 @@ fn handle_controller(
                     s.wanted.metronome_level = value;
                     (Param::MetronomeLevel, 1, "métronome")
                 }
+                Target::DrumLevel => {
+                    s.wanted.drum_level = value;
+                    (Param::DrumLevel, 2, "batterie")
+                }
                 Target::Tempo => return,
             };
             if let Some(shown) = s.shown_levels.get_mut(slot)
@@ -327,9 +338,20 @@ fn handle_controller(
     }
 }
 
-/// Sends the test sound; its latency is printed when the engine reports it.
-fn test_hit(s: &mut Session, handle: &mut EngineHandle, gesture_us: u64) {
-    if handle.send(Command::Hit { gesture_us }) {
+/// Plays a drum voice; its latency is printed when the engine reports it.
+fn play_drum(
+    s: &mut Session,
+    handle: &mut EngineHandle,
+    voice: DrumVoice,
+    velocity: f32,
+    gesture_us: u64,
+) {
+    let command = Command::Drum {
+        voice,
+        velocity,
+        gesture_us,
+    };
+    if handle.send(command) {
         // Bounded: entries whose report never came (stream rebuilt) do not pile up.
         if s.pending_hits.len() >= 64 {
             s.pending_hits.remove(0);
@@ -338,7 +360,7 @@ fn test_hit(s: &mut Session, handle: &mut EngineHandle, gesture_us: u64) {
     }
 }
 
-/// The engine played a test hit: prints its gesture → sound latency, split by stage.
+/// The engine played a gesture's drum hit: prints its gesture → sound latency, split by stage.
 fn report_hit(s: &mut Session, gesture_us: u64, time: BlockTime) {
     let Some(at) = s.pending_hits.iter().position(|&(g, _)| g == gesture_us) else {
         return;
@@ -424,7 +446,7 @@ fn handle_line(line: &str, s: &mut Session, handle: &mut EngineHandle) -> bool {
         "q" => return false,
         "p" => toggle_play(&mut s.wanted, handle),
         "m" => toggle_metronome(s, handle),
-        "h" => test_hit(s, handle, host_time_us()),
+        "h" => play_drum(s, handle, DrumVoice::Kick, 1.0, host_time_us()),
         "" => {}
         // Markers written into the session log by test scripts (tools/try-mapping.sh).
         marker if marker.starts_with('#') => println!("── {marker}"),
@@ -468,11 +490,12 @@ fn run() -> Result<(), String> {
             metronome: args.metronome,
             master_gain: 1.0,
             metronome_level: 0.7,
+            drum_level: 0.8,
         },
         leds: LedRoles::of(&mapping),
         mapping,
         shown_bpm: 0.0,
-        shown_levels: [-1.0; 2],
+        shown_levels: [-1.0; 3],
         held: Vec::new(),
         pending_hits: Vec::new(),
         latency: Latency::default(),
@@ -484,6 +507,8 @@ fn run() -> Result<(), String> {
         .software_changed(Target::MasterGain, f64::from(s.wanted.master_gain));
     s.mapping
         .software_changed(Target::MetronomeLevel, f64::from(s.wanted.metronome_level));
+    s.mapping
+        .software_changed(Target::DrumLevel, f64::from(s.wanted.drum_level));
     let (mut output, mut handle) = open(&args.buffers, s.wanted)?;
     let session = Instant::now();
     let mut seen_xruns = 0;

@@ -5,10 +5,12 @@
 # Contrôles : a.<x> / b.<x> pour les decks (play, cue, sync, pfl, volume, filter, bass, tempo,
 #   jog.edge, jog.top, pad.<hotcue|sampler|fx|loop>.<1-4>), mixer.<crossfader|master|headphone>, vinyl.
 #   shift = true : la même touche avec Shift tenu.
-# Actions disponibles (itération 008 ; les actions musicales arrivent avec les decks, 010+) :
+# Actions disponibles (itération 010 ; les actions musicales arrivent avec les decks, 010+) :
 #   transport_toggle, transport_restart, tap_tempo, metronome_toggle   → boutons et pads
-#   test_hit : son de test (mesure de latence geste → son)             → boutons et pads
-#   tempo (range = [min, max] en BPM), master_gain, metronome_level    → faders et potards
+#   drum (voice = kick, snare, closed_hat, open_hat, clap, perc)        → boutons et pads
+#     chaque frappe affiche aussi sa latence geste → son
+#   tempo (range = [min, max] en BPM), master_gain, metronome_level,
+#   drum_level                                                         → faders et potards
 #   tempo_nudge (step = BPM par cran)                                  → jogs
 #   pickup = true : soft-takeover (le contrôle ne prend la main qu'en rejoignant la valeur actuelle).
 
@@ -34,38 +36,36 @@ action = "tap_tempo"
 control = "a.pfl"
 action = "metronome_toggle"
 
-# --- Son de test (mesure de latence, itération 009 ; remplacé par la batterie en 010+) ---
+# --- Batterie (itération 010 ; les pads Hot Cue A passeront aux patterns en 011) ---
 [[bind]]
 control = "a.pad.hotcue.1"
-action = "test_hit"
+action = "drum"
+voice = "kick"
 
 [[bind]]
 control = "a.pad.hotcue.2"
-action = "test_hit"
+action = "drum"
+voice = "snare"
 
 [[bind]]
 control = "a.pad.hotcue.3"
-action = "test_hit"
+action = "drum"
+voice = "closed_hat"
 
 [[bind]]
 control = "a.pad.hotcue.4"
-action = "test_hit"
+action = "drum"
+voice = "open_hat"
 
 [[bind]]
 control = "b.pad.hotcue.1"
-action = "test_hit"
+action = "drum"
+voice = "clap"
 
 [[bind]]
 control = "b.pad.hotcue.2"
-action = "test_hit"
-
-[[bind]]
-control = "b.pad.hotcue.3"
-action = "test_hit"
-
-[[bind]]
-control = "b.pad.hotcue.4"
-action = "test_hit"
+action = "drum"
+voice = "perc"
 
 # --- Tempo ---
 [[bind]]
@@ -93,5 +93,10 @@ pickup = true
 
 [[bind]]
 control = "a.volume"
+action = "drum_level"
+pickup = true
+
+[[bind]]
+control = "b.volume"
 action = "metronome_level"
 pickup = true

@@ -50,7 +50,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 ## Phase 3 — Deck A : rythme
 
-- [ ] Voix de batterie synthétiques (kick, snare, hats avec choke, clap, perc).
+- [x] Voix de batterie synthétiques (kick, snare, hats avec choke, clap, perc). → [010](docs/iterations/010-drum-voices.md)
 - [ ] Séquenceur 16 pas (vélocité, probabilité, swing), 4 patterns + changement quantifié.
 - [ ] Mutes, fills, densité ordonnée, beat-repeat.
 - [ ] Basse mono (glide, accent, filtre), patterns en degrés de gamme.

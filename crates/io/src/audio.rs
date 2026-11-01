@@ -78,6 +78,21 @@ pub struct BlockStamp {
     pub playback_us: u64,
 }
 
+/// Flushes denormal floats to zero on this thread (decaying filters and envelopes otherwise end in
+/// denormals, which cost up to 100× more). Called at the top of every callback: two instructions.
+#[inline]
+fn flush_denormals_to_zero() {
+    #[cfg(target_arch = "aarch64")]
+    // SAFETY: reads and writes FPCR, the floating-point control register of the current thread;
+    // setting FZ (bit 24) only changes how denormal results are rounded.
+    unsafe {
+        let mut fpcr: u64;
+        core::arch::asm!("mrs {}, fpcr", out(reg) fpcr, options(nomem, nostack, preserves_flags));
+        fpcr |= 1 << 24;
+        core::arch::asm!("msr fpcr, {}", in(reg) fpcr, options(nomem, nostack, preserves_flags));
+    }
+}
+
 fn micros(instant: cpal::StreamInstant) -> u64 {
     u64::try_from(instant.as_nanos() / 1_000).unwrap_or(u64::MAX)
 }
@@ -169,6 +184,7 @@ where
     let stream = device.build_output_stream::<f32, _, _>(
         config,
         move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
+            flush_denormals_to_zero();
             let started = Instant::now();
             let timestamp = info.timestamp();
             let stamp = BlockStamp {

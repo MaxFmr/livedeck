@@ -17,7 +17,7 @@ Dans le callback cpal et **tout ce qu'il appelle** :
 | E/S : fichiers, réseau, `println!`, `log`/`tracing`, MIDI out | appels système | compteurs atomiques lus ailleurs ; file d'événements vers le contrôle |
 | `panic!`, `unwrap()`, indexation hors bornes | un panic dans le callback = son coupé (et `panic=abort` = crash) | `get()`, `debug_assert!`, saturations ; calculer des index déjà bornés |
 | Boucles non bornées, algorithmes en O(n²) sur des données variables | durée imprévisible | bornes fixes (polyphonie max, nombre d'événements par bloc) |
-| Dénormaux (flottants ~1e-38 en fin de décroissance) | x100 en coût CPU | flush-to-zero : bit FZ du FPCR sur aarch64 au démarrage du callback (une fois), ou crate `no_denormals` 🔍 support aarch64 à vérifier |
+| Dénormaux (flottants ~1e-38 en fin de décroissance) | x100 en coût CPU | flush-to-zero : bit FZ (24) du FPCR sur aarch64, posé à **chaque** callback (`mrs`/`msr`, 2 instructions, pas de crate) — fait en 010 dans `io::audio` ; les enveloppes coupent aussi sous 1e-4 |
 | Appels à `Instant::now()` en boucle | coûteux | une mesure par bloc max (instrumentation) |
 
 **Application mécanique :**

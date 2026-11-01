@@ -7,6 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+engine.workspace = true
 cpal.workspace = true
 midir.workspace = true
 rtrb.workspace = true

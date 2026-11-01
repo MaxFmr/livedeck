@@ -12,12 +12,15 @@
 )]
 
 pub mod clock;
+pub mod drums;
+pub mod dsp;
 pub mod limiter;
 pub mod link;
 pub mod metronome;
 pub mod smooth;
 
 use clock::Clock;
+use drums::{DrumKit, DrumVoice};
 use limiter::Limiter;
 use metronome::Click;
 use smooth::Smoothed;
@@ -27,11 +30,8 @@ use smooth::Smoothed;
 pub enum Param {
     MasterGain,
     MetronomeLevel,
+    DrumLevel,
 }
-
-/// Test sound: lower and longer than the metronome clicks (1000/1600 Hz, 30 ms) so it stands out.
-const HIT_FREQ: f32 = 330.0;
-const HIT_DECAY_SECONDS: f32 = 0.15;
 
 /// Beats per bar (4/4 only for now).
 pub const BEATS_PER_BAR: u64 = 4;
@@ -50,12 +50,12 @@ pub fn block_budget_us(frames: u32, sample_rate: u32) -> f64 {
 pub struct Engine {
     clock: Clock,
     click: Click,
-    /// Test sound played by a gesture (latency measurement, before the drum voices exist).
-    hit: Click,
+    drums: DrumKit,
     limiter: Limiter,
     metronome: bool,
     master_gain: Smoothed,
     metronome_level: Smoothed,
+    drum_level: Smoothed,
     /// Mono mix bus, allocated once; blocks larger than this are processed in slices.
     mono: Vec<f32>,
 }
@@ -67,11 +67,12 @@ impl Engine {
         Self {
             clock: Clock::new(sample_rate, bpm),
             click: Click::new(sample_rate),
-            hit: Click::with_decay(sample_rate, HIT_DECAY_SECONDS),
+            drums: DrumKit::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             metronome: true,
             master_gain: Smoothed::new(1.0, sample_rate, 0.01),
             metronome_level: Smoothed::new(gain_curve(0.7), sample_rate, 0.01),
+            drum_level: Smoothed::new(gain_curve(0.8), sample_rate, 0.01),
             mono: vec![0.0; max_block.max(64)],
         }
     }
@@ -98,13 +99,17 @@ impl Engine {
         match param {
             Param::MasterGain => self.master_gain.set(value),
             Param::MetronomeLevel => self.metronome_level.set(value),
+            Param::DrumLevel => self.drum_level.set(value),
         }
     }
 
-    /// Plays the test sound from the start of the next rendered sample, playing or not.
-    pub fn trigger_hit(&mut self) {
-        self.hit.gain = 0.8;
-        self.hit.trigger_at(HIT_FREQ);
+    /// Plays a drum voice from the next rendered sample, playing or not.
+    pub fn trigger_drum(&mut self, voice: DrumVoice, velocity: f32) {
+        self.drums.trigger(voice, velocity);
+    }
+
+    pub fn drums_mut(&mut self) -> &mut DrumKit {
+        &mut self.drums
     }
 
     #[must_use]
@@ -139,7 +144,8 @@ impl Engine {
             mono.fill(0.0);
             self.click.gain = self.metronome_level.skip(n);
             render_mono(&mut self.clock, &mut self.click, self.metronome, mono);
-            self.hit.render_add(mono);
+            let drum_gain = self.drum_level.skip(n);
+            self.drums.render_add(mono, drum_gain);
             for sample in mono.iter_mut() {
                 *sample *= self.master_gain.tick();
             }
@@ -258,12 +264,11 @@ mod tests {
     }
 
     #[test]
-    fn hit_sounds_at_block_start_even_when_stopped() {
+    fn drums_sound_at_block_start_even_when_stopped() {
         let mut engine = Engine::new(SR, 128, 120.0);
-        engine.trigger_hit();
+        engine.trigger_drum(DrumVoice::Kick, 1.0);
         let out = render(&mut engine, 128, 1, 128);
-        assert_eq!(out[0], 0.0, "sine starts at 0");
-        assert!(out[1] != 0.0, "the hit starts on the first sample");
+        assert!(out[0] != 0.0, "the kick click starts on the first sample");
         assert!(out.iter().any(|s| s.abs() > 0.3));
     }
 
