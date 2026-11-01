@@ -35,6 +35,10 @@ fn ten_seconds_of_audio_without_allocation() {
             120 => {
                 handle.send(Command::SetParam(Param::MasterGain, 0.5));
             }
+            60 => {
+                handle.send(Command::QueuePattern((i / 200 % 4) as u8));
+                handle.send(Command::SetSwing(0.5 + (i % 50) as f32 / 200.0));
+            }
             170 => {
                 for voice in DrumVoice::ALL {
                     handle.send(Command::Drum {

@@ -22,6 +22,12 @@ pub enum Command {
     Metronome(bool),
     /// Normalized 0..=1 value of a continuous parameter.
     SetParam(Param, f32),
+    /// Drum pattern (0-based) for the next bar, or now if stopped.
+    QueuePattern(u8),
+    /// Swing of the odd 16ths, 0.5..=0.75.
+    SetSwing(f32),
+    /// Drum sequencer on/off.
+    Sequencer(bool),
     /// Plays a drum voice now (velocity 0..=1). A non-zero `gesture_us` (host time of the
     /// gesture) comes back in `EngineEvent::Hit` to measure gesture → sound latency.
     Drum {
@@ -66,6 +72,12 @@ pub struct EngineSnapshot {
     pub dropped_events: u32,
     /// Commands applied since start.
     pub commands: u64,
+    /// Drum pattern playing (0-based) and the one waiting for the next bar.
+    pub pattern: u8,
+    pub pending_pattern: Option<u8>,
+    pub swing: f32,
+    /// Step (0..16) of the bar about to play.
+    pub step: u8,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -124,6 +136,10 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         nan_count: engine.nan_count(),
         dropped_events,
         commands: applied,
+        pattern: engine.sequencer().current(),
+        pending_pattern: engine.sequencer().pending(),
+        swing: engine.sequencer().swing(),
+        step: engine.sequencer().step_in_bar(),
     }
 }
 
@@ -158,6 +174,9 @@ impl AudioEngine {
             Command::Stop => self.engine.stop(),
             Command::SetTempo(bpm) => self.engine.set_tempo(bpm),
             Command::Metronome(on) => self.engine.set_metronome(on),
+            Command::QueuePattern(index) => self.engine.queue_pattern(index),
+            Command::SetSwing(swing) => self.engine.set_swing(swing),
+            Command::Sequencer(on) => self.engine.set_sequencer(on),
             Command::SetParam(param, value) => self.engine.set_param(param, value),
             Command::Drum {
                 voice,
@@ -315,9 +334,25 @@ mod tests {
     }
 
     #[test]
+    fn pattern_change_is_published_then_applied_at_the_bar() {
+        let (mut audio, mut handle) = pair();
+        handle.send(Command::Start);
+        run(&mut audio, 10);
+        handle.send(Command::QueuePattern(2));
+        run(&mut audio, 1);
+        let snap = handle.snapshot();
+        assert_eq!((snap.pattern, snap.pending_pattern), (0, Some(2)));
+        // One bar at 120 BPM = 96 000 samples = 750 blocks of 128 frames.
+        run(&mut audio, 750);
+        let snap = handle.snapshot();
+        assert_eq!((snap.pattern, snap.pending_pattern), (2, None));
+    }
+
+    #[test]
     fn metronome_can_be_muted() {
         let (mut audio, mut handle) = pair();
         handle.send(Command::Metronome(false));
+        handle.send(Command::Sequencer(false));
         handle.send(Command::Start);
         let mut buf = [0.0_f32; 256];
         audio.process(&mut buf, 2);

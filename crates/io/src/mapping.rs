@@ -66,6 +66,10 @@ pub enum Action {
         velocity: f32,
         ts_us: u64,
     },
+    /// Drum pattern, 0-based.
+    QueuePattern(u8),
+    /// Swing change, as a fraction (0.01 = 1 %).
+    NudgeSwing(f32),
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -81,6 +85,8 @@ pub enum ActionName {
     TapTempo,
     MetronomeToggle,
     Drum,
+    Pattern,
+    Swing,
     Tempo,
     TempoNudge,
     MasterGain,
@@ -104,6 +110,8 @@ struct BindSpec {
     step: Option<f64>,
     /// Voice played by `drum` (kick, snare, closed_hat, open_hat, clap, perc).
     voice: Option<String>,
+    /// Pattern (1–4) launched by `pattern`.
+    pattern: Option<u8>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +140,8 @@ pub enum MappingError {
         "« {control} » : voix de batterie « {voice} » inconnue (kick, snare, closed_hat, open_hat, clap, perc)"
     )]
     UnknownVoice { control: String, voice: String },
+    #[error("« {0} » : pattern attendu entre 1 et 4")]
+    BadPattern(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -148,6 +158,8 @@ struct Binding {
     range: [f64; 2],
     step: f64,
     voice: DrumVoice,
+    /// 0-based.
+    pattern: u8,
 }
 
 /// Soft-takeover state of one absolute control.
@@ -170,6 +182,9 @@ pub struct Mapping {
     pickups: HashMap<ControlId, Pickup>,
     soft: HashMap<Target, f32>,
     touch_down_us: [Option<u64>; 2],
+    /// Top ticks received while the touch is not yet confirmed: they go to the top once it is,
+    /// or to the edge if the touch ends first (sensor flicker while spinning the edge).
+    held_ticks: [i32; 2],
     taps: Vec<u64>,
 }
 
@@ -199,12 +214,18 @@ impl Mapping {
                     control: b.control.clone(),
                     voice: voice_name.to_string(),
                 })?;
+            let pattern = match b.pattern {
+                None => 0,
+                Some(p @ 1..=4) => p - 1,
+                Some(_) => return Err(MappingError::BadPattern(b.control)),
+            };
             let binding = Binding {
                 action: b.action,
                 pickup: b.pickup,
                 range: b.range.unwrap_or([60.0, 200.0]),
                 step: b.step.unwrap_or(0.1),
                 voice,
+                pattern,
             };
             if bindings.insert(id, binding).is_some() {
                 return Err(MappingError::Duplicate(b.control));
@@ -215,6 +236,7 @@ impl Mapping {
             pickups: HashMap::new(),
             soft: HashMap::new(),
             touch_down_us: [None; 2],
+            held_ticks: [0; 2],
             taps: Vec::with_capacity(8),
         })
     }
@@ -235,6 +257,14 @@ impl Mapping {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.bindings.is_empty()
+    }
+
+    /// Controls launching a drum pattern (without Shift), with the pattern index (0-based).
+    pub fn pattern_controls(&self) -> impl Iterator<Item = (Control, u8)> + '_ {
+        self.bindings
+            .iter()
+            .filter(|(id, b)| !id.shift && b.action == ActionName::Pattern)
+            .map(|(id, b)| (id.control, b.pattern))
     }
 
     /// Controls bound to `action` without Shift (the layer their LED shows).
@@ -264,26 +294,24 @@ impl Mapping {
 
     /// Maps one decoded event received at `ts_us` (CoreMIDI host time, µs).
     pub fn handle(&mut self, ts_us: u64, event: ControllerEvent) -> Option<Action> {
-        if let ControllerEvent::Button {
-            deck,
-            button: Button::JogTouch,
-            pressed,
-            ..
-        } = event
-            && let Some(slot) = self.touch_down_us.get_mut(deck_index(deck))
-        {
-            *slot = pressed.then_some(ts_us);
-        }
-        let (mut id, input) = identify(event)?;
-        if let Control::Jog(deck, JogSurface::Top) = id.control {
-            let confirmed = self
-                .touch_down_us
-                .get(deck_index(deck))
-                .copied()
-                .flatten()
-                .is_some_and(|down| ts_us.saturating_sub(down) >= TOUCH_CONFIRM_US);
-            if !confirmed {
-                id.control = Control::Jog(deck, JogSurface::Edge);
+        let (mut id, mut input) = match self.jog_touch(ts_us, event) {
+            Some(released) => released,
+            None => identify(event)?,
+        };
+        if let (Control::Jog(deck, JogSurface::Top), Input::Relative(ticks)) = (id.control, input) {
+            let d = deck_index(deck);
+            match self.touch_down_us.get(d).copied().flatten() {
+                Some(down) if ts_us.saturating_sub(down) >= TOUCH_CONFIRM_US => {
+                    let held = self.held_ticks.get_mut(d).map_or(0, std::mem::take);
+                    input = Input::Relative(ticks + held);
+                }
+                Some(_) => {
+                    if let Some(held) = self.held_ticks.get_mut(d) {
+                        *held += ticks;
+                    }
+                    return None;
+                }
+                None => id.control = Control::Jog(deck, JogSurface::Edge),
             }
         }
         let binding = *self.bindings.get(&id)?;
@@ -297,6 +325,12 @@ impl Mapping {
                 ts_us,
             }),
             (ActionName::TapTempo, Input::Press(true)) => self.tap(ts_us),
+            (ActionName::Pattern, Input::Press(true)) => {
+                Some(Action::QueuePattern(binding.pattern))
+            }
+            (ActionName::Swing, Input::Relative(ticks)) => Some(Action::NudgeSwing(
+                ticks as f32 * binding.step as f32 / 100.0,
+            )),
             (ActionName::TempoNudge, Input::Relative(ticks)) => {
                 Some(Action::NudgeTempo(f64::from(ticks) * binding.step))
             }
@@ -321,6 +355,46 @@ impl Mapping {
             }
             _ => None,
         }
+    }
+
+    /// Tracks jog touches; when a touch ends with held ticks, returns them as a gesture on the top
+    /// (touch was confirmed) or the edge (flicker).
+    fn jog_touch(&mut self, ts_us: u64, event: ControllerEvent) -> Option<(ControlId, Input)> {
+        let ControllerEvent::Button {
+            deck,
+            button: Button::JogTouch,
+            pressed,
+            shift,
+        } = event
+        else {
+            return None;
+        };
+        let d = deck_index(deck);
+        let down = self.touch_down_us.get_mut(d)?;
+        let held = self.held_ticks.get_mut(d)?;
+        if pressed {
+            *down = Some(ts_us);
+            *held = 0;
+            return None;
+        }
+        let confirmed = down
+            .take()
+            .is_some_and(|t| ts_us.saturating_sub(t) >= TOUCH_CONFIRM_US);
+        let ticks = std::mem::take(held);
+        (ticks != 0).then(|| {
+            let surface = if confirmed {
+                JogSurface::Top
+            } else {
+                JogSurface::Edge
+            };
+            (
+                ControlId {
+                    control: Control::Jog(deck, surface),
+                    shift,
+                },
+                Input::Relative(ticks),
+            )
+        })
     }
 
     /// Soft-takeover: true when the control may apply `hw`.
@@ -423,14 +497,15 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::TransportRestart
         | ActionName::TapTempo
         | ActionName::MetronomeToggle
-        | ActionName::Drum => matches!(kind, Kind::Press),
+        | ActionName::Drum
+        | ActionName::Pattern => matches!(kind, Kind::Press),
         ActionName::Tempo
         | ActionName::MasterGain
         | ActionName::MetronomeLevel
         | ActionName::DrumLevel => {
             matches!(kind, Kind::Absolute)
         }
-        ActionName::TempoNudge => matches!(kind, Kind::Relative),
+        ActionName::TempoNudge | ActionName::Swing => matches!(kind, Kind::Relative),
     }
 }
 
@@ -618,11 +693,11 @@ mod tests {
     }
 
     #[test]
-    fn pads_play_drums_and_light_their_led() {
+    fn sampler_pads_play_drums_and_light_their_led() {
         let mut m = mapping();
         let pad = |pressed| ControllerEvent::Pad {
             deck: Deck::A,
-            mode: PadMode::HotCue,
+            mode: PadMode::Sampler,
             pad: 0,
             shift: false,
             pressed,
@@ -640,7 +715,7 @@ mod tests {
         let leds: Vec<_> = m.bound(ActionName::Drum).filter_map(led_of).collect();
         assert!(leds.contains(&Led::Pad {
             deck: Deck::A,
-            mode: PadMode::HotCue,
+            mode: PadMode::Sampler,
             pad: 0
         }));
         assert_eq!(
@@ -649,6 +724,39 @@ mod tests {
                 .count(),
             2,
             "Play A and B, not the Shift layer"
+        );
+    }
+
+    #[test]
+    fn hot_cue_pads_queue_patterns_and_jog_edge_swings() {
+        let mut m = mapping();
+        let pad = ControllerEvent::Pad {
+            deck: Deck::A,
+            mode: PadMode::HotCue,
+            pad: 2,
+            shift: false,
+            pressed: true,
+            velocity: 127,
+        };
+        assert_eq!(m.handle(0, pad), Some(Action::QueuePattern(2)));
+        let jog = ControllerEvent::Jog {
+            deck: Deck::A,
+            surface: JogSurface::Edge,
+            shift: false,
+            delta: 5,
+        };
+        match m.handle(0, jog) {
+            Some(Action::NudgeSwing(d)) => assert!((d - 0.01).abs() < 1.0e-6),
+            other => panic!("{other:?}"),
+        }
+        let pads: Vec<_> = m.pattern_controls().collect();
+        assert_eq!(pads.len(), 4);
+        assert!(pads.contains(&(Control::Pad(Deck::A, PadMode::HotCue, 3), 3)));
+        assert!(
+            Mapping::from_toml_str(
+                "[[bind]]\ncontrol = \"a.pad.fx.1\"\naction = \"pattern\"\npattern = 9"
+            )
+            .is_err()
         );
     }
 
@@ -754,11 +862,20 @@ mod tests {
             shift: false,
             delta: 1,
         };
-        // Flicker while spinning the edge: counted as edge (fine nudge).
+        // Flicker while spinning the edge: ticks are held, then go to the edge (swing) on release.
         m.handle(0, touch(true));
-        assert_eq!(m.handle(10 * MS, top), Some(Action::NudgeTempo(0.1)));
-        // Real touch held 100 ms: top (coarse nudge).
-        assert_eq!(m.handle(100 * MS, top), Some(Action::NudgeTempo(0.25)));
+        assert_eq!(m.handle(10 * MS, top), None);
+        assert_eq!(m.handle(20 * MS, top), None);
+        match m.handle(30 * MS, touch(false)) {
+            Some(Action::NudgeSwing(d)) => assert!((d - 0.004).abs() < 1.0e-6),
+            other => panic!("{other:?}"),
+        }
+        // Real touch: early ticks are held, then join the top (tempo) once confirmed.
+        m.handle(200 * MS, touch(true));
+        assert_eq!(m.handle(210 * MS, top), None);
+        assert_eq!(m.handle(300 * MS, top), Some(Action::NudgeTempo(0.5)));
+        assert_eq!(m.handle(310 * MS, top), Some(Action::NudgeTempo(0.25)));
+        assert_eq!(m.handle(400 * MS, touch(false)), None);
     }
 
     #[test]

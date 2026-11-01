@@ -97,7 +97,14 @@ impl Clock {
     }
 
     fn beat_sample(&self, beat: u64) -> u64 {
-        let beats_from_anchor = (beat as f64 - self.anchor_beat).max(0.0);
+        self.sample_at(beat as f64)
+    }
+
+    /// Sample at which musical position `beats` falls (positions before the last tempo change are
+    /// clamped to it).
+    #[must_use]
+    pub fn sample_at(&self, beats: f64) -> u64 {
+        let beats_from_anchor = (beats - self.anchor_beat).max(0.0);
         self.anchor_sample + (beats_from_anchor * self.samples_per_beat()).round() as u64
     }
 

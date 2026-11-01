@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use assert_no_alloc::assert_no_alloc;
 use engine::drums::DrumVoice;
-use engine::link::{self, BlockTime, Command, EngineEvent, EngineHandle};
+use engine::link::{self, BlockTime, Command, EngineEvent, EngineHandle, EngineSnapshot};
 use engine::{Engine, Param};
 use io::audio::{AudioOutput, BlockStamp, start_output};
 use io::controller::{ControllerEvent, Deck, Led, PadMode};
@@ -25,7 +25,7 @@ use io::mapping::{
 use io::system::host_time_us;
 
 const USAGE: &str = "\
-LiveDeck — métronome piloté (test de la plomberie temps réel)
+LiveDeck — deck rythme (séquenceur de batterie) et métronome
 
 USAGE: app [--bpm <60-200>] [--buffer <frames>] [--mapping <fichier>] [--seconds <n>] [--quiet]
            [--no-metronome]
@@ -43,7 +43,7 @@ Commandes (taper puis Entrée) :
   h        kick (comme le pad Hot Cue 1 du deck A)
   q        quitter
 
-Pads Hot Cue : batterie (A : kick, snare, hat fermé, hat ouvert ; B : clap, perc), avec la\nlatence geste → son mesurée à chaque frappe.";
+Deck A : pads Hot Cue = patterns A–D (à la mesure suivante), jog bord = swing,\npads Sampler = kick, snare, hats ; deck B : pads Hot Cue = clap, perc.\nChaque son joué au pad affiche sa latence geste → son.";
 
 // Debug builds abort on any allocation inside `assert_no_alloc` (the audio callback); release
 // builds use the system allocator unchanged.
@@ -60,6 +60,9 @@ struct Wanted {
     master_gain: f32,
     metronome_level: f32,
     drum_level: f32,
+    /// Drum pattern asked for (0-based) and swing (0.5..=0.75).
+    pattern: u8,
+    swing: f32,
 }
 
 /// Control-thread state.
@@ -69,6 +72,7 @@ struct Session {
     /// Last values echoed to the console (continuous controls are echoed by steps only).
     shown_bpm: f64,
     shown_levels: [f32; 3],
+    shown_swing: f32,
     leds: LedRoles,
     /// LEDs of pads currently held down (lit while held).
     held: Vec<Led>,
@@ -87,6 +91,8 @@ struct LedRoles {
     transport: Vec<Led>,
     metronome: Vec<Led>,
     tap_tempo: Vec<Led>,
+    /// Pads launching drum patterns, with the pattern index.
+    patterns: Vec<(Led, u8)>,
 }
 
 impl LedRoles {
@@ -96,6 +102,10 @@ impl LedRoles {
             transport: leds(ActionName::TransportToggle),
             metronome: leds(ActionName::MetronomeToggle),
             tap_tempo: leds(ActionName::TapTempo),
+            patterns: mapping
+                .pattern_controls()
+                .filter_map(|(control, p)| led_of(control).map(|led| (led, p)))
+                .collect(),
         }
     }
 }
@@ -197,6 +207,8 @@ fn open(buffers: &[u32], wanted: Wanted) -> Result<(AudioOutput, EngineHandle), 
         wanted.metronome_level,
     ));
     handle.send(Command::SetParam(Param::DrumLevel, wanted.drum_level));
+    handle.send(Command::QueuePattern(wanted.pattern));
+    handle.send(Command::SetSwing(wanted.swing));
     if wanted.playing {
         handle.send(Command::Start);
     }
@@ -307,6 +319,19 @@ fn handle_controller(
         // Absolute tempo comes from the bound fader (hardware) or tap tempo (already registered
         // as a software change by the mapping).
         Action::SetTempo(bpm) => set_tempo(s, handle, bpm, false),
+        Action::QueuePattern(index) => {
+            s.wanted.pattern = index;
+            handle.send(Command::QueuePattern(index));
+        }
+        Action::NudgeSwing(delta) => {
+            s.wanted.swing = (s.wanted.swing + delta)
+                .clamp(engine::sequencer::MIN_SWING, engine::sequencer::MAX_SWING);
+            handle.send(Command::SetSwing(s.wanted.swing));
+            if (s.wanted.swing - s.shown_swing).abs() >= 0.01 {
+                s.shown_swing = s.wanted.swing;
+                println!("  ≈ swing {:.0} %", s.wanted.swing * 100.0);
+            }
+        }
         Action::NudgeTempo(delta) => {
             let bpm = s.wanted.bpm + delta;
             set_tempo(s, handle, bpm, true);
@@ -386,7 +411,7 @@ fn report_hit(s: &mut Session, gesture_us: u64, time: BlockTime) {
 }
 
 /// Sets every LED from the session state; blinks and flashes are drawn against `beats`.
-fn update_leds(leds: &mut LedBank, s: &Session, beats: f64) {
+fn update_leds(leds: &mut LedBank, s: &Session, snap: &EngineSnapshot, beats: f64) {
     leds.set_beats(beats);
     let playing = s.wanted.playing;
     for deck in [Deck::A, Deck::B] {
@@ -428,6 +453,17 @@ fn update_leds(leds: &mut LedBank, s: &Session, beats: f64) {
         for &led in &s.leds.tap_tempo {
             leds.set_state(led, LedState::BlinkFast);
         }
+    }
+    for &(led, index) in &s.leds.patterns {
+        // Playing pattern lit, the one waiting for the bar blinks in tempo.
+        let state = if snap.pending_pattern == Some(index) {
+            LedState::Blink
+        } else if snap.pattern == index {
+            LedState::On
+        } else {
+            LedState::Off
+        };
+        leds.set_state(led, state);
     }
     for &led in &s.held {
         leds.set(led, true);
@@ -491,11 +527,14 @@ fn run() -> Result<(), String> {
             master_gain: 1.0,
             metronome_level: 0.7,
             drum_level: 0.8,
+            pattern: 0,
+            swing: 0.54,
         },
         leds: LedRoles::of(&mapping),
         mapping,
         shown_bpm: 0.0,
         shown_levels: [-1.0; 3],
+        shown_swing: 0.54,
         held: Vec::new(),
         pending_hits: Vec::new(),
         latency: Latency::default(),
@@ -530,6 +569,7 @@ fn run() -> Result<(), String> {
     let mut link_events = Vec::new();
     // While stopped, LEDs blink on a free-running beat at the current tempo.
     let mut stopped_since = Instant::now();
+    let mut shown_pattern = (u8::MAX, None);
 
     let mut last_report = Instant::now();
     loop {
@@ -583,7 +623,19 @@ fn run() -> Result<(), String> {
         } else {
             stopped_since.elapsed().as_secs_f64() * s.wanted.bpm / 60.0
         };
-        update_leds(link.leds_mut(), &s, beats);
+        update_leds(link.leds_mut(), &s, &snap, beats);
+        if (snap.pattern, snap.pending_pattern) != shown_pattern {
+            shown_pattern = (snap.pattern, snap.pending_pattern);
+            let name = |p: u8| char::from(b'A' + p);
+            match snap.pending_pattern {
+                Some(next) => println!(
+                    "  ⏭ pattern {} → {} à la mesure suivante",
+                    name(snap.pattern),
+                    name(next)
+                ),
+                None => println!("  ▣ pattern {}", name(snap.pattern)),
+            }
+        }
         let xruns = output.stats.xruns.load(Ordering::Relaxed);
         if xruns != seen_xruns {
             seen_xruns = xruns;

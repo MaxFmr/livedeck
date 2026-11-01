@@ -5,9 +5,10 @@
 # Contrôles : a.<x> / b.<x> pour les decks (play, cue, sync, pfl, volume, filter, bass, tempo,
 #   jog.edge, jog.top, pad.<hotcue|sampler|fx|loop>.<1-4>), mixer.<crossfader|master|headphone>, vinyl.
 #   shift = true : la même touche avec Shift tenu.
-# Actions disponibles (itération 010 ; les actions musicales arrivent avec les decks, 010+) :
+# Actions disponibles (itération 011 ; les actions musicales arrivent avec les decks, 010+) :
 #   transport_toggle, transport_restart, tap_tempo, metronome_toggle   → boutons et pads
-#   drum (voice = kick, snare, closed_hat, open_hat, clap, perc)        → boutons et pads
+#   pattern (pattern = 1–4), drum (voice = kick, snare, closed_hat, open_hat, clap, perc) → pads
+#   swing (step = % par cran)                                          → jogs
 #     chaque frappe affiche aussi sa latence geste → son
 #   tempo (range = [min, max] en BPM), master_gain, metronome_level,
 #   drum_level                                                         → faders et potards
@@ -36,24 +37,51 @@ action = "tap_tempo"
 control = "a.pfl"
 action = "metronome_toggle"
 
-# --- Batterie (itération 010 ; les pads Hot Cue A passeront aux patterns en 011) ---
+# --- Deck A : patterns de batterie (itération 011), changement à la mesure suivante ---
 [[bind]]
 control = "a.pad.hotcue.1"
+action = "pattern"
+pattern = 1
+
+[[bind]]
+control = "a.pad.hotcue.2"
+action = "pattern"
+pattern = 2
+
+[[bind]]
+control = "a.pad.hotcue.3"
+action = "pattern"
+pattern = 3
+
+[[bind]]
+control = "a.pad.hotcue.4"
+action = "pattern"
+pattern = 4
+
+[[bind]]
+control = "a.jog.edge"
+action = "swing"
+# % de swing par cran du jog (248 crans par tour)
+step = 0.2
+
+# --- Sons seuls (010) : pads Sampler A en attendant les fills (012), pads Hot Cue B en attendant la mélodie ---
+[[bind]]
+control = "a.pad.sampler.1"
 action = "drum"
 voice = "kick"
 
 [[bind]]
-control = "a.pad.hotcue.2"
+control = "a.pad.sampler.2"
 action = "drum"
 voice = "snare"
 
 [[bind]]
-control = "a.pad.hotcue.3"
+control = "a.pad.sampler.3"
 action = "drum"
 voice = "closed_hat"
 
 [[bind]]
-control = "a.pad.hotcue.4"
+control = "a.pad.sampler.4"
 action = "drum"
 voice = "open_hat"
 
@@ -73,11 +101,6 @@ control = "a.tempo"
 action = "tempo"
 range = [60.0, 200.0]
 pickup = true
-
-[[bind]]
-control = "a.jog.edge"
-action = "tempo_nudge"
-step = 0.1
 
 [[bind]]
 control = "a.jog.top"

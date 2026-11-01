@@ -17,12 +17,14 @@ pub mod dsp;
 pub mod limiter;
 pub mod link;
 pub mod metronome;
+pub mod sequencer;
 pub mod smooth;
 
 use clock::Clock;
 use drums::{DrumKit, DrumVoice};
 use limiter::Limiter;
 use metronome::Click;
+use sequencer::Sequencer;
 use smooth::Smoothed;
 
 /// Continuous parameters, normalized 0..=1 (curves are applied by the engine).
@@ -51,6 +53,7 @@ pub struct Engine {
     clock: Clock,
     click: Click,
     drums: DrumKit,
+    sequencer: Sequencer,
     limiter: Limiter,
     metronome: bool,
     master_gain: Smoothed,
@@ -68,6 +71,7 @@ impl Engine {
             clock: Clock::new(sample_rate, bpm),
             click: Click::new(sample_rate),
             drums: DrumKit::new(sample_rate),
+            sequencer: Sequencer::new(),
             limiter: Limiter::new(sample_rate),
             metronome: true,
             master_gain: Smoothed::new(1.0, sample_rate, 0.01),
@@ -79,6 +83,7 @@ impl Engine {
 
     pub fn start(&mut self) {
         self.clock.start();
+        self.sequencer.reset();
     }
 
     pub fn stop(&mut self) {
@@ -112,6 +117,26 @@ impl Engine {
         &mut self.drums
     }
 
+    /// Queues drum pattern `index` (0-based) for the next bar (now if stopped).
+    pub fn queue_pattern(&mut self, index: u8) {
+        self.sequencer.queue(index, self.clock.is_playing());
+    }
+
+    /// Drum sequencer on/off (the bar position keeps running).
+    pub fn set_sequencer(&mut self, on: bool) {
+        self.sequencer.set_enabled(on);
+    }
+
+    /// Swing of the odd 16ths, 0.5 (straight) ..= 0.75.
+    pub fn set_swing(&mut self, swing: f32) {
+        self.sequencer.set_swing(swing);
+    }
+
+    #[must_use]
+    pub fn sequencer(&self) -> &Sequencer {
+        &self.sequencer
+    }
+
     #[must_use]
     pub fn metronome_enabled(&self) -> bool {
         self.metronome
@@ -143,9 +168,18 @@ impl Engine {
             };
             mono.fill(0.0);
             self.click.gain = self.metronome_level.skip(n);
-            render_mono(&mut self.clock, &mut self.click, self.metronome, mono);
             let drum_gain = self.drum_level.skip(n);
-            self.drums.render_add(mono, drum_gain);
+            render_mono(
+                Voices {
+                    clock: &mut self.clock,
+                    click: &mut self.click,
+                    metronome: self.metronome,
+                    sequencer: &mut self.sequencer,
+                    drums: &mut self.drums,
+                    drum_gain,
+                },
+                mono,
+            );
             for sample in mono.iter_mut() {
                 *sample *= self.master_gain.tick();
             }
@@ -169,25 +203,42 @@ fn gain_curve(x: f32) -> f32 {
     x * x
 }
 
-/// Renders one slice, splitting it at beat boundaries so clicks start on the exact sample.
-fn render_mono(clock: &mut Clock, click: &mut Click, metronome: bool, mono: &mut [f32]) {
+/// What one slice renders (borrowed from the engine, which also owns the mix bus).
+struct Voices<'a> {
+    clock: &'a mut Clock,
+    click: &'a mut Click,
+    metronome: bool,
+    sequencer: &'a mut Sequencer,
+    drums: &'a mut DrumKit,
+    drum_gain: f32,
+}
+
+/// Renders one slice, splitting it at beats and sequencer steps so every click and drum hit starts
+/// on its exact sample.
+fn render_mono(v: Voices<'_>, mono: &mut [f32]) {
     let mut rest = mono;
     while !rest.is_empty() {
         let len = rest.len();
-        let (segment_len, beat) = match clock.next_beat_within(len) {
-            Some((offset, beat)) => (offset, Some(beat)),
-            None => (len, None),
-        };
-        // `segment_len <= len` by construction; clamped anyway so the split can never panic.
-        let segment_len = segment_len.min(len);
+        let beat = v.clock.next_beat_within(len);
+        let step = v.sequencer.next_step_within(v.clock, len);
+        let beat_at = beat.map_or(len, |(offset, _)| offset);
+        let step_at = step.unwrap_or(len);
+        // Both offsets are < len by construction; clamped anyway so the split can never panic.
+        let segment_len = beat_at.min(step_at).min(len);
         let (segment, tail) = rest.split_at_mut(segment_len);
-        click.render_add(segment);
-        clock.advance(segment_len);
-        if let Some(beat) = beat {
-            if metronome {
-                click.trigger(beat % BEATS_PER_BAR == 0);
+        v.click.render_add(segment);
+        v.drums.render_add(segment, v.drum_gain);
+        v.clock.advance(segment_len);
+        if let Some((_, beat)) = beat
+            && beat_at == segment_len
+        {
+            if v.metronome {
+                v.click.trigger(beat % BEATS_PER_BAR == 0);
             }
-            clock.consume_beat();
+            v.clock.consume_beat();
+        }
+        if step_at == segment_len && step.is_some() {
+            v.sequencer.fire(v.drums);
         }
         rest = tail;
     }
@@ -228,6 +279,7 @@ mod tests {
     fn clicks_fall_on_beats_whatever_the_block_size() {
         for block in [64, 128, 333, 512] {
             let mut engine = Engine::new(SR, 256, 120.0);
+            engine.set_sequencer(false);
             engine.start();
             let out = render(&mut engine, 3 * 24_000 + 100, 1, block);
             // An onset at i means sample i is silent and i + 1 sounds: a click starting on beat

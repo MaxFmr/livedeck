@@ -51,7 +51,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 ## Phase 3 — Deck A : rythme
 
 - [x] Voix de batterie synthétiques (kick, snare, hats avec choke, clap, perc). → [010](docs/iterations/010-drum-voices.md)
-- [ ] Séquenceur 16 pas (vélocité, probabilité, swing), 4 patterns + changement quantifié.
+- [x] Séquenceur 16 pas (vélocité, probabilité, swing), 4 patterns + changement quantifié. → [011](docs/iterations/011-sequencer.md)
 - [ ] Mutes, fills, densité ordonnée, beat-repeat.
 - [ ] Basse mono (glide, accent, filtre), patterns en degrés de gamme.
 - [ ] `StylePreset` + 5 presets de départ (dub/steppa, afrobeat/reggae, UK garage, lo-fi, house/techno) — voir `docs/music/live-engine.md`.

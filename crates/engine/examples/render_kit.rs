@@ -1,5 +1,6 @@
-//! Renders the drum kit to `target/renders/kit.wav` for listening: each voice alone, then a few
-//! bars of groove. Offline, so it may allocate and write files.
+//! Renders the drum kit for listening: `target/renders/kit.wav` (each voice alone, then a few bars
+//! of groove) and `target/renders/patterns.wav` (the sequencer's patterns A–D, two bars each).
+//! Offline, so it may allocate and write files.
 //!
 //! cargo run -p engine --example render_kit --release
 
@@ -77,8 +78,28 @@ fn main() -> io::Result<()> {
 
     let dir = Path::new("target/renders");
     fs::create_dir_all(dir)?;
-    let path = dir.join("kit.wav");
-    write_wav(&path, &audio, 2)?;
+    save(&dir.join("kit.wav"), &audio)?;
+
+    // The sequencer: patterns A–D, two bars each, swing 54 %, metronome off.
+    let mut engine = Engine::new(SR, 512, BPM);
+    engine.set_metronome(false);
+    engine.set_swing(0.54);
+    engine.start();
+    let bar = sixteenth * 16;
+    let mut patterns = Vec::new();
+    for index in 0..4 {
+        engine.queue_pattern(index);
+        let start = patterns.len();
+        patterns.resize(start + bar * 2 * 2, 0.0);
+        for chunk in patterns[start..].chunks_mut(256) {
+            engine.process(chunk, 2);
+        }
+    }
+    save(&dir.join("patterns.wav"), &patterns)
+}
+
+fn save(path: &Path, audio: &[f32]) -> io::Result<()> {
+    write_wav(path, audio, 2)?;
     let peak = audio.iter().fold(0.0_f32, |m, s| m.max(s.abs()));
     println!(
         "{} — {:.1} s, crête {:.2} ({:.1} dBFS)",
