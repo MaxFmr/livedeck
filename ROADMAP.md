@@ -70,7 +70,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 ## Piste D — Design (parallèle à partir de la phase 2)
 
-- [ ] D1 Intention et références (avec l'utilisateur).
+- [x] D1 Intention et références (avec l'utilisateur). → [D1](docs/design/D1-intention.md)
 - [ ] D2 Architecture d'information (inventaire de l'état à afficher).
 - [ ] D3 2–3 maquettes basse fidélité (artifacts HTML).
 - [ ] D4 Maquette haute fidélité interactive, validée par l'utilisateur.
@@ -98,6 +98,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 - [ ] Sortie MIDI vers synthés externes (FM-1…) depuis le deck mélodie, horloge MIDI.
 - [ ] Ableton Link.
 - [ ] Enregistrement du set en WAV (thread disque, ring buffer).
+- [ ] Vue « show » plein écran (2e écran / projecteur) animée par la musique — choix D1 : « visuel assumé, plus tard ».
 - [ ] BLE MIDI (latence mesurée), éventuellement iPad (moteur réutilisé via FFI).
 
 ---
