@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LiveDeck — D4 rangée de pas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0A0B}
+a{color:#2BC8FF}a:hover{color:#8FE1FF}
+button{font-family:inherit}
+button:focus-visible{outline:2px solid #E8E8EA;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 1280px; height: 960px; display: flex; flex-direction: column; background: #0A0A0B; color: #E8E8EA; font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums;">
+<div style="width: 1280px; height: 800px; box-sizing: border-box; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <header style="height: 64px; display: flex; align-items: center; gap: 28px; padding: 0 20px; background: #121214; border-radius: 6px;">
+    <div style="display: flex; align-items: center; gap: 12px; width: 190px;">
+      <sc-if value="{{playing}}" hint-placeholder-val="{{true}}">
+        <svg width="22" height="22" viewBox="0 0 22 22" role="img" aria-label="Lecture"><path d="M5 3l14 8-14 8z" fill="#E8E8EA"></path></svg>
+      </sc-if>
+      <sc-if value="{{stopped}}" hint-placeholder-val="{{false}}">
+        <svg width="22" height="22" viewBox="0 0 22 22" role="img" aria-label="Arrêt"><rect x="4" y="4" width="14" height="14" fill="#8A8A90"></rect></svg>
+      </sc-if>
+      <span style="font-size: 36px; font-weight: 700; letter-spacing: -0.02em;">{{bpm}}</span>
+      <span style="font-size: 13px; color: #8A8A90; font-weight: 500;">BPM</span>
+    </div>
+    <div style="display: flex; gap: 6px;" aria-label="{{beatLabel}}">
+      <sc-for list="{{beats}}" as="b" hint-placeholder-count="4">
+        <div style="{{b.style}}"></div>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px; width: 120px;">
+      <span style="font-size: 18px; font-weight: 600;">Mesure {{bar}}</span>
+      <span style="font-size: 13px; color: #8A8A90;">Phrase {{phrase}} / 8</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-size: 24px; font-weight: 700;">La mineur</span>
+      <span style="font-size: 13px; color: #8A8A90;">Afrobeat · swing {{swing}} %</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <sc-for list="{{alerts}}" as="al" hint-placeholder-count="0">
+      <div style="padding: 8px 14px; border-radius: 4px; background: #FF3DA8; color: #0A0A0B; font-size: 14px; font-weight: 700;">{{al.text}}</div>
+    </sc-for>
+    <sc-if value="{{healthy}}" hint-placeholder-val="{{true}}">
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8A8A90;">
+        <div style="width: 8px; height: 8px; border-radius: 4px; background: #5BD18B;"></div>
+        DJControl Mix · charge 4 %
+      </div>
+    </sc-if>
+  </header>
+
+  <main style="flex-grow: 1; display: grid; grid-template-columns: minmax(0, 1fr) 196px minmax(0, 1fr); gap: 16px; min-height: 0;">
+
+    <section style="position: relative; display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; background: #121214; border-radius: 6px; border-top: 3px solid #FF6A2B;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <span style="font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: #FF6A2B;">A · RYTHME</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 13px; color: #8A8A90;">Densité 80 %</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; height: 56px;">
+        <div style="width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; background: #FF6A2B; color: #0A0A0B; font-size: 32px; font-weight: 700; border-radius: 4px;">{{pattern}}</div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 13px; color: #8A8A90;">pattern en cours</span>
+          <span style="font-size: 18px; font-weight: 600;">Groove {{pattern}}</span>
+        </div>
+        <sc-if value="{{hasPending}}" hint-placeholder-val="{{false}}">
+          <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="#8A8A90" stroke-width="2" fill="none"></path></svg>
+          <div style="{{pendingStyle}}">{{pending}}</div>
+          <span style="font-size: 15px; font-weight: 600; color: #FF6A2B;">{{countdown}}</span>
+        </sc-if>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <sc-for list="{{drums}}" as="row" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="{{row.labelStyle}}">{{row.name}}</span>
+            <div style="display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; flex-grow: 1;">
+              <sc-for list="{{row.cells}}" as="c" hint-placeholder-count="16">
+                <div style="{{c.style}}"></div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; gap: 20px; align-items: flex-end;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #E8E8EA;">HOT CUE · PATTERNS</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 172px;">
+            <sc-for list="{{padsA}}" as="p" hint-placeholder-count="4">
+              <div style="{{p.style}}">{{p.label}}</div>
+            </sc-for>
+          </div>
+        </div>
+        <sc-for list="{{previewA}}" as="m" hint-placeholder-count="3">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: #8A8A90;">{{m.name}}</span>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; width: 52px;">
+              <sc-for list="{{m.pads}}" as="q" hint-placeholder-count="4">
+                <div style="{{q.style}}"></div>
+              </sc-for>
+            </div>
+            <span style="font-size: 11px; color: #8A8A90;">{{m.hint}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{hudShown}}" hint-placeholder-val="{{false}}">
+        <div style="{{hudStyle}}">
+          <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.1em;">{{hudLabel}}</span>
+          <span style="font-size: 26px; font-weight: 700;">{{hudValue}}</span>
+          <span style="font-size: 12px; font-weight: 600;">{{hudHint}}</span>
+        </div>
+      </sc-if>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px; padding: 18px 16px; background: #121214; border-radius: 6px; border-top: 3px solid #E8A33D;">
+      <span style="font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: #E8A33D;">BASSE</span>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: #E8A33D; color: #0A0A0B; font-size: 22px; font-weight: 700; border-radius: 4px;">2</div>
+        <span style="font-size: 13px; color: #8A8A90;">ligne 2</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px;">
+        <sc-for list="{{bass}}" as="n" hint-placeholder-count="16">
+          <div style="{{n.style}}">{{n.label}}</div>
+        </sc-for>
+      </div>
+      <span style="font-size: 11px; color: #8A8A90;">degrés de la gamme · ⌒ glide</span>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; color: #8A8A90;">Filtre basse 45 %</span>
+        <div style="height: 8px; background: #2A2A2E; border-radius: 4px;"><div style="width: 45%; height: 8px; background: #E8A33D; border-radius: 4px;"></div></div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; background: #121214; border-radius: 6px; border-top: 3px solid #2BC8FF;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <span style="font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: #2BC8FF;">B · MÉLODIE</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 13px; color: #8A8A90;">Arpège ↑ 1/16 · 2 oct.</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; height: 56px;">
+        <div style="height: 56px; padding: 0 16px; display: flex; align-items: center; background: #2BC8FF; color: #0A0A0B; font-size: 28px; font-weight: 700; border-radius: 4px;">{{chordName}}</div>
+        <sc-if value="{{hasChordPending}}" hint-placeholder-val="{{false}}">
+          <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="#8A8A90" stroke-width="2" fill="none"></path></svg>
+          <div style="{{chordPendingStyle}}">{{chordPendingName}}</div>
+          <span style="font-size: 15px; font-weight: 600; color: #2BC8FF;">au prochain 1/8</span>
+        </sc-if>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; color: #8A8A90;">Progression</span>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px;">
+          <sc-for list="{{progression}}" as="g" hint-placeholder-count="4">
+            <div style="{{g.style}}">{{g.label}}</div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display: flex; gap: 24px; font-size: 13px; color: #8A8A90;">
+        <span>Phrase <b style="color: #E8E8EA;">2</b></span>
+        <span>Octave <b style="color: #E8E8EA;">0</b></span>
+        <span>Renversement <b style="color: #E8E8EA;">1</b></span>
+        <span>Latch <b style="color: #E8E8EA;">off</b></span>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; gap: 20px; align-items: flex-end;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #E8E8EA;">HOT CUE · ACCORDS</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 172px;">
+            <sc-for list="{{padsB}}" as="p" hint-placeholder-count="4">
+              <div style="{{p.style}}">{{p.label}}</div>
+            </sc-for>
+          </div>
+        </div>
+        <sc-for list="{{previewB}}" as="m" hint-placeholder-count="3">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: #8A8A90;">{{m.name}}</span>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; width: 52px;">
+              <sc-for list="{{m.pads}}" as="q" hint-placeholder-count="4">
+                <div style="{{q.style}}"></div>
+              </sc-for>
+            </div>
+            <span style="font-size: 11px; color: #8A8A90;">{{m.hint}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+  </main>
+
+  <footer style="height: 56px; display: flex; align-items: center; gap: 24px; padding: 0 20px; background: #121214; border-radius: 6px;">
+    <span style="font-size: 13px; font-weight: 600;">Scène 1</span>
+    <div style="position: relative; width: 360px; height: 6px; background: #2A2A2E; border-radius: 3px;">
+      <div style="position: absolute; left: 30%; top: -9px; width: 10px; height: 24px; background: #E8E8EA; border-radius: 2px;"></div>
+    </div>
+    <span style="font-size: 13px; font-weight: 600;">Scène 2</span>
+    <span style="font-size: 13px; color: #8A8A90;">morph 30 %</span>
+    <div style="flex-grow: 1;"></div>
+    <sc-for list="{{levels}}" as="l" hint-placeholder-count="3">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 12px; color: #8A8A90;">{{l.name}}</span>
+        <div style="width: 96px; height: 6px; background: #2A2A2E; border-radius: 3px;"><div style="{{l.style}}"></div></div>
+      </div>
+    </sc-for>
+  </footer>
+</div>
+
+<div style="height: 160px; box-sizing: border-box; padding: 18px 24px; border-top: 1px dashed #3A3A40; background: #16161A; display: flex; flex-direction: column; gap: 12px;">
+  <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90;">SIMULATION · hors écran — ces boutons remplacent les gestes au contrôleur</span>
+  <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+    <sc-for list="{{actions}}" as="a" hint-placeholder-count="8">
+      <button type="button" onClick="{{a.run}}" style="height: 44px; padding: 0 16px; border-radius: 6px; border: 1px solid #3A3A40; background: #232327; color: #E8E8EA; font-size: 14px; font-weight: 600; cursor: pointer;">{{a.label}}</button>
+    </sc-for>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":960}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      playing: true, tick: 36, pattern: 'B', pending: null,
+      chord: 'iv', chordPending: null, mutedHats: false, swing: 58,
+      hud: null, controller: true, cpu: false, bpm: 124
+    };
+  }
+
+  componentDidMount() {
+    this.timer = setInterval(() => this.advance(), 60000 / 124 / 4);
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.timer);
+  }
+
+  advance() {
+    const s = this.state;
+    const now = Date.now();
+    const next = {};
+    if (s.hud && now >= s.hud.until) next.hud = null;
+    if (s.playing) {
+      const tick = s.tick + 1;
+      next.tick = tick;
+      if (tick % 16 === 0 && s.pending) { next.pattern = s.pending; next.pending = null; }
+      if (tick % 2 === 0 && s.chordPending) { next.chord = s.chordPending; next.chordPending = null; }
+    }
+    if (Object.keys(next).length) this.setState(next);
+  }
+
+  showHud(label, value, hint, pickup, ms) {
+    this.setState({ hud: { label, value, hint, pickup, until: Date.now() + ms } });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const WARM = '#FF6A2B', COLD = '#2BC8FF', AMBER = '#E8A33D', OFF = '#2A2A2E', TEXT = '#E8E8EA', DIM = '#8A8A90';
+    const step = s.tick % 16;
+    const beat = Math.floor(step / 4);
+    const blinkOn = !s.playing || step % 4 < 2;
+    const PATTERNS = {
+      A: { Kick: 'x...x...x...x...', Snare: '....x.......x...', Hats: 'x.x.x.x.x.x.x.x.', Clap: '................', Perc: '................' },
+      B: { Kick: 'x...x..x..x.x...', Snare: '....x.......x...', Hats: 'xx.xxx.xxx.xxx.x', Clap: '............x..x', Perc: '..x...x..x....x.' },
+      C: { Kick: 'x..x..x...x..x..', Snare: '....x..x....x...', Hats: 'xxxxxxxxxxxxxxxx', Clap: '....x.......x...', Perc: 'x.x...x.x.x...x.' },
+      D: { Kick: 'x.......x.......', Snare: '........x.......', Hats: '..x...x...x...x.', Clap: '................', Perc: 'x..x..x..x..x..x' }
+    };
+    const ORDER = ['A', 'B', 'C', 'D'];
+    const CHORDS = { i: 'Lam', iv: 'Rém', v: 'Mim', VI: 'Fa' };
+    const CHORD_ORDER = ['i', 'VI', 'iv', 'v'];
+
+    const beats = [0, 1, 2, 3].map((i) => ({
+      style: 'width: 28px; height: 28px; border-radius: 3px; background: '
+        + (s.playing && i === beat ? TEXT : i === 0 ? '#3A3A40' : OFF) + ';'
+    }));
+
+    const pat = PATTERNS[s.pattern];
+    const drums = Object.keys(pat).map((name) => {
+      const muted = name === 'Hats' && s.mutedHats;
+      return {
+        name,
+        labelStyle: 'width: 44px; font-size: 12px; font-weight: 600; color: ' + (muted ? DIM : TEXT) + ';' + (muted ? ' text-decoration: line-through;' : ''),
+        cells: pat[name].split('').map((ch, i) => {
+          const on = ch === 'x';
+          const now = s.playing && i === step;
+          let bg = on ? (muted ? '#4A2E24' : WARM) : (i % 4 === 0 ? '#232327' : '#1A1A1D');
+          if (on && now && !muted) bg = '#FFD2B8';
+          const border = now ? '2px solid ' + TEXT : '2px solid transparent';
+          return { style: 'height: 22px; border-radius: 2px; box-sizing: border-box; background: ' + bg + '; border: ' + border + ';' };
+        })
+      };
+    });
+
+    const pendingBox = (color, w, size) => {
+      const base = 'height: 52px; min-width: ' + w + 'px; padding: 0 12px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: ' + size + 'px; font-weight: 700; border-radius: 4px; ';
+      return blinkOn
+        ? base + 'border: 2px dashed ' + color + '; color: ' + color + '; background: ' + color + '22;'
+        : base + 'border: 2px dashed ' + color + '66; color: ' + color + '99;';
+    };
+    const remaining = 16 - step;
+    const beatsLeft = Math.ceil(remaining / 4);
+    const countdown = s.playing ? 'dans ' + beatsLeft + (beatsLeft > 1 ? ' temps' : ' temps') : 'au démarrage';
+
+    const pad = (label, state, color) => {
+      const base = 'height: 80px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; box-sizing: border-box; ';
+      if (state === 'on') return { label, style: base + 'background: ' + color + '; color: #0A0A0B;' };
+      if (state === 'wait') return { label, style: base + (blinkOn ? 'border: 2px dashed ' + color + '; color: ' + color + '; background: ' + color + '22;' : 'border: 2px dashed ' + color + '66; color: ' + color + '99;') };
+      return { label, style: base + 'background: #1C1C1F; border: 1px solid ' + OFF + '; color: ' + DIM + ';' };
+    };
+    const mini = (states, color) => states.map((st) => ({
+      style: 'height: 24px; border-radius: 2px; box-sizing: border-box; ' + (st === 'on' ? 'background: ' + color + ';' : 'background: #1C1C1F; border: 1px solid ' + OFF + ';')
+    }));
+
+    const padsA = ORDER.map((p) => pad(p, p === s.pattern ? 'on' : p === s.pending ? 'wait' : 'off', WARM));
+    const previewA = [
+      { name: 'SAMPLER', hint: 'fills', pads: mini(['off', 'off', 'off', 'off'], WARM) },
+      { name: 'FX', hint: s.mutedHats ? 'hats muets' : 'mutes', pads: mini(['off', 'off', s.mutedHats ? 'on' : 'off', 'off'], WARM) },
+      { name: 'LOOP', hint: 'repeat', pads: mini(['off', 'off', 'off', 'off'], WARM) }
+    ];
+
+    const degrees = ['1', '', '', '1', '', '', '5', '', '1', '', '', '3', '', '5', '⌒', ''];
+    const bass = degrees.map((d, i) => ({
+      label: d,
+      style: 'height: 30px; border-radius: 2px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; '
+        + (d && d !== '⌒' ? 'background: ' + AMBER + '; color: #0A0A0B;' : d === '⌒' ? 'color: ' + AMBER + '; background: #1A1A1D;' : 'background: #1A1A1D; color: ' + DIM + ';')
+        + (s.playing && i === step ? ' outline: 2px solid ' + TEXT + ';' : '')
+    }));
+
+    const progression = CHORD_ORDER.map((g) => ({
+      label: g + ' · ' + CHORDS[g],
+      style: 'height: 30px; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; box-sizing: border-box; '
+        + (g === s.chord ? 'background: ' + COLD + '; color: #0A0A0B;' : g === s.chordPending ? 'border: 2px dashed ' + COLD + '; color: ' + COLD + ';' : 'background: #1A1A1D; color: ' + TEXT + ';')
+    }));
+    const padsB = ['i', 'iv', 'v', 'VI'].map((g) => pad(g, g === s.chord ? 'on' : g === s.chordPending ? 'wait' : 'off', COLD));
+    const previewB = [
+      { name: 'SAMPLER', hint: 'phrase 2', pads: mini(['off', 'on', 'off', 'off'], COLD) },
+      { name: 'FX', hint: 'arp ↑', pads: mini(['off', 'on', 'off', 'off'], COLD) },
+      { name: 'LOOP', hint: 'renv. 1', pads: mini(['off', 'off', 'off', 'off'], COLD) }
+    ];
+
+    const levels = [
+      { name: 'Rythme', style: 'width: ' + (s.playing ? 78 : 0) + '%; height: 6px; background: ' + WARM + '; border-radius: 3px;' },
+      { name: 'Mélodie', style: 'width: ' + (s.playing ? 64 : 0) + '%; height: 6px; background: ' + COLD + '; border-radius: 3px;' },
+      { name: 'Master', style: 'width: ' + (s.playing ? 82 : 0) + '%; height: 6px; background: ' + TEXT + '; border-radius: 3px;' }
+    ];
+
+    const alerts = [];
+    if (!s.controller) alerts.push({ text: 'Contrôleur débranché · le son continue' });
+    if (s.cpu) alerts.push({ text: 'Charge audio 78 % · 2 xruns' });
+
+    const hud = s.hud;
+    const hudStyle = hud && hud.pickup
+      ? 'position: absolute; top: 72px; right: 20px; padding: 10px 16px; background: #0A0A0B; color: ' + TEXT + '; border: 2px solid ' + TEXT + '; border-radius: 4px; display: flex; flex-direction: column; gap: 2px;'
+      : 'position: absolute; top: 72px; right: 20px; padding: 10px 16px; background: ' + TEXT + '; color: #0A0A0B; border-radius: 4px; display: flex; flex-direction: column; gap: 2px;';
+
+    const nextOf = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
+    const actions = [
+      { label: s.playing ? 'Play · arrêter' : 'Play · lancer', run: () => this.setState({ playing: !s.playing }) },
+      { label: 'Pad Hot Cue A · pattern suivant', run: () => this.setState({ pending: nextOf(ORDER, s.pending || s.pattern) }) },
+      { label: s.mutedHats ? 'Pad FX 3 · démuter hats' : 'Pad FX 3 · muter hats', run: () => this.setState({ mutedHats: !s.mutedHats }) },
+      { label: 'Jog A · swing +2', run: () => { const sw = Math.min(75, s.swing + 2); this.setState({ swing: sw }); this.showHud('JOG · SWING', sw + ' %', '', false, 1000); } },
+      { label: 'Fader Tempo A (pickup)', run: () => this.showHud('FADER TEMPO · EN ATTENTE', '98 → 124', '↑ monter pour reprendre la main', true, 2500) },
+      { label: 'Pad Hot Cue B · accord suivant', run: () => this.setState({ chordPending: nextOf(CHORD_ORDER, s.chordPending || s.chord) }) },
+      { label: s.controller ? 'Débrancher le contrôleur' : 'Rebrancher le contrôleur', run: () => this.setState({ controller: !s.controller }) },
+      { label: s.cpu ? 'Charge normale' : 'Surcharge audio', run: () => this.setState({ cpu: !s.cpu }) }
+    ];
+
+    return {
+      playing: s.playing, stopped: !s.playing, bpm: s.bpm.toFixed(1),
+      beats, beatLabel: 'Temps ' + (beat + 1) + ' sur 4',
+      bar: Math.floor(s.tick / 16) + 1, phrase: (Math.floor(s.tick / 16) % 8) + 1, swing: s.swing,
+      alerts, healthy: alerts.length === 0,
+      pattern: s.pattern, hasPending: !!s.pending, pending: s.pending || '', pendingStyle: pendingBox(WARM, 52, 28), countdown,
+      drums, padsA, previewA, bass,
+      chordName: s.chord + ' · ' + CHORDS[s.chord],
+      hasChordPending: !!s.chordPending,
+      chordPendingName: s.chordPending ? s.chordPending + ' · ' + CHORDS[s.chordPending] : '',
+      chordPendingStyle: pendingBox(COLD, 52, 24),
+      progression, padsB, previewB, levels,
+      hudShown: !!hud, hudStyle, hudLabel: hud ? hud.label : '', hudValue: hud ? hud.value : '', hudHint: hud ? hud.hint : '',
+      actions
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -121,3 +121,7 @@ d'outils hors jeu (phase 6).
 
 Conséquence pour D3 : trois colonnes (deck A · basse · deck B) sous la barre du temps ; la colonne basse
 est étroite, les decks gardent la symétrie gauche/droite.
+
+## Suite : D3
+Trois maquettes (rangée de pas, afficheur, formes colorées) ; l'utilisateur a retenu **la rangée de pas**
+(cases pleines qui s'allument, pads en grands carrés, aperçu des autres modes en mini-grilles).

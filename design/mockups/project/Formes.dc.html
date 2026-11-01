@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LiveDeck — formes colorées</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0A0B}
+a{color:#2BC8FF}a:hover{color:#8FE1FF}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; padding: 24px; display: flex; flex-direction: column; gap: 16px; background: #0A0A0B; color: #E8E8EA; font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums;">
+
+  <header style="display: flex; align-items: center; gap: 28px; height: 72px;">
+    <div style="width: 72px; height: 72px; border-radius: 36px; border: 4px solid #E8E8EA; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+      <span style="font-size: 22px; font-weight: 800; line-height: 1;">124</span>
+      <span style="font-size: 10px; color: #8A8A90;">BPM</span>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;" aria-label="Temps 2 sur 4">
+      <sc-for list="{{beats}}" as="b" hint-placeholder-count="4">
+        <div style="{{b.style}}"></div>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-size: 20px; font-weight: 800;">Mesure 3 · 2/8</span>
+      <span style="font-size: 13px; color: #8A8A90;">Afrobeat · swing 58 %</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="width: 0; height: 0; border-left: 18px solid transparent; border-right: 18px solid transparent; border-bottom: 30px solid #E8E8EA;"></div>
+      <div style="display: flex; flex-direction: column;">
+        <span style="font-size: 26px; font-weight: 800; line-height: 1;">La mineur</span>
+        <span style="font-size: 12px; color: #5BD18B;">● contrôleur</span>
+      </div>
+    </div>
+  </header>
+
+  <main style="flex-grow: 1; display: grid; grid-template-columns: minmax(0, 1fr) 150px minmax(0, 1fr); gap: 16px; min-height: 0;">
+
+    <section style="display: flex; flex-direction: column; gap: 12px; padding: 18px; background: #141210; border-radius: 20px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 14px; height: 14px; border-radius: 7px; background: #FF6A2B;"></div>
+        <span style="font-size: 14px; font-weight: 800; color: #FF6A2B;">RYTHME</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 13px; color: #8A8A90;">densité</span>
+        <div style="width: 26px; height: 26px; border-radius: 13px; background: conic-gradient(#FF6A2B 0 80%, #2A2A2E 80% 100%);" aria-label="Densité 80 %"></div>
+      </div>
+      <div style="display: flex; gap: 20px; align-items: center;">
+        <div style="position: relative; width: 300px; height: 300px; flex-shrink: 0;" aria-label="Séquenceur circulaire : 5 voix, 16 pas, curseur au pas 6">
+          <sc-for list="{{ring}}" as="d" hint-placeholder-count="80">
+            <div style="{{d.style}}"></div>
+          </sc-for>
+          <div style="position: absolute; left: 149px; top: 6px; width: 2px; height: 144px; background: #E8E8EA; transform-origin: 1px 144px; transform: rotate(112.5deg); opacity: 0.6;"></div>
+          <div style="position: absolute; left: 118px; top: 118px; width: 64px; height: 64px; border-radius: 32px; background: #FF6A2B; color: #0A0A0B; display: flex; align-items: center; justify-content: center; font-size: 34px; font-weight: 800;">B</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <sc-for list="{{legend}}" as="v" hint-placeholder-count="5">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+              <div style="{{v.dot}}"></div>
+              <span style="{{v.text}}">{{v.name}}</span>
+            </div>
+          </sc-for>
+          <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+            <div style="width: 30px; height: 30px; border-radius: 15px; border: 3px dashed #FF6A2B; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #FF6A2B;">C</div>
+            <span style="font-size: 14px; font-weight: 600; color: #FF6A2B;">dans 3 temps</span>
+          </div>
+        </div>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; gap: 22px; align-items: center;">
+        <div style="display: grid; grid-template-columns: repeat(2, 72px); gap: 10px;">
+          <sc-for list="{{padsA}}" as="p" hint-placeholder-count="4">
+            <div style="{{p.style}}">{{p.label}}</div>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <sc-for list="{{previewA}}" as="m" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="width: 64px; font-size: 11px; font-weight: 600; color: #8A8A90;">{{m.name}}</span>
+              <sc-for list="{{m.pads}}" as="q" hint-placeholder-count="4">
+                <div style="{{q.style}}"></div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+        <div style="flex-grow: 1;"></div>
+        <div style="width: 96px; height: 96px; border-radius: 48px; background: #E8E8EA; color: #0A0A0B; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <span style="font-size: 10px; font-weight: 800;">SWING</span>
+          <span style="font-size: 26px; font-weight: 800;">58</span>
+        </div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 10px; background: #15120B; border-radius: 20px;">
+      <span style="font-size: 14px; font-weight: 800; color: #E8A33D;">BASSE</span>
+      <div style="width: 44px; height: 44px; border-radius: 6px; background: #E8A33D; color: #0A0A0B; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; transform: rotate(45deg);"><span style="transform: rotate(-45deg);">2</span></div>
+      <div style="position: relative; width: 120px; height: 320px; margin-top: 10px;" aria-label="Ligne de basse en degrés">
+        <sc-for list="{{bass}}" as="n" hint-placeholder-count="16">
+          <div style="{{n.style}}"></div>
+        </sc-for>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="width: 56px; height: 56px; border-radius: 28px; background: conic-gradient(#E8A33D 0 45%, #2A2A2E 45% 100%);" aria-label="Filtre basse 45 %"></div>
+      <span style="font-size: 11px; color: #8A8A90;">filtre 45 %</span>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px; padding: 18px; background: #0E1316; border-radius: 20px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 14px; height: 14px; background: #2BC8FF;"></div>
+        <span style="font-size: 14px; font-weight: 800; color: #2BC8FF;">MÉLODIE</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 13px; color: #8A8A90;">arp ↑ 1/16 · 2 oct.</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 24px; height: 200px;">
+        <div style="position: relative; width: 180px; height: 180px; flex-shrink: 0;" aria-label="Accord Ré mineur : ré, fa, la">
+          <div style="position: absolute; left: 0; top: 40px; width: 110px; height: 110px; border-radius: 55px; background: #2BC8FF; opacity: 0.9;"></div>
+          <div style="position: absolute; left: 60px; top: 0; width: 90px; height: 90px; border-radius: 45px; background: #1C8FB8; mix-blend-mode: screen;"></div>
+          <div style="position: absolute; left: 80px; top: 80px; width: 90px; height: 90px; border-radius: 45px; background: #7FDBFF; mix-blend-mode: screen; opacity: 0.8;"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="font-size: 56px; font-weight: 800; line-height: 1; color: #2BC8FF;">Rém</span>
+          <span style="font-size: 15px; color: #8A8A90;">degré iv · ré fa la</span>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+            <div style="width: 30px; height: 30px; border: 3px dashed #2BC8FF; box-sizing: border-box;"></div>
+            <span style="font-size: 14px; font-weight: 600; color: #2BC8FF;">VI · Fa au prochain 1/8</span>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <sc-for list="{{progression}}" as="g" hint-placeholder-count="8">
+          <div style="{{g.style}}">{{g.label}}</div>
+        </sc-for>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; gap: 22px; align-items: center;">
+        <div style="display: grid; grid-template-columns: repeat(2, 72px); gap: 10px;">
+          <sc-for list="{{padsB}}" as="p" hint-placeholder-count="4">
+            <div style="{{p.style}}">{{p.label}}</div>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <sc-for list="{{previewB}}" as="m" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="width: 64px; font-size: 11px; font-weight: 600; color: #8A8A90;">{{m.name}}</span>
+              <sc-for list="{{m.pads}}" as="q" hint-placeholder-count="4">
+                <div style="{{q.style}}"></div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer style="display: flex; align-items: center; gap: 18px; height: 40px;">
+    <div style="width: 16px; height: 16px; border-radius: 8px; background: #E8E8EA;"></div>
+    <div style="position: relative; width: 340px; height: 4px; background: #2A2A2E; border-radius: 2px;">
+      <div style="position: absolute; left: 30%; top: -10px; width: 24px; height: 24px; border-radius: 12px; background: #E8E8EA;"></div>
+    </div>
+    <div style="width: 16px; height: 16px; background: #E8E8EA;"></div>
+    <span style="font-size: 12px; color: #8A8A90;">scène 1 → scène 2 · 30 %</span>
+    <div style="flex-grow: 1;"></div>
+    <div style="width: 20px; height: 20px; border-radius: 10px; background: conic-gradient(#FF6A2B 0 78%, #2A2A2E 78% 100%);" aria-label="Rythme 78 %"></div>
+    <div style="width: 20px; height: 20px; border-radius: 10px; background: conic-gradient(#2BC8FF 0 64%, #2A2A2E 64% 100%);" aria-label="Mélodie 64 %"></div>
+    <div style="width: 20px; height: 20px; border-radius: 10px; background: conic-gradient(#E8E8EA 0 82%, #2A2A2E 82% 100%);" aria-label="Master 82 %"></div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const WARM = '#FF6A2B', COLD = '#2BC8FF', AMBER = '#E8A33D', OFF = '#2A2A2E', TEXT = '#E8E8EA';
+    const beats = [0, 1, 2, 3].map((i) => {
+      const size = i === 1 ? 34 : 22;
+      return { style: 'width: ' + size + 'px; height: ' + size + 'px; border-radius: 50%; box-sizing: border-box; ' + (i === 1 ? 'background: ' + TEXT + ';' : i === 0 ? 'background: #4A4A50;' : 'border: 3px solid #3A3A40;') };
+    });
+    const voices = [
+      { name: 'Hats', r: 140, p: 'xx.xxx.xxx.xxx.x' },
+      { name: 'Perc', r: 116, p: '..x...x..x....x.' },
+      { name: 'Clap', r: 92, p: '............x..x', muted: true },
+      { name: 'Snare', r: 68, p: '....x.......x...' },
+      { name: 'Kick', r: 46, p: 'x...x..x..x.x...' }
+    ];
+    const ring = [];
+    voices.forEach((v, vi) => {
+      v.p.split('').forEach((ch, i) => {
+        const a = (-90 + i * 22.5) * Math.PI / 180;
+        const on = ch === 'x';
+        const s = on ? 12 - vi : 4;
+        const x = 150 + v.r * Math.cos(a) - s / 2;
+        const y = 150 + v.r * Math.sin(a) - s / 2;
+        const fill = on ? (v.muted ? 'border: 2px solid #6A4030; box-sizing: border-box;' : 'background: ' + WARM + ';') : 'background: ' + OFF + ';';
+        ring.push({ style: 'position: absolute; left: ' + x.toFixed(1) + 'px; top: ' + y.toFixed(1) + 'px; width: ' + s + 'px; height: ' + s + 'px; border-radius: 50%; ' + fill });
+      });
+    });
+    const legend = voices.map((v) => ({
+      name: v.name + (v.muted ? ' · muet' : ''),
+      dot: 'width: 10px; height: 10px; border-radius: 5px; ' + (v.muted ? 'border: 2px solid #6A4030; box-sizing: border-box;' : 'background: ' + WARM + ';'),
+      text: 'color: ' + (v.muted ? '#8A8A90' : TEXT) + ';'
+    }));
+    const pad = (label, state, color, round) => {
+      const base = 'width: 72px; height: 72px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; border-radius: ' + (round ? '36px' : '8px') + '; ';
+      if (state === 'on') return { label, style: base + 'background: ' + color + '; color: #0A0A0B;' };
+      if (state === 'wait') return { label, style: base + 'border: 3px dashed ' + color + '; color: ' + color + ';' };
+      return { label, style: base + 'background: #1E1E22; color: #8A8A90;' };
+    };
+    const mini = (states, color, round) => states.map((s) => ({
+      style: 'width: 16px; height: 16px; box-sizing: border-box; border-radius: ' + (round ? '8px' : '3px') + '; ' + (s === 'on' ? 'background: ' + color + ';' : 'background: #1E1E22;')
+    }));
+    const padsA = [pad('A', 'off', WARM, true), pad('B', 'on', WARM, true), pad('C', 'wait', WARM, true), pad('D', 'off', WARM, true)];
+    const previewA = [
+      { name: 'SAMPLER', pads: mini(['off', 'off', 'off', 'off'], WARM, true) },
+      { name: 'FX', pads: mini(['off', 'off', 'off', 'on'], WARM, true) },
+      { name: 'LOOP', pads: mini(['off', 'off', 'off', 'off'], WARM, true) }
+    ];
+    const padsB = [pad('i', 'off', COLD, false), pad('iv', 'on', COLD, false), pad('v', 'off', COLD, false), pad('VI', 'wait', COLD, false)];
+    const previewB = [
+      { name: 'SAMPLER', pads: mini(['off', 'on', 'off', 'off'], COLD, false) },
+      { name: 'FX', pads: mini(['off', 'on', 'off', 'off'], COLD, false) },
+      { name: 'LOOP', pads: mini(['off', 'off', 'off', 'off'], COLD, false) }
+    ];
+    const deg = [1, 0, 0, 1, 0, 0, 5, 0, 1, 0, 0, 3, 0, 5, 0, 0];
+    const bass = deg.map((d, i) => {
+      const y = i * 20;
+      if (!d) return { style: 'position: absolute; left: 4px; top: ' + (y + 8) + 'px; width: 4px; height: 4px; border-radius: 2px; background: ' + OFF + ';' };
+      const w = 14 + d * 18;
+      return { style: 'position: absolute; left: 4px; top: ' + (y + 2) + 'px; width: ' + w + 'px; height: 16px; border-radius: 8px; background: ' + AMBER + ';' + (i === 5 ? ' outline: 2px solid ' + TEXT + ';' : '') };
+    });
+    const prog = ['i', 'i', 'VI', 'VI', 'iv', 'iv', 'v', 'v'];
+    const progression = prog.map((g, i) => ({
+      label: g,
+      style: 'width: 40px; height: 40px; border-radius: 20px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; '
+        + (i === 4 ? 'background: ' + COLD + '; color: #0A0A0B;' : i < 4 ? 'background: #1E1E22; color: #8A8A90;' : 'border: 2px solid #2A3A40; color: ' + TEXT + ';')
+    }));
+    return { beats, ring, legend, padsA, previewA, padsB, previewB, bass, progression };
+  }
+}
+</script>
+</body>
+</html>

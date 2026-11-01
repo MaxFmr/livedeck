@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LiveDeck — rangée de pas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0A0B}
+a{color:#2BC8FF}a:hover{color:#8FE1FF}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; background: #0A0A0B; color: #E8E8EA; font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums;">
+
+  <header style="height: 64px; display: flex; align-items: center; gap: 28px; padding: 0 20px; background: #121214; border-radius: 6px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M5 3l14 8-14 8z" fill="#E8E8EA"></path></svg>
+      <span style="font-size: 36px; font-weight: 700; letter-spacing: -0.02em;">124.0</span>
+      <span style="font-size: 13px; color: #8A8A90; font-weight: 500;">BPM</span>
+    </div>
+    <div style="display: flex; gap: 6px;" aria-label="Temps 2 sur 4">
+      <sc-for list="{{beats}}" as="b" hint-placeholder-count="4">
+        <div style="{{b.style}}"></div>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-size: 18px; font-weight: 600;">Mesure 3</span>
+      <span style="font-size: 13px; color: #8A8A90;">Phrase 2 / 8</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-size: 24px; font-weight: 700;">La mineur</span>
+      <span style="font-size: 13px; color: #8A8A90;">Afrobeat · swing 58 %</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8A8A90;">
+      <div style="width: 8px; height: 8px; border-radius: 4px; background: #5BD18B;"></div>
+      DJControl Mix
+    </div>
+  </header>
+
+  <main style="flex-grow: 1; display: grid; grid-template-columns: minmax(0, 1fr) 196px minmax(0, 1fr); gap: 16px; min-height: 0;">
+
+    <section style="position: relative; display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; background: #121214; border-radius: 6px; border-top: 3px solid #FF6A2B;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <span style="font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: #FF6A2B;">A · RYTHME</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 13px; color: #8A8A90;">Densité 80 %</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; background: #FF6A2B; color: #0A0A0B; font-size: 32px; font-weight: 700; border-radius: 4px;">B</div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 13px; color: #8A8A90;">pattern en cours</span>
+          <span style="font-size: 18px; font-weight: 600;">Groove B</span>
+        </div>
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="#8A8A90" stroke-width="2" fill="none"></path></svg>
+        <div style="width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; border: 2px dashed #FF6A2B; color: #FF6A2B; font-size: 28px; font-weight: 700; border-radius: 4px;">C</div>
+        <span style="font-size: 15px; font-weight: 600; color: #FF6A2B;">dans 3 temps</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <sc-for list="{{drums}}" as="row" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="{{row.labelStyle}}">{{row.name}}</span>
+            <div style="display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; flex-grow: 1;">
+              <sc-for list="{{row.cells}}" as="c" hint-placeholder-count="16">
+                <div style="{{c.style}}"></div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; gap: 20px; align-items: flex-end;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #E8E8EA;">HOT CUE · PATTERNS</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 172px;">
+            <sc-for list="{{padsA}}" as="p" hint-placeholder-count="4">
+              <div style="{{p.style}}">{{p.label}}</div>
+            </sc-for>
+          </div>
+        </div>
+        <sc-for list="{{previewA}}" as="m" hint-placeholder-count="3">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: #8A8A90;">{{m.name}}</span>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; width: 52px;">
+              <sc-for list="{{m.pads}}" as="q" hint-placeholder-count="4">
+                <div style="{{q.style}}"></div>
+              </sc-for>
+            </div>
+            <span style="font-size: 11px; color: #8A8A90;">{{m.hint}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="position: absolute; top: 72px; right: 20px; padding: 10px 16px; background: #E8E8EA; color: #0A0A0B; border-radius: 4px; display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.1em;">JOG · SWING</span>
+        <span style="font-size: 26px; font-weight: 700;">58 %</span>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px; padding: 18px 16px; background: #121214; border-radius: 6px; border-top: 3px solid #E8A33D;">
+      <span style="font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: #E8A33D;">BASSE</span>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: #E8A33D; color: #0A0A0B; font-size: 22px; font-weight: 700; border-radius: 4px;">2</div>
+        <span style="font-size: 13px; color: #8A8A90;">ligne 2</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px;">
+        <sc-for list="{{bass}}" as="n" hint-placeholder-count="16">
+          <div style="{{n.style}}">{{n.label}}</div>
+        </sc-for>
+      </div>
+      <span style="font-size: 11px; color: #8A8A90;">degrés de la gamme · ⌒ glide</span>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; color: #8A8A90;">Filtre basse</span>
+        <div style="height: 8px; background: #2A2A2E; border-radius: 4px;"><div style="width: 45%; height: 8px; background: #E8A33D; border-radius: 4px;"></div></div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; background: #121214; border-radius: 6px; border-top: 3px solid #2BC8FF;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <span style="font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: #2BC8FF;">B · MÉLODIE</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 13px; color: #8A8A90;">Arpège ↑ 1/16 · 2 oct.</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="height: 56px; padding: 0 16px; display: flex; align-items: center; background: #2BC8FF; color: #0A0A0B; font-size: 28px; font-weight: 700; border-radius: 4px;">iv · Rém</div>
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="#8A8A90" stroke-width="2" fill="none"></path></svg>
+        <div style="height: 52px; padding: 0 14px; display: flex; align-items: center; border: 2px dashed #2BC8FF; color: #2BC8FF; font-size: 24px; font-weight: 700; border-radius: 4px;">VI · Fa</div>
+        <span style="font-size: 15px; font-weight: 600; color: #2BC8FF;">au prochain 1/8</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; color: #8A8A90;">Progression</span>
+        <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px;">
+          <sc-for list="{{progression}}" as="g" hint-placeholder-count="8">
+            <div style="{{g.style}}">{{g.label}}</div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display: flex; gap: 24px; font-size: 13px; color: #8A8A90;">
+        <span>Phrase <b style="color: #E8E8EA;">2</b></span>
+        <span>Octave <b style="color: #E8E8EA;">0</b></span>
+        <span>Renversement <b style="color: #E8E8EA;">1</b></span>
+        <span>Latch <b style="color: #E8E8EA;">off</b></span>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; gap: 20px; align-items: flex-end;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #E8E8EA;">HOT CUE · ACCORDS</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 172px;">
+            <sc-for list="{{padsB}}" as="p" hint-placeholder-count="4">
+              <div style="{{p.style}}">{{p.label}}</div>
+            </sc-for>
+          </div>
+        </div>
+        <sc-for list="{{previewB}}" as="m" hint-placeholder-count="3">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: #8A8A90;">{{m.name}}</span>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; width: 52px;">
+              <sc-for list="{{m.pads}}" as="q" hint-placeholder-count="4">
+                <div style="{{q.style}}"></div>
+              </sc-for>
+            </div>
+            <span style="font-size: 11px; color: #8A8A90;">{{m.hint}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+  </main>
+
+  <footer style="height: 56px; display: flex; align-items: center; gap: 24px; padding: 0 20px; background: #121214; border-radius: 6px;">
+    <span style="font-size: 13px; font-weight: 600;">Scène 1</span>
+    <div style="position: relative; width: 360px; height: 6px; background: #2A2A2E; border-radius: 3px;">
+      <div style="position: absolute; left: 30%; top: -9px; width: 10px; height: 24px; background: #E8E8EA; border-radius: 2px;"></div>
+    </div>
+    <span style="font-size: 13px; font-weight: 600;">Scène 2</span>
+    <span style="font-size: 13px; color: #8A8A90;">morph 30 %</span>
+    <div style="flex-grow: 1;"></div>
+    <sc-for list="{{levels}}" as="l" hint-placeholder-count="3">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 12px; color: #8A8A90;">{{l.name}}</span>
+        <div style="width: 96px; height: 6px; background: #2A2A2E; border-radius: 3px;"><div style="{{l.style}}"></div></div>
+      </div>
+    </sc-for>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const WARM = '#FF6A2B', COLD = '#2BC8FF', AMBER = '#E8A33D', OFF = '#2A2A2E', TEXT = '#E8E8EA';
+    const step = 5;
+    const beats = [0, 1, 2, 3].map((i) => ({
+      style: 'width: 28px; height: 28px; border-radius: 3px; background: ' + (i === 1 ? TEXT : i === 0 ? '#3A3A40' : OFF) + ';'
+    }));
+    const pattern = {
+      Kick:  'x...x..x..x.x...',
+      Snare: '....x.......x...',
+      Hats:  'xx.xxx.xxx.xxx.x',
+      Clap:  '............x..x',
+      Perc:  '..x...x..x....x.'
+    };
+    const muted = { Clap: true };
+    const drums = Object.keys(pattern).map((name) => ({
+      name,
+      labelStyle: 'width: 44px; font-size: 12px; font-weight: 600; color: ' + (muted[name] ? '#8A8A90' : TEXT) + ';' + (muted[name] ? ' text-decoration: line-through;' : ''),
+      cells: pattern[name].split('').map((ch, i) => {
+        const on = ch === 'x';
+        let bg = on ? (muted[name] ? '#5A3A2E' : WARM) : (i % 4 === 0 ? '#232327' : '#1A1A1D');
+        let border = i === step ? '2px solid ' + TEXT : '2px solid transparent';
+        return { style: 'height: 22px; border-radius: 2px; box-sizing: border-box; background: ' + bg + '; border: ' + border + ';' };
+      })
+    }));
+    const pad = (label, state, color) => {
+      const base = 'height: 80px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; box-sizing: border-box; ';
+      if (state === 'on') return { label, style: base + 'background: ' + color + '; color: #0A0A0B;' };
+      if (state === 'wait') return { label, style: base + 'border: 2px dashed ' + color + '; color: ' + color + ';' };
+      return { label, style: base + 'background: #1C1C1F; border: 1px solid ' + OFF + '; color: #8A8A90;' };
+    };
+    const mini = (states, color) => states.map((s) => ({
+      style: 'height: 24px; border-radius: 2px; box-sizing: border-box; ' + (s === 'on' ? 'background: ' + color + ';' : s === 'wait' ? 'border: 2px dashed ' + color + ';' : 'background: #1C1C1F; border: 1px solid ' + OFF + ';')
+    }));
+    const padsA = [pad('A', 'off', WARM), pad('B', 'on', WARM), pad('C', 'wait', WARM), pad('D', 'off', WARM)];
+    const previewA = [
+      { name: 'SAMPLER', hint: 'fills', pads: mini(['off', 'off', 'off', 'off'], WARM) },
+      { name: 'FX', hint: 'clap muet', pads: mini(['off', 'off', 'off', 'on'], WARM) },
+      { name: 'LOOP', hint: 'repeat', pads: mini(['off', 'off', 'off', 'off'], WARM) }
+    ];
+    const degrees = ['1', '', '', '1', '', '', '5', '', '1', '', '', '3', '', '5', '⌒', ''];
+    const bass = degrees.map((d, i) => ({
+      label: d,
+      style: 'height: 30px; border-radius: 2px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; '
+        + (d && d !== '⌒' ? 'background: ' + AMBER + '; color: #0A0A0B;' : d === '⌒' ? 'color: ' + AMBER + '; background: #1A1A1D;' : 'background: #1A1A1D; color: #8A8A90;')
+        + (i === step ? ' outline: 2px solid ' + TEXT + ';' : '')
+    }));
+    const prog = ['i', 'i', 'VI', 'VI', 'iv', 'iv', 'v', 'v'];
+    const progression = prog.map((g, i) => ({
+      label: g,
+      style: 'height: 30px; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; '
+        + (i === 4 ? 'background: ' + COLD + '; color: #0A0A0B;' : 'background: #1A1A1D; color: ' + (i < 4 ? '#8A8A90' : TEXT) + ';')
+    }));
+    const padsB = [pad('i', 'off', COLD), pad('iv', 'on', COLD), pad('v', 'off', COLD), pad('VI', 'wait', COLD)];
+    const previewB = [
+      { name: 'SAMPLER', hint: 'phrase 2', pads: mini(['off', 'on', 'off', 'off'], COLD) },
+      { name: 'FX', hint: 'arp ↑', pads: mini(['off', 'on', 'off', 'off'], COLD) },
+      { name: 'LOOP', hint: 'renv. 1', pads: mini(['off', 'off', 'off', 'off'], COLD) }
+    ];
+    const levels = [
+      { name: 'Rythme', style: 'width: 78%; height: 6px; background: ' + WARM + '; border-radius: 3px;' },
+      { name: 'Mélodie', style: 'width: 64%; height: 6px; background: ' + COLD + '; border-radius: 3px;' },
+      { name: 'Master', style: 'width: 82%; height: 6px; background: ' + TEXT + '; border-radius: 3px;' }
+    ];
+    return { beats, drums, padsA, previewA, bass, progression, padsB, previewB, levels };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-01T12:00:00Z"
+  },
+  "title": "LiveDeck — maquettes D3",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "1 · Rangée de pas"
+    },
+    "Afficheur.dc.html": {
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "2 · Afficheur"
+    },
+    "Formes.dc.html": {
+      "x": 2720,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "3 · Formes colorées"
+    },
+    "D4.dc.html": {
+      "x": 0,
+      "y": 1220,
+      "w": 1280,
+      "h": 960,
+      "title": "D4 · Rangée de pas (interactive)",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Afficheur.dc.html",
+    "Formes.dc.html",
+    "D4.dc.html"
+  ],
+  "notes": {
+    "titre": {
+      "x": 0,
+      "y": -300,
+      "text": "LiveDeck · D3 — trois pistes, mêmes données (124 BPM, mesure 3, La mineur)",
+      "kind": "title1",
+      "maxW": 4000
+    },
+    "d4": {
+      "x": 0,
+      "y": 920,
+      "text": "D4 · haute fidélité — piste 1 retenue, états simulés",
+      "kind": "title1",
+      "maxW": 1280
+    }
+  },
+  "designSystems": []
+}

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LiveDeck — afficheur</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000}
+a{color:#2BC8FF}a:hover{color:#8FE1FF}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; padding: 24px; display: flex; flex-direction: column; gap: 18px; background: #000000; color: #E8E8EA; font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums;">
+
+  <header style="display: grid; grid-template-columns: 240px minmax(0, 1fr) 240px; align-items: center; gap: 24px;">
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <span style="font-size: 11px; letter-spacing: 0.16em; color: #8A8A90;">TEMPO · LECTURE</span>
+      <span style="font-size: 64px; font-weight: 300; line-height: 1; letter-spacing: -0.03em;">124.0</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;" aria-label="Temps 2 sur 4">
+        <sc-for list="{{beats}}" as="b" hint-placeholder-count="4">
+          <div style="{{b.style}}"></div>
+        </sc-for>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 13px; color: #8A8A90;">
+        <span>mesure <b style="color: #E8E8EA; font-weight: 600;">3</b></span>
+        <span>phrase <b style="color: #E8E8EA; font-weight: 600;">2/8</b></span>
+        <span>swing <b style="color: #E8E8EA; font-weight: 600;">58 %</b></span>
+        <span>Afrobeat</span>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-end;">
+      <span style="font-size: 11px; letter-spacing: 0.16em; color: #8A8A90;">TONALITÉ</span>
+      <span style="font-size: 40px; font-weight: 300; line-height: 1;">La m</span>
+      <span style="font-size: 11px; color: #5BD18B;">● contrôleur ok</span>
+    </div>
+  </header>
+
+  <main style="flex-grow: 1; display: grid; grid-template-columns: minmax(0, 1fr) 180px minmax(0, 1fr); gap: 18px; min-height: 0;">
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 18px; border: 1px solid #FF6A2B; border-radius: 10px;">
+      <div style="display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.16em; color: #FF6A2B;">
+        <span>A · RYTHME</span><span>DENSITÉ 80 %</span>
+      </div>
+      <div style="display: flex; align-items: flex-end; gap: 18px;">
+        <span style="font-size: 96px; font-weight: 300; line-height: 0.85; color: #FF6A2B;">B</span>
+        <div style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 6px;">
+          <span style="font-size: 13px; color: #FF6A2B;">→ C dans 3 temps</span>
+          <div style="display: flex; gap: 4px;">
+            <div style="width: 22px; height: 4px; background: #FF6A2B;"></div>
+            <div style="width: 22px; height: 4px; border: 1px solid #FF6A2B; box-sizing: border-box;"></div>
+            <div style="width: 22px; height: 4px; border: 1px solid #FF6A2B; box-sizing: border-box;"></div>
+          </div>
+        </div>
+        <div style="flex-grow: 1;"></div>
+        <div style="padding: 8px 12px; border: 1px solid #E8E8EA; border-radius: 6px; display: flex; flex-direction: column; align-items: flex-end;">
+          <span style="font-size: 10px; letter-spacing: 0.14em; color: #8A8A90;">SWING</span>
+          <span style="font-size: 28px; font-weight: 300;">58 %</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <sc-for list="{{drums}}" as="row" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="{{row.labelStyle}}">{{row.name}}</span>
+            <div style="display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 6px; flex-grow: 1; align-items: center; justify-items: center;">
+              <sc-for list="{{row.cells}}" as="c" hint-placeholder-count="16">
+                <div style="{{c.style}}"></div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+        <div style="display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 6px; margin-left: 54px;">
+          <sc-for list="{{cursor}}" as="k" hint-placeholder-count="16">
+            <div style="{{k.style}}"></div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; gap: 18px; align-items: flex-end;">
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; width: 300px;">
+          <sc-for list="{{padsA}}" as="p" hint-placeholder-count="4">
+            <div style="{{p.style}}">{{p.label}}</div>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #8A8A90;">
+          <span style="color: #FF6A2B; letter-spacing: 0.12em; font-size: 11px;">HOT CUE</span>
+          <span>sampler · ○ ○ ○ ○</span>
+          <span>fx · ○ ○ ○ <span style="color: #FF6A2B;">●</span> clap</span>
+          <span>loop · ○ ○ ○ ○</span>
+        </div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 14px; padding: 18px 14px; border: 1px solid #E8A33D; border-radius: 10px;">
+      <span style="font-size: 11px; letter-spacing: 0.16em; color: #E8A33D;">BASSE</span>
+      <span style="font-size: 56px; font-weight: 300; line-height: 0.9; color: #E8A33D;">2</span>
+      <svg width="150" height="120" viewBox="0 0 150 120" role="img" aria-label="Ligne de basse : degrés 1, 1, 5, 1, 3, 5 avec glide">
+        <path d="M0 100 H8 M27 100 H36 M55 40 H64 M74 100 H83 M102 70 H111 Q118 70 121 40 H130" stroke="#E8A33D" stroke-width="3" fill="none"></path>
+        <path d="M0 118 H150" stroke="#2A2A2E" stroke-width="1"></path>
+        <path d="M46 0 V118" stroke="#E8E8EA" stroke-width="1"></path>
+      </svg>
+      <span style="font-size: 11px; color: #8A8A90;">hauteur = degré de la gamme</span>
+      <div style="flex-grow: 1;"></div>
+      <span style="font-size: 11px; letter-spacing: 0.14em; color: #8A8A90;">FILTRE</span>
+      <span style="font-size: 28px; font-weight: 300; color: #E8A33D;">45 %</span>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 18px; border: 1px solid #2BC8FF; border-radius: 10px;">
+      <div style="display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.16em; color: #2BC8FF;">
+        <span>B · MÉLODIE</span><span>ARP ↑ 1/16 · 2 OCT</span>
+      </div>
+      <div style="display: flex; align-items: flex-end; gap: 18px;">
+        <div style="display: flex; flex-direction: column;">
+          <span style="font-size: 96px; font-weight: 300; line-height: 0.85; color: #2BC8FF;">Rém</span>
+          <span style="font-size: 15px; color: #2BC8FF;">degré iv</span>
+        </div>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 13px; color: #2BC8FF; padding-bottom: 6px;">→ VI · Fa au prochain 1/8</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px;">
+        <sc-for list="{{progression}}" as="g" hint-placeholder-count="8">
+          <div style="{{g.style}}">{{g.label}}</div>
+        </sc-for>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+        <sc-for list="{{params}}" as="x" hint-placeholder-count="4">
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: 10px; letter-spacing: 0.14em; color: #8A8A90;">{{x.name}}</span>
+            <span style="font-size: 24px; font-weight: 300;">{{x.value}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; gap: 18px; align-items: flex-end;">
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; width: 300px;">
+          <sc-for list="{{padsB}}" as="p" hint-placeholder-count="4">
+            <div style="{{p.style}}">{{p.label}}</div>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #8A8A90;">
+          <span style="color: #2BC8FF; letter-spacing: 0.12em; font-size: 11px;">HOT CUE</span>
+          <span>sampler · ○ <span style="color: #2BC8FF;">●</span> ○ ○ phrase 2</span>
+          <span>fx · ○ <span style="color: #2BC8FF;">●</span> ○ ○ arp</span>
+          <span>loop · ○ ○ ○ ○</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer style="display: flex; align-items: center; gap: 20px; font-size: 12px; color: #8A8A90;">
+    <span>SCÈNE 1</span>
+    <div style="position: relative; width: 320px; height: 1px; background: #8A8A90;">
+      <div style="position: absolute; left: 30%; top: -8px; width: 2px; height: 17px; background: #E8E8EA;"></div>
+    </div>
+    <span>SCÈNE 2</span>
+    <div style="flex-grow: 1;"></div>
+    <span>rythme <b style="color: #FF6A2B; font-weight: 500;">−4 dB</b></span>
+    <span>mélodie <b style="color: #2BC8FF; font-weight: 500;">−7 dB</b></span>
+    <span>master <b style="color: #E8E8EA; font-weight: 500;">−2 dB</b></span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const WARM = '#FF6A2B', COLD = '#2BC8FF', TEXT = '#E8E8EA', DIM = '#8A8A90';
+    const step = 5;
+    const beats = [0, 1, 2, 3].map((i) => ({
+      style: 'height: 10px; box-sizing: border-box; ' + (i === 1 ? 'background: ' + TEXT + ';' : i === 0 ? 'background: #4A4A50;' : 'border: 1px solid #4A4A50;')
+    }));
+    const pattern = {
+      Kick:  'x...x..x..x.x...',
+      Snare: '....x.......x...',
+      Hats:  'xx.xxx.xxx.xxx.x',
+      Clap:  '............x..x',
+      Perc:  '..x...x..x....x.'
+    };
+    const muted = { Clap: true };
+    const drums = Object.keys(pattern).map((name) => ({
+      name,
+      labelStyle: 'width: 44px; font-size: 12px; color: ' + (muted[name] ? '#5A5A60' : WARM) + ';',
+      cells: pattern[name].split('').map((ch) => {
+        const on = ch === 'x';
+        if (!on) return { style: 'width: 4px; height: 4px; border-radius: 2px; background: #2A2A2E;' };
+        if (muted[name]) return { style: 'width: 14px; height: 14px; border-radius: 7px; box-sizing: border-box; border: 1px solid #5A3A2E;' };
+        return { style: 'width: 14px; height: 14px; border-radius: 7px; background: ' + WARM + ';' };
+      })
+    }));
+    const cursor = Array.from({ length: 16 }, (_, i) => ({
+      style: 'height: 2px; background: ' + (i === step ? TEXT : 'transparent') + ';'
+    }));
+    const pad = (label, state, color) => {
+      const base = 'height: 56px; border-radius: 6px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 18px; ';
+      if (state === 'on') return { label, style: base + 'border: 2px solid ' + color + '; color: ' + color + '; font-weight: 600; box-shadow: inset 0 0 0 3px #000, inset 0 0 0 40px ' + color + '33;' };
+      if (state === 'wait') return { label, style: base + 'border: 1px dashed ' + color + '; color: ' + color + ';' };
+      return { label, style: base + 'border: 1px solid #2A2A2E; color: ' + DIM + ';' };
+    };
+    const padsA = [pad('A', 'off', WARM), pad('B', 'on', WARM), pad('C', 'wait', WARM), pad('D', 'off', WARM)];
+    const padsB = [pad('i', 'off', COLD), pad('iv', 'on', COLD), pad('v', 'off', COLD), pad('VI', 'wait', COLD)];
+    const prog = ['i', 'i', 'VI', 'VI', 'iv', 'iv', 'v', 'v'];
+    const progression = prog.map((g, i) => ({
+      label: g,
+      style: 'height: 28px; display: flex; align-items: center; justify-content: center; font-size: 13px; border-bottom: 2px solid ' + (i === 4 ? COLD : '#2A2A2E') + '; color: ' + (i === 4 ? COLD : i < 4 ? '#5A5A60' : TEXT) + ';'
+    }));
+    const params = [
+      { name: 'PHRASE', value: '2' },
+      { name: 'OCTAVE', value: '0' },
+      { name: 'RENV.', value: '1' },
+      { name: 'LATCH', value: 'off' }
+    ];
+    return { beats, drums, cursor, padsA, padsB, progression, params };
+  }
+}
+</script>
+</body>
+</html>

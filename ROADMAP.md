@@ -72,8 +72,8 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 - [x] D1 Intention et références (avec l'utilisateur). → [D1](docs/design/D1-intention.md)
 - [x] D2 Architecture d'information (inventaire de l'état à afficher). → [D2](docs/design/D2-information.md)
-- [ ] D3 2–3 maquettes basse fidélité (artifacts HTML).
-- [ ] D4 Maquette haute fidélité interactive, validée par l'utilisateur.
+- [x] D3 2–3 maquettes basse fidélité (artifacts HTML). → sources `design/mockups/`, [canvas](https://claude.ai/artifact/SEij2MqjacTXCRc8kuJKU6) : rangée de pas, afficheur, formes colorées — **retenue : 1 · rangée de pas** (2026-11-01).
+- [x] D4 Maquette haute fidélité interactive, validée par l'utilisateur (2026-11-01). → `design/mockups/project/D4.dc.html`, [canvas](https://claude.ai/artifact/SEij2MqjacTXCRc8kuJKU6)
 - [ ] D5 Système de design → `theme.rs`.
 
 ## Phase 5 — Interface egui
