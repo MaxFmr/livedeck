@@ -2,10 +2,12 @@
 //! decoded events and keeps its LEDs in sync.
 //!
 //! Runs on: control thread (`poll`). The CoreMIDI callback only copies the bytes into a lock-free
-//! queue, so a slow control loop never blocks MIDI reception.
+//! queue, so a slow control loop never blocks MIDI reception, then unparks the control thread so a
+//! loop waiting in `std::thread::park_timeout` handles the gesture at once.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::thread::Thread;
 use std::time::{Duration, Instant};
 
 use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
@@ -30,6 +32,8 @@ struct RawMidi {
 struct CallbackData {
     tx: Producer<RawMidi>,
     dropped: Arc<AtomicU32>,
+    /// The control thread, woken on every message.
+    waker: Thread,
 }
 
 struct Connection {
@@ -60,6 +64,7 @@ pub struct ControllerLink {
     decoder: Decoder,
     leds: LedBank,
     last_scan: Option<Instant>,
+    waker: Thread,
 }
 
 impl Default for ControllerLink {
@@ -69,9 +74,11 @@ impl Default for ControllerLink {
 }
 
 impl ControllerLink {
+    /// Create it on the control thread: that thread is unparked when a message arrives.
     #[must_use]
     pub fn new() -> Self {
         Self {
+            waker: std::thread::current(),
             scanner: MidiInput::new("livedeck-scan").ok(),
             connection: None,
             decoder: Decoder::new(),
@@ -146,7 +153,7 @@ impl ControllerLink {
                 on_event(LinkEvent::Disconnected);
             }
             (None, Some(name)) => {
-                if let Some(conn) = connect(&name) {
+                if let Some(conn) = connect(&name, self.waker.clone()) {
                     let leds = conn.output.is_some();
                     self.connection = Some(conn);
                     self.decoder = Decoder::new();
@@ -167,7 +174,7 @@ impl Drop for ControllerLink {
     }
 }
 
-fn connect(name: &str) -> Option<Connection> {
+fn connect(name: &str, waker: Thread) -> Option<Connection> {
     let input = MidiInput::new("livedeck-in").ok()?;
     let port = input
         .ports()
@@ -178,6 +185,7 @@ fn connect(name: &str) -> Option<Connection> {
     let data = CallbackData {
         tx,
         dropped: Arc::clone(&dropped),
+        waker,
     };
     let input_conn = input
         .connect(
@@ -196,6 +204,7 @@ fn connect(name: &str) -> Option<Connection> {
                 if data.tx.push(raw).is_err() {
                     data.dropped.fetch_add(1, Ordering::Relaxed);
                 }
+                data.waker.unpark();
             },
             data,
         )

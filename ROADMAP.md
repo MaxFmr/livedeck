@@ -37,12 +37,16 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait (avec renvoi au journa
 - [x] Connexion midir + hot-plug (reconnexion auto + renvoi du dump et des LEDs). → [007](docs/iterations/007-controller-live.md)
 - [x] `config/mapping.toml` → table de dispatch précompilée ; actions typées. → [008](docs/iterations/008-mapping.md)
 - [x] Fader Tempo 14 bits, jogs filtrés (anti-rebond du toucher), soft-takeover (pickup), tap tempo. → [008](docs/iterations/008-mapping.md)
-- [~] **Retour LEDs (exigence utilisateur)** — banque + diff + renvoi par mode faits en 007 ; reste le clignotement « en attente » et les états musicaux (008–009) : état LED des 4 modes de pads × 2 decks + Sync/Cue/Play/Vinyl
-      tenu sur le thread de contrôle, diff envoyé via `led_message`, renvoi du mode affiché à chaque
-      `PadModeSelect`, clignotement logiciel pour « en attente » (tout-ou-rien seulement), port gardé ouvert.
-- [ ] Mesure de latence geste → son (enregistrement micro du clic du pad + son, ou boucle MIDI).
+- [x] **Retour LEDs (exigence utilisateur)** — banque + diff + renvoi par mode (007) ; états `LedState`
+      calés sur le tempo (fixe, attente, attention, flashs de temps), pads allumés pendant l'appui (009).
+      Les états musicaux des decks (pattern en attente, mutes) s'ajoutent avec eux (011–012).
+      → [007](docs/iterations/007-controller-live.md), [009](docs/iterations/009-leds-latency.md)
+- [x] Mesure de latence geste → son : horodatage CoreMIDI → sortie, médiane 8,1–8,5 ms, max 10,3 (26 frappes).
+      → [009](docs/iterations/009-leds-latency.md)
 
-**Sortie** : chaque contrôle physique a une action observable ; latence USB mesurée < 10 ms.
+**Sortie** : chaque contrôle physique a une action observable ; latence USB mesurée < 10 ms. ✅ latence
+(médiane 8,1–8,5 ms, 1 frappe sur 26 à 10,3) ; contrôles : transport, tempo, niveaux, pads Hot Cue liés —
+filtres, basses, crossfader et pads des autres modes recevront leurs actions avec les decks (010+).
 
 ## Phase 3 — Deck A : rythme
 
@@ -102,6 +106,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait (avec renvoi au journa
 
 | Date | Évènement |
 |---|---|
+| 2026-11-01 | **Phase 2 terminée** (007–009) : contrôleur à chaud, mapping configurable, LEDs d'état en rythme, latence geste → son mesurée (médiane ≈ 8 ms). Prochaine : piste D (D1) et phase 3, itération 010. |
 | 2026-10-31 | Harnais créé : base de connaissances, skills, roadmap. Phase 0 à démarrer. |
 | 2026-10-31 | Plan détaillé validé (itérations 001–019, validation par l'utilisateur à chaque itération, tous styles via presets, synthèse puis samples). Itération 001 terminée. |
 | 2026-10-31 | **Phase 1 terminée** (004–006) : sortie audio, horloge, commandes sans verrou, garde anti-allocation ; endurance 10 min 0 xrun, 0,9 % de charge, 11,6 Mo. Prochaine : phase 2, itération 007. |

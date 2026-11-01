@@ -36,6 +36,21 @@
 | Sortie CoreAudio (sécurité + DAC) | ~3–5 ms | idem |
 | **Total** | **≈ 5–9 ms** | 15–25 ms |
 
+**Mesuré** (009, 2026-11-01, pads du DJControl Mix, haut-parleurs du MacBook Air, 128 frames @ 48 kHz,
+26 frappes) : médiane **8,1–8,5 ms**, min 6,8, max 10,3 = MIDI → boucle 0,1 + attente du bloc 0–2,7 +
+tampon 5,0 + matériel 1,4 (hors transport USB, ≤ 1 ms). Avant le réveil de la boucle par CoreMIDI
+(`unpark`), « MIDI → boucle » ajoutait 0,1–2,5 ms (sommeil de 2 ms) : médiane 9,4, max 11,3.
+
+### Horodatages CoreAudio dans cpal 0.18 🧪
+- `OutputCallbackInfo::timestamp().callback` est le `mHostTime` du bloc, c.-à-d. l'heure de **remise au
+  périphérique**, ≈ un tampon + l'offset de sécurité **après** l'appel (5,0 ms à 128 frames sur le
+  MacBook). Pour l'heure réelle de l'appel, lire l'horloge hôte soi-même (`io::system::host_time_us`).
+- `timestamp().playback` = `callback` + tampon + offset de sécurité + latence du périphérique : le tampon
+  et l'offset sont **comptés deux fois**. Latence matérielle seule ≈ (`playback` − `callback`) −
+  (`callback` − heure réelle de l'appel).
+- CoreMIDI (`midir`), cpal et `mach_absolute_time` partagent la même horloge : un geste et sa sortie se
+  comparent directement.
+
 Les actions **quantifiées** (lancer un pattern à la mesure) ne sont pas sensibles à la latence ; les actions
 **immédiates** (jog, filtre, one-shot) le sont → toujours tester sur USB.
 

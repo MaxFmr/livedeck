@@ -29,6 +29,10 @@ pub enum Param {
     MetronomeLevel,
 }
 
+/// Test sound: lower and longer than the metronome clicks (1000/1600 Hz, 30 ms) so it stands out.
+const HIT_FREQ: f32 = 330.0;
+const HIT_DECAY_SECONDS: f32 = 0.15;
+
 /// Beats per bar (4/4 only for now).
 pub const BEATS_PER_BAR: u64 = 4;
 
@@ -46,6 +50,8 @@ pub fn block_budget_us(frames: u32, sample_rate: u32) -> f64 {
 pub struct Engine {
     clock: Clock,
     click: Click,
+    /// Test sound played by a gesture (latency measurement, before the drum voices exist).
+    hit: Click,
     limiter: Limiter,
     metronome: bool,
     master_gain: Smoothed,
@@ -61,6 +67,7 @@ impl Engine {
         Self {
             clock: Clock::new(sample_rate, bpm),
             click: Click::new(sample_rate),
+            hit: Click::with_decay(sample_rate, HIT_DECAY_SECONDS),
             limiter: Limiter::new(sample_rate),
             metronome: true,
             master_gain: Smoothed::new(1.0, sample_rate, 0.01),
@@ -92,6 +99,12 @@ impl Engine {
             Param::MasterGain => self.master_gain.set(value),
             Param::MetronomeLevel => self.metronome_level.set(value),
         }
+    }
+
+    /// Plays the test sound from the start of the next rendered sample, playing or not.
+    pub fn trigger_hit(&mut self) {
+        self.hit.gain = 0.8;
+        self.hit.trigger_at(HIT_FREQ);
     }
 
     #[must_use]
@@ -126,6 +139,7 @@ impl Engine {
             mono.fill(0.0);
             self.click.gain = self.metronome_level.skip(n);
             render_mono(&mut self.clock, &mut self.click, self.metronome, mono);
+            self.hit.render_add(mono);
             for sample in mono.iter_mut() {
                 *sample *= self.master_gain.tick();
             }
@@ -241,6 +255,16 @@ mod tests {
         let mut engine = Engine::new(SR, 128, 120.0);
         let out = render(&mut engine, 10_000, 2, 128);
         assert!(out.iter().all(|&s| s == 0.0));
+    }
+
+    #[test]
+    fn hit_sounds_at_block_start_even_when_stopped() {
+        let mut engine = Engine::new(SR, 128, 120.0);
+        engine.trigger_hit();
+        let out = render(&mut engine, 128, 1, 128);
+        assert_eq!(out[0], 0.0, "sine starts at 0");
+        assert!(out[1] != 0.0, "the hit starts on the first sample");
+        assert!(out.iter().any(|s| s.abs() > 0.3));
     }
 
     #[test]

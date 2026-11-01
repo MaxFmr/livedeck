@@ -13,7 +13,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::controller::{
-    Button, ControllerEvent, Deck, DeckKnob, JogSurface, MAX_14BIT, MixerControl, PadMode,
+    Button, ControllerEvent, Deck, DeckKnob, JogSurface, Led, MAX_14BIT, MixerControl, PadMode,
 };
 
 /// A physical control, independent of its current value.
@@ -58,19 +58,25 @@ pub enum Action {
     TransportToggle,
     TransportRestart,
     MetronomeToggle,
+    /// Test sound (latency measurement); `ts_us` is the gesture's CoreMIDI host time.
+    TestHit {
+        ts_us: u64,
+    },
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
     SetLevel(Target, f32),
 }
 
+/// Action names as written in the mapping file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum ActionName {
+pub enum ActionName {
     TransportToggle,
     TransportRestart,
     TapTempo,
     MetronomeToggle,
+    TestHit,
     Tempo,
     TempoNudge,
     MasterGain,
@@ -212,6 +218,14 @@ impl Mapping {
         self.bindings.is_empty()
     }
 
+    /// Controls bound to `action` without Shift (the layer their LED shows).
+    pub fn bound(&self, action: ActionName) -> impl Iterator<Item = Control> + '_ {
+        self.bindings
+            .iter()
+            .filter(move |(id, b)| !id.shift && b.action == action)
+            .map(|(id, _)| id.control)
+    }
+
     /// The software changed `target` (keyboard, tap tempo, scene…): controls bound to it with
     /// pickup must meet the new value before taking over again. `value` is normalized for levels,
     /// in BPM for the tempo.
@@ -258,6 +272,7 @@ impl Mapping {
             (ActionName::TransportToggle, Input::Press(true)) => Some(Action::TransportToggle),
             (ActionName::TransportRestart, Input::Press(true)) => Some(Action::TransportRestart),
             (ActionName::MetronomeToggle, Input::Press(true)) => Some(Action::MetronomeToggle),
+            (ActionName::TestHit, Input::Press(true)) => Some(Action::TestHit { ts_us }),
             (ActionName::TapTempo, Input::Press(true)) => self.tap(ts_us),
             (ActionName::TempoNudge, Input::Relative(ticks)) => {
                 Some(Action::NudgeTempo(f64::from(ticks) * binding.step))
@@ -378,7 +393,8 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         ActionName::TransportToggle
         | ActionName::TransportRestart
         | ActionName::TapTempo
-        | ActionName::MetronomeToggle => matches!(kind, Kind::Press),
+        | ActionName::MetronomeToggle
+        | ActionName::TestHit => matches!(kind, Kind::Press),
         ActionName::Tempo | ActionName::MasterGain | ActionName::MetronomeLevel => {
             matches!(kind, Kind::Absolute)
         }
@@ -388,6 +404,19 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
 
 fn normalize(value: u16) -> f32 {
     f32::from(value) / f32::from(MAX_14BIT)
+}
+
+/// The LED of a control, if it has one (the headphone button and continuous controls have none).
+#[must_use]
+pub fn led_of(control: Control) -> Option<Led> {
+    match control {
+        Control::Button(deck, Button::Sync) => Some(Led::Sync(deck)),
+        Control::Button(deck, Button::Cue) => Some(Led::Cue(deck)),
+        Control::Button(deck, Button::Play) => Some(Led::Play(deck)),
+        Control::Pad(deck, mode, pad) => Some(Led::Pad { deck, mode, pad }),
+        Control::Vinyl => Some(Led::Vinyl),
+        _ => None,
+    }
 }
 
 /// Splits a decoded event into the control it comes from and its value.
@@ -546,6 +575,34 @@ mod tests {
     #[test]
     fn default_mapping_loads() {
         assert!(mapping().len() >= 8);
+    }
+
+    #[test]
+    fn pads_play_the_test_hit_and_light_their_led() {
+        let mut m = mapping();
+        let pad = |pressed| ControllerEvent::Pad {
+            deck: Deck::A,
+            mode: PadMode::HotCue,
+            pad: 0,
+            shift: false,
+            pressed,
+            velocity: if pressed { 127 } else { 0 },
+        };
+        assert_eq!(m.handle(42, pad(true)), Some(Action::TestHit { ts_us: 42 }));
+        assert_eq!(m.handle(43, pad(false)), None);
+        let leds: Vec<_> = m.bound(ActionName::TestHit).filter_map(led_of).collect();
+        assert!(leds.contains(&Led::Pad {
+            deck: Deck::A,
+            mode: PadMode::HotCue,
+            pad: 0
+        }));
+        assert_eq!(
+            m.bound(ActionName::TransportToggle)
+                .filter_map(led_of)
+                .count(),
+            2,
+            "Play A and B, not the Shift layer"
+        );
     }
 
     #[test]

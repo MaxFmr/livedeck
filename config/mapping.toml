@@ -7,6 +7,7 @@
 #   shift = true : la même touche avec Shift tenu.
 # Actions disponibles (itération 008 ; les actions musicales arrivent avec les decks, 010+) :
 #   transport_toggle, transport_restart, tap_tempo, metronome_toggle   → boutons et pads
+#   test_hit : son de test (mesure de latence geste → son)             → boutons et pads
 #   tempo (range = [min, max] en BPM), master_gain, metronome_level    → faders et potards
 #   tempo_nudge (step = BPM par cran)                                  → jogs
 #   pickup = true : soft-takeover (le contrôle ne prend la main qu'en rejoignant la valeur actuelle).
@@ -32,6 +33,39 @@ action = "tap_tempo"
 [[bind]]
 control = "a.pfl"
 action = "metronome_toggle"
+
+# --- Son de test (mesure de latence, itération 009 ; remplacé par la batterie en 010+) ---
+[[bind]]
+control = "a.pad.hotcue.1"
+action = "test_hit"
+
+[[bind]]
+control = "a.pad.hotcue.2"
+action = "test_hit"
+
+[[bind]]
+control = "a.pad.hotcue.3"
+action = "test_hit"
+
+[[bind]]
+control = "a.pad.hotcue.4"
+action = "test_hit"
+
+[[bind]]
+control = "b.pad.hotcue.1"
+action = "test_hit"
+
+[[bind]]
+control = "b.pad.hotcue.2"
+action = "test_hit"
+
+[[bind]]
+control = "b.pad.hotcue.3"
+action = "test_hit"
+
+[[bind]]
+control = "b.pad.hotcue.4"
+action = "test_hit"
 
 # --- Tempo ---
 [[bind]]

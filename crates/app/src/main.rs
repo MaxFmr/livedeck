@@ -12,12 +12,16 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use assert_no_alloc::assert_no_alloc;
-use engine::link::{self, Command, EngineEvent, EngineHandle};
+use engine::link::{self, BlockTime, Command, EngineEvent, EngineHandle};
 use engine::{Engine, Param};
-use io::audio::{AudioOutput, start_output};
-use io::controller::{ControllerEvent, Deck, Led};
+use io::audio::{AudioOutput, BlockStamp, start_output};
+use io::controller::{ControllerEvent, Deck, Led, PadMode};
+use io::leds::{LedBank, LedState};
 use io::link::{ControllerLink, LinkEvent};
-use io::mapping::{Action, DEFAULT_MAPPING, Mapping, Target};
+use io::mapping::{
+    Action, ActionName, Control, DEFAULT_MAPPING, Mapping, Target, identify, led_of,
+};
+use io::system::host_time_us;
 
 const USAGE: &str = "\
 LiveDeck — métronome piloté (test de la plomberie temps réel)
@@ -35,7 +39,10 @@ Commandes (taper puis Entrée) :
   p        lecture / arrêt
   + / -    tempo ±1 BPM par signe (+++ = +3)
   t <bpm>  tempo exact         m        métronome on/off
-  q        quitter";
+  h        son de test (comme un pad Hot Cue)
+  q        quitter
+
+Pads Hot Cue : son de test, avec la latence geste → son mesurée à chaque frappe.";
 
 // Debug builds abort on any allocation inside `assert_no_alloc` (the audio callback); release
 // builds use the system allocator unchanged.
@@ -60,6 +67,60 @@ struct Session {
     /// Last values echoed to the console (continuous controls are echoed by steps only).
     shown_bpm: f64,
     shown_levels: [f32; 2],
+    leds: LedRoles,
+    /// LEDs of pads currently held down (lit while held).
+    held: Vec<Led>,
+    /// Test hits sent to the engine: (gesture host time, host time the control thread sent it).
+    pending_hits: Vec<(u64, u64)>,
+    latency: Latency,
+    /// Last time a tempo control moved without effect because it waits for its pickup.
+    tempo_ignored_at: Option<Instant>,
+}
+
+/// How long the tap-tempo LED asks for attention after a tempo control moved without effect.
+const PICKUP_HINT: Duration = Duration::from_secs(3);
+
+/// LEDs of the controls bound to actions that have a state to show.
+struct LedRoles {
+    transport: Vec<Led>,
+    metronome: Vec<Led>,
+    tap_tempo: Vec<Led>,
+}
+
+impl LedRoles {
+    fn of(mapping: &Mapping) -> Self {
+        let leds = |action| mapping.bound(action).filter_map(led_of).collect();
+        Self {
+            transport: leds(ActionName::TransportToggle),
+            metronome: leds(ActionName::MetronomeToggle),
+            tap_tempo: leds(ActionName::TapTempo),
+        }
+    }
+}
+
+/// Gesture → sound latencies of the session, in ms.
+#[derive(Default)]
+struct Latency {
+    totals: Vec<f64>,
+    reported: usize,
+}
+
+impl Latency {
+    /// "n, min / median / max" of the measured totals.
+    fn summary(&self) -> Option<String> {
+        let mut sorted = self.totals.clone();
+        sorted.sort_by(f64::total_cmp);
+        let (first, last) = (sorted.first()?, sorted.last()?);
+        let median = sorted.get(sorted.len() / 2)?;
+        Some(format!(
+            "{} frappes : min {first:.1} · médiane {median:.1} · max {last:.1} ms",
+            sorted.len()
+        ))
+    }
+}
+
+fn ms(from_us: u64, to_us: u64) -> f64 {
+    (to_us as f64 - from_us as f64) / 1000.0
 }
 
 struct Args {
@@ -116,7 +177,14 @@ fn open(buffers: &[u32], wanted: Wanted) -> Result<(AudioOutput, EngineHandle), 
         let engine = Engine::new(info.sample_rate, 4096, wanted.bpm);
         let (mut audio, control) = link::connect(engine);
         handle = Some(control);
-        move |data: &mut [f32], channels: usize| assert_no_alloc(|| audio.process(data, channels))
+        move |data: &mut [f32], channels: usize, stamp: BlockStamp| {
+            let time = BlockTime {
+                called_us: stamp.called_us,
+                callback_us: stamp.callback_us,
+                playback_us: stamp.playback_us,
+            };
+            assert_no_alloc(|| audio.process_at(data, channels, time));
+        }
     })
     .map_err(|e| e.to_string())?;
     let mut handle = handle.ok_or("le moteur n'a pas été construit")?;
@@ -198,7 +266,26 @@ fn handle_controller(
     if discrete && !quiet {
         println!("  🎛 {event}");
     }
+    if let ControllerEvent::Pad {
+        deck,
+        mode,
+        pad,
+        pressed,
+        ..
+    } = event
+        && let Some(led) = led_of(Control::Pad(deck, mode, pad))
+    {
+        s.held.retain(|&l| l != led);
+        if pressed {
+            s.held.push(led);
+        }
+    }
     let Some(action) = s.mapping.handle(ts_us, event) else {
+        if matches!(event, ControllerEvent::Tempo { .. })
+            && s.mapping.pending_pickup(Target::Tempo).is_some()
+        {
+            s.tempo_ignored_at = Some(Instant::now());
+        }
         return;
     };
     match action {
@@ -209,6 +296,7 @@ fn handle_controller(
             println!("⏮ reprise à la mesure 1");
         }
         Action::MetronomeToggle => toggle_metronome(s, handle),
+        Action::TestHit { ts_us } => test_hit(s, handle, ts_us),
         // Absolute tempo comes from the bound fader (hardware) or tap tempo (already registered
         // as a software change by the mapping).
         Action::SetTempo(bpm) => set_tempo(s, handle, bpm, false),
@@ -239,6 +327,91 @@ fn handle_controller(
     }
 }
 
+/// Sends the test sound; its latency is printed when the engine reports it.
+fn test_hit(s: &mut Session, handle: &mut EngineHandle, gesture_us: u64) {
+    if handle.send(Command::Hit { gesture_us }) {
+        // Bounded: entries whose report never came (stream rebuilt) do not pile up.
+        if s.pending_hits.len() >= 64 {
+            s.pending_hits.remove(0);
+        }
+        s.pending_hits.push((gesture_us, host_time_us()));
+    }
+}
+
+/// The engine played a test hit: prints its gesture → sound latency, split by stage.
+fn report_hit(s: &mut Session, gesture_us: u64, time: BlockTime) {
+    let Some(at) = s.pending_hits.iter().position(|&(g, _)| g == gesture_us) else {
+        return;
+    };
+    let (_, sent_us) = s.pending_hits.remove(at);
+    if gesture_us == 0 || time.called_us == 0 || time.callback_us == 0 {
+        println!("  ⏱ son de test joué (horodatage indisponible)");
+        return;
+    }
+    // CoreAudio stamps the block with the time it is handed to the device (one buffer plus the
+    // safety offset after the call); cpal's playback estimate adds buffer + safety offset + device
+    // latency to that stamp, so the device latency alone is the difference of the two.
+    let buffer = ms(time.called_us, time.callback_us);
+    let device = (ms(time.callback_us, time.playback_us) - buffer).max(0.0);
+    let total = ms(gesture_us, time.callback_us) + device;
+    s.latency.totals.push(total);
+    println!(
+        "  ⏱ geste → sortie ≈ {total:.1} ms (MIDI → boucle {:.1} · attente du bloc {:.1} · \
+         tampon {buffer:.1} · matériel {device:.1})",
+        ms(gesture_us, sent_us),
+        ms(sent_us, time.called_us),
+    );
+}
+
+/// Sets every LED from the session state; blinks and flashes are drawn against `beats`.
+fn update_leds(leds: &mut LedBank, s: &Session, beats: f64) {
+    leds.set_beats(beats);
+    let playing = s.wanted.playing;
+    for deck in [Deck::A, Deck::B] {
+        // Beat display while playing: Sync on beat 1, Cue on the other beats.
+        let (sync, cue) = if playing {
+            (LedState::FlashDownbeat, LedState::FlashOtherBeats)
+        } else {
+            (LedState::Off, LedState::Off)
+        };
+        leds.set_state(Led::Sync(deck), sync);
+        leds.set_state(Led::Cue(deck), cue);
+        leds.set_state(Led::Play(deck), LedState::Off);
+        // Pads are lit only while held (set below).
+        for mode in PadMode::ALL {
+            for pad in 0..4 {
+                leds.set(Led::Pad { deck, mode, pad }, false);
+            }
+        }
+    }
+    for &led in &s.leds.transport {
+        // Stopped = waiting to start: blinks in tempo.
+        leds.set_state(
+            led,
+            if playing {
+                LedState::On
+            } else {
+                LedState::Blink
+            },
+        );
+    }
+    for &led in &s.leds.metronome {
+        leds.set(led, s.wanted.metronome);
+    }
+    let ignored = s
+        .tempo_ignored_at
+        .is_some_and(|t| t.elapsed() < PICKUP_HINT);
+    if ignored && s.mapping.pending_pickup(Target::Tempo).is_some() {
+        // The tempo fader was moved but does nothing until it meets the current tempo.
+        for &led in &s.leds.tap_tempo {
+            leds.set_state(led, LedState::BlinkFast);
+        }
+    }
+    for &led in &s.held {
+        leds.set(led, true);
+    }
+}
+
 /// Applies one keyboard line; returns false to quit.
 fn handle_line(line: &str, s: &mut Session, handle: &mut EngineHandle) -> bool {
     let line = line.trim().to_lowercase();
@@ -251,6 +424,7 @@ fn handle_line(line: &str, s: &mut Session, handle: &mut EngineHandle) -> bool {
         "q" => return false,
         "p" => toggle_play(&mut s.wanted, handle),
         "m" => toggle_metronome(s, handle),
+        "h" => test_hit(s, handle, host_time_us()),
         "" => {}
         // Markers written into the session log by test scripts (tools/try-mapping.sh).
         marker if marker.starts_with('#') => println!("── {marker}"),
@@ -262,7 +436,7 @@ fn handle_line(line: &str, s: &mut Session, handle: &mut EngineHandle) -> bool {
         }
         other => match other.strip_prefix("t ").map(|v| v.trim().parse::<f64>()) {
             Some(Ok(bpm)) => tempo(s, handle, bpm),
-            _ => println!("commande inconnue : {other} (p, +, -, t <bpm>, m, q)"),
+            _ => println!("commande inconnue : {other} (p, +, -, t <bpm>, m, h, q)"),
         },
     }
     true
@@ -295,9 +469,14 @@ fn run() -> Result<(), String> {
             master_gain: 1.0,
             metronome_level: 0.7,
         },
+        leds: LedRoles::of(&mapping),
         mapping,
         shown_bpm: 0.0,
         shown_levels: [-1.0; 2],
+        held: Vec::new(),
+        pending_hits: Vec::new(),
+        latency: Latency::default(),
+        tempo_ignored_at: None,
     };
     println!("Mapping : {mapping_source} ({} liaisons)", s.mapping.len());
     s.mapping.software_changed(Target::Tempo, s.wanted.bpm);
@@ -312,19 +491,20 @@ fn run() -> Result<(), String> {
     println!("{USAGE}\n");
 
     let (keys_tx, keys) = mpsc::channel::<String>();
+    let control_thread = std::thread::current();
     std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines().map_while(Result::ok) {
             if keys_tx.send(line).is_err() {
                 break;
             }
+            control_thread.unpark();
         }
     });
 
     let mut link = ControllerLink::new();
     let mut link_events = Vec::new();
-    // Beat flashes on Sync (downbeat) / Cue (other beats), switched off after FLASH.
-    const FLASH: Duration = Duration::from_millis(120);
-    let mut flash_until: Option<Instant> = None;
+    // While stopped, LEDs blink on a free-running beat at the current tempo.
+    let mut stopped_since = Instant::now();
 
     let mut last_report = Instant::now();
     loop {
@@ -345,36 +525,40 @@ fn run() -> Result<(), String> {
                     );
                 }
                 LinkEvent::Input { ts_us, event } => {
+                    if let Some((id, _)) = identify(event)
+                        && let Some(led) = led_of(id.control)
+                    {
+                        link.leds_mut().touched(led);
+                    }
                     handle_controller(ts_us, event, &mut s, &mut handle, args.quiet);
                 }
             }
         }
         while let Ok(line) = keys.try_recv() {
             if !handle_line(&line, &mut s, &mut handle) {
+                finish(&s);
                 return Ok(());
             }
         }
-        while let Some(EngineEvent::Beat { bar, beat }) = handle.next_event() {
-            for deck in [Deck::A, Deck::B] {
-                link.leds_mut().set(Led::Sync(deck), beat == 1);
-                link.leds_mut().set(Led::Cue(deck), beat != 1);
-            }
-            flash_until = Some(Instant::now() + FLASH);
-            if !args.quiet {
-                let marker = if beat == 1 { "●" } else { "○" };
-                println!("{marker} mesure {bar:>3} · temps {beat}");
-            }
-        }
-        if flash_until.is_some_and(|t| Instant::now() >= t) {
-            flash_until = None;
-            for deck in [Deck::A, Deck::B] {
-                link.leds_mut().set(Led::Sync(deck), false);
-                link.leds_mut().set(Led::Cue(deck), false);
+        while let Some(event) = handle.next_event() {
+            match event {
+                EngineEvent::Beat { bar, beat } => {
+                    if !args.quiet {
+                        let marker = if beat == 1 { "●" } else { "○" };
+                        println!("{marker} mesure {bar:>3} · temps {beat}");
+                    }
+                }
+                EngineEvent::Hit { gesture_us, time } => report_hit(&mut s, gesture_us, time),
             }
         }
-        for deck in [Deck::A, Deck::B] {
-            link.leds_mut().set(Led::Play(deck), s.wanted.playing);
-        }
+        let snap = handle.snapshot();
+        let beats = if snap.playing {
+            stopped_since = Instant::now();
+            snap.beats
+        } else {
+            stopped_since.elapsed().as_secs_f64() * s.wanted.bpm / 60.0
+        };
+        update_leds(link.leds_mut(), &s, beats);
         let xruns = output.stats.xruns.load(Ordering::Relaxed);
         if xruns != seen_xruns {
             seen_xruns = xruns;
@@ -393,6 +577,7 @@ fn run() -> Result<(), String> {
             .seconds
             .is_some_and(|s| session.elapsed().as_secs_f64() >= s)
         {
+            finish(&s);
             return Ok(());
         }
         if output.stats.invalidated.load(Ordering::Relaxed) {
@@ -411,7 +596,12 @@ fn run() -> Result<(), String> {
         }
         if last_report.elapsed() >= Duration::from_secs(5) {
             last_report = Instant::now();
-            let snap = handle.snapshot();
+            if s.latency.totals.len() > s.latency.reported {
+                s.latency.reported = s.latency.totals.len();
+                if let Some(summary) = s.latency.summary() {
+                    println!("  ⏱ latence : {summary}");
+                }
+            }
             if let Some(hw) = s.mapping.pending_pickup(Target::Tempo) {
                 println!(
                     "  ⇅ fader Tempo à {:.0} % : le ramener vers {:.0} BPM pour reprendre la main",
@@ -433,8 +623,16 @@ fn run() -> Result<(), String> {
                 }
             );
         }
-        // Control loop period: bounds the latency of controller gestures that go through it.
-        sleep(Duration::from_millis(2));
+        // Woken at once by controller messages (and keyboard lines); otherwise one turn per 2 ms
+        // keeps LEDs and reports going.
+        std::thread::park_timeout(Duration::from_millis(2));
+    }
+}
+
+/// End-of-session summary.
+fn finish(s: &Session) {
+    if let Some(summary) = s.latency.summary() {
+        println!("⏱ latence geste → son, {summary}");
     }
 }
 

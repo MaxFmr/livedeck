@@ -3,8 +3,8 @@
 #![cfg(debug_assertions)]
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
-use engine::Engine;
-use engine::link::{self, Command};
+use engine::link::{self, BlockTime, Command};
+use engine::{Engine, Param};
 
 #[global_allocator]
 static ALLOCATOR: AllocDisabler = AllocDisabler;
@@ -31,12 +31,25 @@ fn ten_seconds_of_audio_without_allocation() {
             150 => {
                 handle.send(Command::Stop);
             }
+            120 => {
+                handle.send(Command::SetParam(Param::MasterGain, 0.5));
+            }
+            170 => {
+                handle.send(Command::Hit {
+                    gesture_us: i as u64,
+                });
+            }
             _ => {}
         }
         // Odd sizes too: the engine slices blocks larger than its bus.
         let frames = if i % 7 == 0 { 333 } else { 512 };
         let buf = &mut block[..frames * 2];
-        assert_no_alloc(|| audio.process(buf, 2));
+        let time = BlockTime {
+            called_us: i as u64,
+            callback_us: i as u64,
+            playback_us: i as u64 + 5_000,
+        };
+        assert_no_alloc(|| audio.process_at(buf, 2, time));
         while handle.next_event().is_some() {}
     }
     assert_eq!(handle.snapshot().nan_count, 0);

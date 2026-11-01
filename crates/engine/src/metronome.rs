@@ -22,6 +22,12 @@ const SILENCE: f32 = 1.0e-4;
 impl Click {
     #[must_use]
     pub fn new(sample_rate: u32) -> Self {
+        Self::with_decay(sample_rate, DECAY_SECONDS)
+    }
+
+    /// A burst that fades to -60 dB in `decay_seconds`.
+    #[must_use]
+    pub fn with_decay(sample_rate: u32, decay_seconds: f32) -> Self {
         let sample_rate = sample_rate.max(1) as f32;
         Self {
             sample_rate,
@@ -29,14 +35,18 @@ impl Click {
             increment: 0.0,
             envelope: 0.0,
             // exp(ln(1e-3) / (t * sr)) reaches -60 dB after t seconds.
-            decay: (-6.907_755 / (DECAY_SECONDS * sample_rate)).exp(),
+            decay: (-6.907_755 / (decay_seconds.max(1.0e-3) * sample_rate)).exp(),
             gain: 0.5,
         }
     }
 
     /// Starts a click; `accent` is the first beat of the bar (higher pitch).
     pub fn trigger(&mut self, accent: bool) {
-        let freq = if accent { 1_600.0 } else { 1_000.0 };
+        self.trigger_at(if accent { 1_600.0 } else { 1_000.0 });
+    }
+
+    /// Starts a burst at `freq` Hz.
+    pub fn trigger_at(&mut self, freq: f32) {
         self.increment = freq / self.sample_rate;
         self.phase = 0.0;
         self.envelope = 1.0;

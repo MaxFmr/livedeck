@@ -64,6 +64,24 @@ impl AudioStats {
     }
 }
 
+/// Host-time stamps of one block, in µs — the clock of CoreMIDI timestamps (`midir`), so a gesture
+/// and the moment its sound leaves the driver can be compared.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BlockStamp {
+    /// When the callback actually ran (read from the host clock on entry).
+    pub called_us: u64,
+    /// CoreAudio's timestamp of the block (`mHostTime`): when its first sample is handed to the
+    /// device, ahead of `called_us` by about one buffer plus the safety offset.
+    pub callback_us: u64,
+    /// cpal's estimate of when the first sample reaches the output: `callback_us` + buffer +
+    /// safety offset + device latency (may count the buffer twice, see iteration 009).
+    pub playback_us: u64,
+}
+
+fn micros(instant: cpal::StreamInstant) -> u64 {
+    u64::try_from(instant.as_nanos() / 1_000).unwrap_or(u64::MAX)
+}
+
 /// Settings actually obtained from the device.
 #[derive(Debug, Clone)]
 pub struct OutputInfo {
@@ -94,7 +112,7 @@ pub struct AudioOutput {
 /// Opens the default output in f32, at 48 kHz when supported, with the first of the preferred
 /// buffer sizes the device accepts. `make_render` receives the settings actually obtained (so the
 /// engine is built at the real sample rate) and returns the closure called as
-/// `render(interleaved, channels)` for every block.
+/// `render(interleaved, channels, stamp)` for every block.
 ///
 /// `render` must follow the real-time rules (docs/rust/realtime-audio.md §1).
 pub fn start_output<F, R>(
@@ -103,7 +121,7 @@ pub fn start_output<F, R>(
 ) -> Result<AudioOutput, AudioError>
 where
     F: FnOnce(&OutputInfo) -> R,
-    R: FnMut(&mut [f32], usize) + Send + 'static,
+    R: FnMut(&mut [f32], usize, BlockStamp) + Send + 'static,
 {
     let host = cpal::default_host();
     let device = host.default_output_device().ok_or(AudioError::NoDevice)?;
@@ -150,9 +168,15 @@ where
     let err_stats = Arc::clone(&stats);
     let stream = device.build_output_stream::<f32, _, _>(
         config,
-        move |data: &mut [f32], _info: &cpal::OutputCallbackInfo| {
+        move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
             let started = Instant::now();
-            render(data, channels);
+            let timestamp = info.timestamp();
+            let stamp = BlockStamp {
+                called_us: crate::system::host_time_us(),
+                callback_us: micros(timestamp.callback),
+                playback_us: micros(timestamp.playback),
+            };
+            render(data, channels, stamp);
             let ns = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
             data_stats.max_callback_ns.fetch_max(ns, Ordering::Relaxed);
             let frames = u32::try_from(data.len() / channels.max(1)).unwrap_or(u32::MAX);

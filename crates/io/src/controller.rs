@@ -21,6 +21,10 @@ pub enum PadMode {
     Loop,
 }
 
+impl PadMode {
+    pub const ALL: [Self; 4] = [Self::HotCue, Self::Sampler, Self::Fx, Self::Loop];
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Button {
     Sync,

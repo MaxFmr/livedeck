@@ -4,17 +4,16 @@
 //! other modes are kept here and sent when their mode is shown. After a (re)connection everything is
 //! resent.
 //!
+//! LEDs are on/off only, so states such as « waiting » are drawn in software: each LED holds a
+//! `LedState` rendered against the musical position (`set_beats`), so blinks and flashes stay in
+//! time with the music.
+//!
 //! Runs on: control thread.
 
 use crate::controller::{Deck, Led, PadMode, led_message};
 
 const DECKS: [Deck; 2] = [Deck::A, Deck::B];
-const MODES: [PadMode; 4] = [
-    PadMode::HotCue,
-    PadMode::Sampler,
-    PadMode::Fx,
-    PadMode::Loop,
-];
+const MODES: [PadMode; 4] = PadMode::ALL;
 /// Sync, Cue, Play per deck.
 const TRANSPORT: usize = 3 * 2;
 const VINYL: usize = TRANSPORT;
@@ -72,9 +71,55 @@ fn led_at(i: usize) -> Option<Led> {
     }
 }
 
+/// What a LED shows. Blinks and flashes follow the beat position given to `LedBank::set_beats`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LedState {
+    #[default]
+    Off,
+    On,
+    /// Half of every beat: « waiting », ready to start.
+    Blink,
+    /// Four times per beat: « needs attention » (e.g. a fader waiting to be picked up).
+    BlinkFast,
+    /// The first quarter of every beat.
+    FlashBeat,
+    /// The first quarter of beat 1 of each bar.
+    FlashDownbeat,
+    /// The first quarter of beats 2, 3 and 4.
+    FlashOtherBeats,
+}
+
+/// Fraction of a beat a flash stays lit (a quarter: 125 ms at 120 BPM).
+const FLASH: f64 = 0.25;
+const BEATS_PER_BAR: f64 = 4.0;
+
+impl LedState {
+    /// Whether the LED is lit at `beats` (position in beats; bar starts on multiples of 4).
+    #[must_use]
+    pub fn lit(self, beats: f64) -> bool {
+        let beats = if beats.is_finite() {
+            beats.max(0.0)
+        } else {
+            0.0
+        };
+        let frac = beats.fract();
+        let downbeat = beats.rem_euclid(BEATS_PER_BAR) < 1.0;
+        match self {
+            Self::Off => false,
+            Self::On => true,
+            Self::Blink => frac < 0.5,
+            Self::BlinkFast => (frac * 4.0).fract() < 0.5,
+            Self::FlashBeat => frac < FLASH,
+            Self::FlashDownbeat => downbeat && frac < FLASH,
+            Self::FlashOtherBeats => !downbeat && frac < FLASH,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LedBank {
-    wanted: [bool; LED_COUNT],
+    wanted: [LedState; LED_COUNT],
+    beats: f64,
     /// What the controller is believed to display; `None` = unknown, must be sent.
     sent: [Option<bool>; LED_COUNT],
     shown_mode: [PadMode; 2],
@@ -83,7 +128,8 @@ pub struct LedBank {
 impl Default for LedBank {
     fn default() -> Self {
         Self {
-            wanted: [false; LED_COUNT],
+            wanted: [LedState::Off; LED_COUNT],
+            beats: 0.0,
             sent: [None; LED_COUNT],
             shown_mode: [PadMode::HotCue; 2],
         }
@@ -97,22 +143,45 @@ impl LedBank {
     }
 
     pub fn set(&mut self, led: Led, on: bool) {
+        self.set_state(led, if on { LedState::On } else { LedState::Off });
+    }
+
+    pub fn set_state(&mut self, led: Led, state: LedState) {
         if let Some(slot) = index(led).and_then(|i| self.wanted.get_mut(i)) {
-            *slot = on;
+            *slot = state;
         }
     }
 
     #[must_use]
-    pub fn get(&self, led: Led) -> bool {
+    pub fn state(&self, led: Led) -> LedState {
         index(led)
             .and_then(|i| self.wanted.get(i))
             .copied()
-            .unwrap_or(false)
+            .unwrap_or_default()
+    }
+
+    /// Whether the LED is lit at the current position.
+    #[must_use]
+    pub fn get(&self, led: Led) -> bool {
+        self.state(led).lit(self.beats)
+    }
+
+    /// Musical position (in beats) that blinks and flashes are drawn against.
+    pub fn set_beats(&mut self, beats: f64) {
+        self.beats = beats;
     }
 
     /// The controller state is unknown (new connection): resend everything on the next flush.
     pub fn invalidate(&mut self) {
         self.sent = [None; LED_COUNT];
+    }
+
+    /// The controller may have changed this LED by itself (pads light up under the finger): send
+    /// its wanted state again on the next flush.
+    pub fn touched(&mut self, led: Led) {
+        if let Some(slot) = index(led).and_then(|i| self.sent.get_mut(i)) {
+            *slot = None;
+        }
     }
 
     /// The controller now displays `mode` on `deck`: its pad LEDs must be (re)sent.
@@ -140,9 +209,10 @@ impl LedBank {
     pub fn flush(&mut self, mut send: impl FnMut([u8; 3])) {
         for i in 0..LED_COUNT {
             let Some(led) = led_at(i) else { continue };
-            let (Some(&wanted), Some(&sent)) = (self.wanted.get(i), self.sent.get(i)) else {
+            let (Some(state), Some(&sent)) = (self.wanted.get(i), self.sent.get(i)) else {
                 continue;
             };
+            let wanted = state.lit(self.beats);
             if sent == Some(wanted) || !self.visible(led) {
                 continue;
             }
@@ -202,6 +272,44 @@ mod tests {
         let sent = flushed(&mut bank);
         assert_eq!(sent.len(), 4);
         assert!(sent.contains(&[0x97, 0x32, 0x7F]));
+    }
+
+    #[test]
+    fn blinks_follow_the_beat() {
+        // Beat 0 is a downbeat; 1.1 is early in beat 2; 1.6 is late in beat 2.
+        assert!(LedState::Blink.lit(0.1) && !LedState::Blink.lit(0.6));
+        assert!(LedState::BlinkFast.lit(0.1) && !LedState::BlinkFast.lit(0.2));
+        assert!(LedState::BlinkFast.lit(0.3));
+        assert!(LedState::FlashDownbeat.lit(4.1) && !LedState::FlashDownbeat.lit(1.1));
+        assert!(LedState::FlashOtherBeats.lit(1.1) && !LedState::FlashOtherBeats.lit(4.1));
+        assert!(!LedState::FlashBeat.lit(1.6));
+        assert_eq!(LedState::Blink.lit(f64::NAN), LedState::Blink.lit(0.0));
+    }
+
+    #[test]
+    fn blinking_led_sends_only_on_changes() {
+        let mut bank = LedBank::new();
+        flushed(&mut bank);
+        bank.set_state(Led::Play(Deck::B), LedState::Blink);
+        bank.set_beats(0.1);
+        assert_eq!(flushed(&mut bank), vec![[0x92, 0x07, 0x7F]]);
+        bank.set_beats(0.2);
+        assert!(flushed(&mut bank).is_empty(), "still lit: nothing to send");
+        bank.set_beats(0.7);
+        assert_eq!(flushed(&mut bank), vec![[0x92, 0x07, 0x00]]);
+    }
+
+    #[test]
+    fn touched_led_is_resent_even_if_unchanged() {
+        let mut bank = LedBank::new();
+        flushed(&mut bank);
+        let pad = Led::Pad {
+            deck: Deck::A,
+            mode: PadMode::HotCue,
+            pad: 1,
+        };
+        bank.touched(pad);
+        assert_eq!(flushed(&mut bank), vec![[0x96, 0x01, 0x00]]);
     }
 
     #[test]

@@ -21,6 +21,11 @@ pub enum Command {
     Metronome(bool),
     /// Normalized 0..=1 value of a continuous parameter.
     SetParam(Param, f32),
+    /// Plays the test sound now; `gesture_us` (host time of the gesture) comes back in
+    /// `EngineEvent::Hit` to measure gesture → sound latency.
+    Hit {
+        gesture_us: u64,
+    },
 }
 
 const _: () = assert!(core::mem::size_of::<Command>() <= 32);
@@ -30,6 +35,17 @@ const _: () = assert!(core::mem::size_of::<Command>() <= 32);
 pub enum EngineEvent {
     /// The last block played into a new beat (1-based bar and beat).
     Beat { bar: u64, beat: u8 },
+    /// A `Command::Hit` started sounding at the first sample of the block stamped `time`.
+    Hit { gesture_us: u64, time: BlockTime },
+}
+
+/// Host-time stamps of one audio block, in µs (0 when unknown, e.g. offline rendering). See
+/// `io::audio::BlockStamp` for what each one means.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BlockTime {
+    pub called_us: u64,
+    pub callback_us: u64,
+    pub playback_us: u64,
 }
 
 /// Latest engine state, written once per block.
@@ -108,14 +124,19 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
 }
 
 impl AudioEngine {
-    /// Audio callback body: applies pending commands, renders, publishes state.
+    /// Audio callback body without timing information (offline rendering, tests).
     pub fn process(&mut self, out: &mut [f32], channels: usize) {
+        self.process_at(out, channels, BlockTime::default());
+    }
+
+    /// Audio callback body: applies pending commands, renders, publishes state.
+    pub fn process_at(&mut self, out: &mut [f32], channels: usize, time: BlockTime) {
         // Bounded even if the control thread keeps pushing while we drain.
         for _ in 0..COMMAND_CAPACITY {
             let Ok(command) = self.commands.pop() else {
                 break;
             };
-            self.apply(command);
+            self.apply(command, time);
         }
         self.engine.process(out, channels);
         self.report_beat();
@@ -123,7 +144,7 @@ impl AudioEngine {
             .write(snapshot_of(&self.engine, self.applied, self.dropped_events));
     }
 
-    fn apply(&mut self, command: Command) {
+    fn apply(&mut self, command: Command, time: BlockTime) {
         self.applied += 1;
         match command {
             Command::Start => {
@@ -134,6 +155,10 @@ impl AudioEngine {
             Command::SetTempo(bpm) => self.engine.set_tempo(bpm),
             Command::Metronome(on) => self.engine.set_metronome(on),
             Command::SetParam(param, value) => self.engine.set_param(param, value),
+            Command::Hit { gesture_us } => {
+                self.engine.trigger_hit();
+                self.push_event(EngineEvent::Hit { gesture_us, time });
+            }
         }
     }
 
@@ -153,6 +178,10 @@ impl AudioEngine {
             bar: beat / BEATS_PER_BAR + 1,
             beat: (beat % BEATS_PER_BAR) as u8 + 1,
         };
+        self.push_event(event);
+    }
+
+    fn push_event(&mut self, event: EngineEvent) {
         if self.events.push(event).is_err() {
             self.dropped_events = self.dropped_events.saturating_add(1);
         }
@@ -216,8 +245,10 @@ mod tests {
         // 120 BPM: 2 beats per second; 1 s = 375 blocks of 128 frames.
         run(&mut audio, 375);
         let mut beats = Vec::new();
-        while let Some(EngineEvent::Beat { bar, beat }) = handle.next_event() {
-            beats.push((bar, beat));
+        while let Some(event) = handle.next_event() {
+            if let EngineEvent::Beat { bar, beat } = event {
+                beats.push((bar, beat));
+            }
         }
         assert_eq!(beats, vec![(1, 1), (1, 2)]);
     }
@@ -246,6 +277,27 @@ mod tests {
         run(&mut audio, 38);
         audio.process(&mut buf, 2);
         assert!(buf.iter().all(|s| s.abs() < 1.0e-4));
+    }
+
+    #[test]
+    fn hit_reports_the_block_times() {
+        let (mut audio, mut handle) = pair();
+        handle.send(Command::Hit { gesture_us: 1_000 });
+        let mut buf = [0.0_f32; 256];
+        let time = BlockTime {
+            called_us: 1_500,
+            callback_us: 4_000,
+            playback_us: 9_000,
+        };
+        audio.process_at(&mut buf, 2, time);
+        assert_eq!(
+            handle.next_event(),
+            Some(EngineEvent::Hit {
+                gesture_us: 1_000,
+                time
+            })
+        );
+        assert!(buf.iter().any(|s| s.abs() > 0.1), "the hit is audible");
     }
 
     #[test]
