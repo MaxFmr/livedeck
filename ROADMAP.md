@@ -53,7 +53,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 - [x] Voix de batterie synthétiques (kick, snare, hats avec choke, clap, perc). → [010](docs/iterations/010-drum-voices.md)
 - [x] Séquenceur 16 pas (vélocité, probabilité, swing), 4 patterns + changement quantifié. → [011](docs/iterations/011-sequencer.md)
 - [x] Mutes, fills, densité ordonnée, beat-repeat. → [012](docs/iterations/012-drum-gestures.md)
-- [ ] Basse mono (glide, accent, filtre), patterns en degrés de gamme.
+- [x] Basse mono (glide, accent, filtre), patterns en degrés de gamme. → [013](docs/iterations/013-bass.md)
 - [ ] `StylePreset` + 5 presets de départ (dub/steppa, afrobeat/reggae, UK garage, lo-fi, house/techno) — voir `docs/music/live-engine.md`.
 - [ ] **3b** Lecteur de samples (chargement hors audio, `symphonia` + `rubato`, pool de voix) ; kits copiés dans `assets/` (ex. TR-909 du disque PHILIPS SOL), jamais lus depuis le disque externe en jeu.
 

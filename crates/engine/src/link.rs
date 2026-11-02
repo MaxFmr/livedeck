@@ -25,6 +25,11 @@ pub enum Command {
     SetParam(Param, f32),
     /// Drum pattern (0-based) for the next bar, or now if stopped.
     QueuePattern(u8),
+    /// Bass line (0-based) alone for the next bar, or now if stopped.
+    QueueBassLine(u8),
+    /// Bass tonic (0 = C … 11 = B) for the next bar, or now if stopped.
+    SetTonic(u8),
+    BassMute(bool),
     /// Swing of the odd 16ths, 0.5..=0.75.
     SetSwing(f32),
     /// Drum sequencer on/off.
@@ -97,6 +102,13 @@ pub struct EngineSnapshot {
     /// Fill waiting or playing (0-based), and whether it has started.
     pub fill: Option<(u8, bool)>,
     pub beat_repeat: bool,
+    /// Bass line playing (0-based) and the one waiting for the next bar.
+    pub bass_line: u8,
+    pub pending_bass_line: Option<u8>,
+    pub bass_muted: bool,
+    /// Tonic (0 = C … 11 = B) and the one waiting for the next bar.
+    pub tonic: u8,
+    pub pending_tonic: Option<u8>,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -163,6 +175,11 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         density: engine.sequencer().density(),
         fill: engine.sequencer().fill(),
         beat_repeat: engine.beat_repeat_engaged(),
+        bass_line: engine.sequencer().bass().current(),
+        pending_bass_line: engine.sequencer().bass().pending(),
+        bass_muted: engine.sequencer().bass().muted(),
+        tonic: engine.sequencer().bass().key().tonic,
+        pending_tonic: engine.sequencer().bass().pending_tonic(),
     }
 }
 
@@ -204,6 +221,9 @@ impl AudioEngine {
             Command::SetTempo(bpm) => self.engine.set_tempo(bpm),
             Command::Metronome(on) => self.engine.set_metronome(on),
             Command::QueuePattern(index) => self.engine.queue_pattern(index),
+            Command::QueueBassLine(index) => self.engine.queue_bass_line(index),
+            Command::SetTonic(tonic) => self.engine.queue_tonic(tonic),
+            Command::BassMute(muted) => self.engine.set_bass_mute(muted),
             Command::SetSwing(swing) => self.engine.set_swing(swing),
             Command::Sequencer(on) => self.engine.set_sequencer(on),
             Command::SetMutes(mutes) => self.engine.set_mutes(mutes),
@@ -404,10 +424,31 @@ mod tests {
     }
 
     #[test]
+    fn bass_changes_are_published_then_applied_at_the_bar() {
+        let (mut audio, mut handle) = pair();
+        handle.send(Command::Start);
+        run(&mut audio, 10);
+        handle.send(Command::QueueBassLine(3));
+        handle.send(Command::SetTonic(2));
+        handle.send(Command::BassMute(true));
+        run(&mut audio, 1);
+        let snap = handle.snapshot();
+        assert_eq!((snap.bass_line, snap.pending_bass_line), (0, Some(3)));
+        assert_eq!((snap.tonic, snap.pending_tonic), (9, Some(2)));
+        assert!(snap.bass_muted);
+        // 120 BPM: a bar is 96 000 samples, 750 blocks of 128.
+        run(&mut audio, 750);
+        let snap = handle.snapshot();
+        assert_eq!((snap.bass_line, snap.pending_bass_line), (3, None));
+        assert_eq!((snap.tonic, snap.pending_tonic), (2, None));
+    }
+
+    #[test]
     fn beat_repeat_loops_the_drum_bus() {
-        // Metronome off: only the drums sound. Repeat 1/16 from the start, held for a bar.
+        // Metronome and bass off: only the drums sound. Repeat 1/16 from the start, held for a bar.
         let (mut audio, mut handle) = pair();
         handle.send(Command::Metronome(false));
+        handle.send(Command::BassMute(true));
         // Quiet enough for the limiter to stay out of the way.
         handle.send(Command::SetParam(Param::MasterGain, 0.5));
         handle.send(Command::Start);

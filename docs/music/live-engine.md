@@ -82,19 +82,19 @@ continus en 14 bits (filtres et volumes sans paliers).
 
 | Contrôle | Fonction |
 |---|---|
-| Pads **Hot Cue** | patterns de batterie A/B/C/D (quantifiés) · Shift : variations |
+| Pads **Hot Cue** | patterns de batterie A/B/C/D, chacun avec sa ligne de basse (quantifiés) · Shift : ligne de basse seule (013). ⚠ Shift tenu **avant** le bouton de mode Hot Cue passe le contrôleur en mode FX : choisir Hot Cue sans Shift, puis Shift + pad |
 | Pads **Sampler** | fills 1–4 (roll snare, roll perc, break kick, montée hats), de la noire suivante à la fin de mesure · Shift : sons seuls kick, snare, hats |
-| Pads **FX** | mutes immédiats : kick / snare+clap / hats / perc (basse en 013) · Shift : solo |
+| Pads **FX** | mutes immédiats : kick / snare+clap / hats / perc (la basse sur Cue) · Shift : solo |
 | Pads **Loop** | beat-repeat 1/4, 1/8, 1/16, 1/32 (maintenu) : roule le dernier coup dès la frontière suivante ; pad plus court = subdivise ce qu'on entend, relâcher = retour en phase au pad tenu · Shift : reverse/gate |
 | Jog bord | swing (−/+) |
-| Jog dessus + rotation | tempo (en attendant les patterns de basse, 013) |
+| Jog dessus + rotation | tempo |
 | Jog Shift + rotation | densité (élagage ordonné des pas par probabilité) |
 | Tempo | densité de la batterie (0 = kick seul → 1 = complet) |
 | Filter | filtre DJ du bus rythme |
-| Bass | coupure du filtre de la basse |
+| Bass | coupure du filtre de la basse, 60 Hz → 4 kHz (013) |
 | Volume | niveau rythme |
 | Play | transport start/stop (global) · Shift : relancer à la mesure 1 |
-| Cue | rappel de la scène courante · Shift : enregistrer la scène |
+| Cue | mute de la basse, LED allumée = elle joue (013 ; le rappel de scène ira ailleurs en phase 6) |
 | Sync | tap tempo · Shift + jog : BPM fin |
 | PFL | métronome on/off |
 
@@ -114,7 +114,7 @@ continus en 14 bits (filtres et volumes sans paliers).
 | Bass | envoi delay/réverb |
 | Volume | niveau mélodie |
 | Play | deck mélodie on/off (quantifié) |
-| Cue | tonique −/+ (Shift = +) |
+| Cue | tonique −1 demi-ton · Shift : +1, à la mesure (013, gamme mineure fixe jusqu'en 017) |
 | Sync | progression suivante |
 | PFL | sortie MIDI vers un synthé externe (FM-1…) on/off — phase 7 |
 
@@ -147,8 +147,14 @@ action = "transport_restart"
 
 Actions disponibles aujourd'hui : `transport_toggle`, `transport_restart`, `tap_tempo`,
 `metronome_toggle`, `drum` (`voice` = kick, snare, closed_hat, open_hat, clap, perc), `tempo`,
-`tempo_nudge` (`step`), `master_gain`, `metronome_level`, `drum_level`. Les actions
-musicales (patterns, mutes, accords…) s'ajoutent avec les decks (010+), sur le même modèle.
+`tempo_nudge` (`step`), `master_gain`, `metronome_level`, `drum_level` (batterie + basse),
+`pattern`, `swing`, `mute`, `fill`, `beat_repeat`, `drum_density`, `bass_line` (`pattern` = 1–4),
+`bass_mute`, `tonic` (`step` = demi-tons), `bass_cutoff`. Liste commentée en tête de
+`config/mapping.toml`.
+
+Lignes de basse (013) : 16 jetons séparés par des espaces — `.` silence, `-` tient la note précédente,
+degré `1`–`9`, `'` / `,` octave au-dessus / en dessous, `!` accent, `~` en tête = glisse depuis la note
+précédente (tenue jusqu'à elle). Ex. `"1! - - - . . 1 . 5, - - . 7, - . ."`.
 
 ## Théorie utile (rappels)
 

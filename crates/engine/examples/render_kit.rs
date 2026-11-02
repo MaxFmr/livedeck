@@ -1,6 +1,8 @@
 //! Renders the drum kit for listening: `target/renders/kit.wav` (each voice alone, then a few bars
 //! of groove), `target/renders/patterns.wav` (the sequencer's patterns A–D, two bars each) and
-//! `target/renders/gestures.wav` (density, fills and beat-repeat on groove B).
+//! `target/renders/gestures.wav` (density, fills and beat-repeat on groove B) and
+//! `target/renders/bass.wav` (the four bass lines alone, then with their drums, a filter sweep and
+//! a key change).
 //! Offline, so it may allocate and write files.
 //!
 //! cargo run -p engine --example render_kit --release
@@ -9,7 +11,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-use engine::Engine;
+use engine::{Engine, Param};
 use engine::drums::DrumVoice;
 use engine::repeat::Division;
 
@@ -130,7 +132,41 @@ fn main() -> io::Result<()> {
         play(&mut engine, bar / 2);
         engine.beat_repeat(None);
     }
-    save(&dir.join("gestures.wav"), &gestures)
+    save(&dir.join("gestures.wav"), &gestures)?;
+
+    // Bass: lines A–D alone (drums muted), one bar each; then with their drums, two bars each;
+    // then line B with the filter opening over two bars, and two bars in E minor — 16 bars.
+    let mut engine = Engine::new(SR, 512, BPM);
+    engine.set_metronome(false);
+    engine.set_mutes(0b11_1111);
+    engine.start();
+    let mut bass = Vec::new();
+    let mut play = |engine: &mut Engine, frames: usize| {
+        let start = bass.len();
+        bass.resize(start + frames * 2, 0.0);
+        for chunk in bass[start..].chunks_mut(256) {
+            engine.process(chunk, 2);
+        }
+    };
+    for index in 0..4 {
+        engine.queue_pattern(index);
+        play(&mut engine, bar);
+    }
+    engine.set_mutes(0);
+    for index in 0..4 {
+        engine.queue_pattern(index);
+        play(&mut engine, bar * 2);
+    }
+    engine.queue_pattern(1);
+    let slices = 32;
+    for k in 0..slices {
+        engine.set_param(Param::BassCutoff, k as f32 / (slices - 1) as f32);
+        play(&mut engine, bar * 2 / slices);
+    }
+    engine.set_param(Param::BassCutoff, 0.45);
+    engine.queue_tonic(4);
+    play(&mut engine, bar * 2);
+    save(&dir.join("bass.wav"), &bass)
 }
 
 fn save(path: &Path, audio: &[f32]) -> io::Result<()> {

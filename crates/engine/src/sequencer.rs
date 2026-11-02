@@ -6,8 +6,12 @@
 //! straight, at 75 % the pair is a dotted note + its third. The engine splits its blocks on step
 //! positions, so every hit lands on its exact sample.
 //!
+//! The bass line (`BassLine`) rides on the same steps and swing: each drum pattern brings the
+//! bass line of the same index, which can also be changed on its own.
+//!
 //! Runs on: audio thread.
 
+use crate::bass::{BassLine, BassVoice, gate_samples};
 use crate::clock::Clock;
 use crate::drums::{DrumKit, DrumVoice};
 
@@ -176,6 +180,25 @@ pub fn voice_bit(voice: DrumVoice) -> u8 {
         .map_or(0, |i| 1 << i)
 }
 
+/// Beat of `step`: inside each swung pair (two 8ths or two 16ths), the second note moves from
+/// half-way to `swing`, and the 16ths in between follow linearly.
+fn step_beats(step: u64, swing: f32, grid: SwingGrid) -> f64 {
+    let pair = match grid {
+        SwingGrid::Eighth => 1.0,
+        SwingGrid::Sixteenth => 0.5,
+    };
+    let straight = step as f64 / 4.0;
+    let start = (straight / pair).floor() * pair;
+    let q = (straight - start) / pair;
+    let s = f64::from(swing);
+    let warped = if q < 0.5 {
+        q * 2.0 * s
+    } else {
+        s + (q - 0.5) * 2.0 * (1.0 - s)
+    };
+    start + warped * pair
+}
+
 /// A fill replacing the pattern on steps `start..end` (counted from the transport start).
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ActiveFill {
@@ -202,6 +225,7 @@ pub struct Sequencer {
     rng: u32,
     /// Off: steps still advance (the bar position stays right) but play nothing.
     enabled: bool,
+    bass: BassLine,
 }
 
 impl Default for Sequencer {
@@ -226,6 +250,7 @@ impl Sequencer {
             grid: SwingGrid::Eighth,
             rng: 0x9E37_79B9,
             enabled: true,
+            bass: BassLine::new(),
         }
     }
 
@@ -236,19 +261,32 @@ impl Sequencer {
         if let Some(p) = self.pending.take() {
             self.current = p;
         }
+        self.bass.reset();
     }
 
-    /// Queues pattern `index` (0-based) for the next bar, or switches now if the transport is stopped.
+    /// Queues pattern `index` (0-based) and its bass line for the next bar, or switches now if the
+    /// transport is stopped.
     pub fn queue(&mut self, index: u8, playing: bool) {
         if usize::from(index) >= PATTERNS {
             return;
         }
+        self.bass.queue(index, playing);
         if playing && index != self.current {
             self.pending = Some(index);
         } else {
             self.current = index;
             self.pending = None;
         }
+    }
+
+    /// The bass line, its key and mute.
+    #[must_use]
+    pub fn bass(&self) -> &BassLine {
+        &self.bass
+    }
+
+    pub fn bass_mut(&mut self) -> &mut BassLine {
+        &mut self.bass
     }
 
     /// Plays fill `index` (0-based) from the next beat to the end of the bar; ignored when stopped.
@@ -328,23 +366,8 @@ impl Sequencer {
         self.grid = grid;
     }
 
-    /// Beat of `step`: inside each swung pair (two 8ths or two 16ths), the second note moves from
-    /// half-way to `swing`, and the 16ths in between follow linearly.
     fn step_beats(&self, step: u64) -> f64 {
-        let pair = match self.grid {
-            SwingGrid::Eighth => 1.0,
-            SwingGrid::Sixteenth => 0.5,
-        };
-        let straight = step as f64 / 4.0;
-        let start = (straight / pair).floor() * pair;
-        let q = (straight - start) / pair;
-        let s = f64::from(self.swing);
-        let warped = if q < 0.5 {
-            q * 2.0 * s
-        } else {
-            s + (q - 0.5) * 2.0 * (1.0 - s)
-        };
-        start + warped * pair
+        step_beats(step, self.swing, self.grid)
     }
 
     /// Offset of the next step inside the next `frames` samples, if the transport plays.
@@ -367,9 +390,9 @@ impl Sequencer {
         x as f32 / u32::MAX as f32
     }
 
-    /// Plays the step returned by `next_step_within` (its sample is reached) and moves on.
-    /// Returns the voices triggered (bit `i` = `DrumVoice::ALL[i]`).
-    pub fn fire(&mut self, kit: &mut DrumKit) -> u8 {
+    /// Plays the step returned by `next_step_within` (its sample is reached) on the drums and the
+    /// bass, and moves on. Returns the drum voices triggered (bit `i` = `DrumVoice::ALL[i]`).
+    pub fn fire(&mut self, kit: &mut DrumKit, bass: &mut BassVoice, clock: &Clock) -> u8 {
         let mut played = 0;
         let step = (self.next_step % STEPS as u64) as usize;
         if step == 0
@@ -406,6 +429,13 @@ impl Sequencer {
                 }
             }
         }
+        let (n, swing, grid) = (self.next_step, self.swing, self.grid);
+        let gate_of = |len: u8, held: bool| {
+            let from = clock.sample_at(step_beats(n, swing, grid));
+            let to = clock.sample_at(step_beats(n + u64::from(len), swing, grid));
+            gate_samples(to.saturating_sub(from), held)
+        };
+        self.bass.fire(step, bass, self.enabled, gate_of);
         self.next_step += 1;
         played
     }
@@ -419,6 +449,7 @@ mod tests {
     /// Steps fired while running the clock for `frames`, as (sample, step index in bar).
     fn run(seq: &mut Sequencer, clock: &mut Clock, frames: usize) -> Vec<(u64, u8)> {
         let mut kit = DrumKit::new(48_000);
+        let mut bass = BassVoice::new(48_000);
         let mut fired = Vec::new();
         let mut left = frames;
         while left > 0 {
@@ -427,7 +458,7 @@ mod tests {
                     clock.advance(offset);
                     left -= offset;
                     fired.push((clock.position(), seq.step_in_bar()));
-                    seq.fire(&mut kit);
+                    seq.fire(&mut kit, &mut bass, clock);
                 }
                 None => {
                     clock.advance(left);
@@ -522,12 +553,13 @@ mod tests {
     fn played(seq: &mut Sequencer, steps: usize) -> Vec<u8> {
         let mut clock = started(120.0);
         let mut kit = DrumKit::new(48_000);
+        let mut bass = BassVoice::new(48_000);
         let mut out = Vec::new();
         while out.len() < steps {
             match seq.next_step_within(&clock, 100_000) {
                 Some(offset) => {
                     clock.advance(offset);
-                    out.push(seq.fire(&mut kit));
+                    out.push(seq.fire(&mut kit, &mut bass, &clock));
                 }
                 None => break,
             }
@@ -595,11 +627,12 @@ mod tests {
         seq.queue_fill(0, true);
         assert_eq!(seq.fill(), Some((0, false)), "waits for beat 3 (step 8)");
         let mut kit = DrumKit::new(48_000);
+        let mut bass = BassVoice::new(48_000);
         let mut voices = Vec::new();
         for _ in 0..12 {
             let offset = seq.next_step_within(&clock, 100_000).unwrap();
             clock.advance(offset);
-            voices.push((seq.step_in_bar(), seq.fire(&mut kit)));
+            voices.push((seq.step_in_bar(), seq.fire(&mut kit, &mut bass, &clock)));
         }
         // Steps 6–7: pattern A (closed hat on 6); 8–15: snare roll; then pattern A again.
         assert_eq!(voices[0], (6, voice_bit(DrumVoice::ClosedHat)));
@@ -633,5 +666,34 @@ mod tests {
         assert_eq!(row[3].probability, 0.5);
         assert_eq!(row[4].velocity, 0.0);
         assert_eq!(p.steps[0][0], Step::default(), "other voices stay empty");
+    }
+
+    #[test]
+    fn patterns_bring_their_bass_line_which_can_change_alone() {
+        let mut seq = Sequencer::new();
+        seq.queue(2, true);
+        assert_eq!(seq.bass().pending(), Some(2), "coupled to the drum pattern");
+        seq.bass_mut().queue(3, true);
+        assert_eq!(seq.pending(), Some(2));
+        assert_eq!(seq.bass().pending(), Some(3));
+        seq.reset();
+        assert_eq!((seq.current(), seq.bass().current()), (2, 3));
+    }
+
+    #[test]
+    fn bass_gate_follows_the_note_length_and_the_swing() {
+        // Line A starts with degree 1 held 4 steps: one beat at 120 BPM = 24 000 samples.
+        let mut seq = Sequencer::new();
+        let clock = started(120.0);
+        let mut kit = DrumKit::new(48_000);
+        let mut bass = BassVoice::new(48_000);
+        seq.fire(&mut kit, &mut bass, &clock);
+        assert!(bass.gated());
+        let mut out = vec![0.0; 19_150];
+        bass.render_add(&mut out);
+        assert!(bass.gated(), "80 % of the beat");
+        let mut out = vec![0.0; 100];
+        bass.render_add(&mut out);
+        assert!(!bass.gated());
     }
 }

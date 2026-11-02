@@ -11,6 +11,7 @@
     clippy::indexing_slicing
 )]
 
+pub mod bass;
 pub mod clock;
 pub mod drums;
 pub mod dsp;
@@ -21,6 +22,7 @@ pub mod repeat;
 pub mod sequencer;
 pub mod smooth;
 
+use bass::BassVoice;
 use clock::Clock;
 use drums::{DrumKit, DrumVoice};
 use limiter::Limiter;
@@ -34,7 +36,10 @@ use smooth::Smoothed;
 pub enum Param {
     MasterGain,
     MetronomeLevel,
+    /// Level of the rhythm deck (drums and bass).
     DrumLevel,
+    /// Base cutoff of the bass filter (linear knob, exponential in Hz).
+    BassCutoff,
 }
 
 /// Beats per bar (4/4 only for now).
@@ -55,6 +60,7 @@ pub struct Engine {
     clock: Clock,
     click: Click,
     drums: DrumKit,
+    bass: BassVoice,
     sequencer: Sequencer,
     limiter: Limiter,
     metronome: bool,
@@ -70,6 +76,8 @@ pub struct Engine {
     mono: Vec<f32>,
     /// Drum bus (before the drum level), same size as `mono`.
     drum_bus: Vec<f32>,
+    /// Bass bus (kept out of the beat-repeat), same size as `mono`.
+    bass_bus: Vec<f32>,
 }
 
 impl Engine {
@@ -80,6 +88,7 @@ impl Engine {
             clock: Clock::new(sample_rate, bpm),
             click: Click::new(sample_rate),
             drums: DrumKit::new(sample_rate),
+            bass: BassVoice::new(sample_rate),
             sequencer: Sequencer::new(),
             limiter: Limiter::new(sample_rate),
             metronome: true,
@@ -94,6 +103,7 @@ impl Engine {
             roll_pending: None,
             mono: vec![0.0; max_block.max(64)],
             drum_bus: vec![0.0; max_block.max(64)],
+            bass_bus: vec![0.0; max_block.max(64)],
         }
     }
 
@@ -107,6 +117,7 @@ impl Engine {
 
     pub fn stop(&mut self) {
         self.clock.stop();
+        self.bass.note_off();
         self.repeat.release();
         self.roll_pending = None;
     }
@@ -121,11 +132,11 @@ impl Engine {
 
     /// Sets a normalized (0..=1) parameter; it glides there in ~10 ms.
     pub fn set_param(&mut self, param: Param, value: f32) {
-        let value = gain_curve(value);
         match param {
-            Param::MasterGain => self.master_gain.set(value),
-            Param::MetronomeLevel => self.metronome_level.set(value),
-            Param::DrumLevel => self.drum_level.set(value),
+            Param::MasterGain => self.master_gain.set(gain_curve(value)),
+            Param::MetronomeLevel => self.metronome_level.set(gain_curve(value)),
+            Param::DrumLevel => self.drum_level.set(gain_curve(value)),
+            Param::BassCutoff => self.bass.set_cutoff(value),
         }
     }
 
@@ -148,6 +159,24 @@ impl Engine {
     /// Queues drum pattern `index` (0-based) for the next bar (now if stopped).
     pub fn queue_pattern(&mut self, index: u8) {
         self.sequencer.queue(index, self.clock.is_playing());
+    }
+
+    /// Bass line `index` (0-based) alone for the next bar (now if stopped); `queue_pattern` also
+    /// brings the line of the same index.
+    pub fn queue_bass_line(&mut self, index: u8) {
+        let playing = self.clock.is_playing();
+        self.sequencer.bass_mut().queue(index, playing);
+    }
+
+    /// Bass tonic (0 = C … 11 = B) for the next bar (now if stopped).
+    pub fn queue_tonic(&mut self, tonic: u8) {
+        let playing = self.clock.is_playing();
+        self.sequencer.bass_mut().queue_tonic(tonic, playing);
+    }
+
+    /// Bass mute: closes the note sounding from the next step.
+    pub fn set_bass_mute(&mut self, muted: bool) {
+        self.sequencer.bass_mut().set_muted(muted);
     }
 
     /// Fill `index` (0-based) from the next beat to the end of the bar; ignored when stopped.
@@ -254,12 +283,16 @@ impl Engine {
                 break;
             }
             let n = remaining.min(self.mono.len());
-            let (Some(mono), Some(bus)) = (self.mono.get_mut(..n), self.drum_bus.get_mut(..n))
-            else {
+            let (Some(mono), Some(bus), Some(bass)) = (
+                self.mono.get_mut(..n),
+                self.drum_bus.get_mut(..n),
+                self.bass_bus.get_mut(..n),
+            ) else {
                 break;
             };
             mono.fill(0.0);
             bus.fill(0.0);
+            bass.fill(0.0);
             self.click.gain = self.metronome_level.skip(n);
             let drum_gain = self.drum_level.skip(n);
             let start = self.clock.position();
@@ -270,16 +303,20 @@ impl Engine {
                     metronome: self.metronome,
                     sequencer: &mut self.sequencer,
                     drums: &mut self.drums,
+                    bass: &mut self.bass,
                     last_hit: &mut self.last_hit,
                     roll_pending: &mut self.roll_pending,
                     repeat: &mut self.repeat,
                 },
-                mono,
-                bus,
+                Buses {
+                    mono,
+                    drums: bus,
+                    bass,
+                },
             );
             self.repeat.process(bus, start);
-            for (sample, &drum) in mono.iter_mut().zip(bus.iter()) {
-                *sample += drum * drum_gain;
+            for ((sample, &drum), &bass) in mono.iter_mut().zip(bus.iter()).zip(bass.iter()) {
+                *sample += (drum + bass) * drum_gain;
             }
             for sample in mono.iter_mut() {
                 *sample *= self.master_gain.tick();
@@ -311,16 +348,25 @@ struct Voices<'a> {
     metronome: bool,
     sequencer: &'a mut Sequencer,
     drums: &'a mut DrumKit,
+    bass: &'a mut BassVoice,
     last_hit: &'a mut Option<u64>,
     roll_pending: &'a mut Option<usize>,
     repeat: &'a mut BeatRepeat,
 }
 
-/// Renders one slice (click into `mono`, drums into `bus`), splitting it at beats and sequencer
-/// steps so every click and drum hit starts on its exact sample.
-fn render_mono(v: Voices<'_>, mono: &mut [f32], bus: &mut [f32]) {
-    let mut rest = mono;
-    let mut bus_rest = bus;
+/// Buffers of one slice: click, drums, bass (same length).
+struct Buses<'a> {
+    mono: &'a mut [f32],
+    drums: &'a mut [f32],
+    bass: &'a mut [f32],
+}
+
+/// Renders one slice (click into `mono`, drums and bass into their buses), splitting it at beats
+/// and sequencer steps so every click, drum hit and bass note starts on its exact sample.
+fn render_mono(v: Voices<'_>, buses: Buses<'_>) {
+    let mut rest = buses.mono;
+    let mut bus_rest = buses.drums;
+    let mut bass_rest = buses.bass;
     while !rest.is_empty() {
         let len = rest.len();
         let beat = v.clock.next_beat_within(len);
@@ -331,8 +377,10 @@ fn render_mono(v: Voices<'_>, mono: &mut [f32], bus: &mut [f32]) {
         let segment_len = beat_at.min(step_at).min(len);
         let (segment, tail) = rest.split_at_mut(segment_len);
         let (bus_segment, bus_tail) = bus_rest.split_at_mut(segment_len.min(bus_rest.len()));
+        let (bass_segment, bass_tail) = bass_rest.split_at_mut(segment_len.min(bass_rest.len()));
         v.click.render_add(segment);
         v.drums.render_add(bus_segment, 1.0);
+        v.bass.render_add(bass_segment);
         v.clock.advance(segment_len);
         if let Some((_, beat)) = beat
             && beat_at == segment_len
@@ -342,7 +390,10 @@ fn render_mono(v: Voices<'_>, mono: &mut [f32], bus: &mut [f32]) {
             }
             v.clock.consume_beat();
         }
-        if step_at == segment_len && step.is_some() && v.sequencer.fire(v.drums) != 0 {
+        if step_at == segment_len
+            && step.is_some()
+            && v.sequencer.fire(v.drums, v.bass, v.clock) != 0
+        {
             let hit = v.clock.position();
             *v.last_hit = Some(hit);
             if let Some(len) = v.roll_pending.take() {
@@ -351,6 +402,7 @@ fn render_mono(v: Voices<'_>, mono: &mut [f32], bus: &mut [f32]) {
         }
         rest = tail;
         bus_rest = bus_tail;
+        bass_rest = bass_tail;
     }
 }
 
@@ -441,6 +493,7 @@ mod tests {
         engine.set_metronome(false);
         engine.set_param(Param::MasterGain, 0.5);
         engine.set_density(0.0);
+        engine.set_bass_mute(true);
         engine.start();
         render(&mut engine, 24_000, 1, 128);
         // Pressed on beat 2: the kick of beat 1 is a whole beat old, longer than a 1/16.

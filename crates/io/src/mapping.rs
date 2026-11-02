@@ -83,6 +83,13 @@ pub enum Action {
     },
     /// Drum density 0..=1.
     SetDensity(f32),
+    /// Bass line alone, 0-based.
+    QueueBassLine(u8),
+    ToggleBassMute,
+    /// Tonic change, in semitones.
+    NudgeTonic(i8),
+    /// Bass filter cutoff, 0..=1.
+    SetBassCutoff(f32),
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -104,6 +111,10 @@ pub enum ActionName {
     Fill,
     BeatRepeat,
     DrumDensity,
+    BassLine,
+    BassMute,
+    Tonic,
+    BassCutoff,
     Tempo,
     TempoNudge,
     MasterGain,
@@ -123,11 +134,12 @@ struct BindSpec {
     pickup: bool,
     /// Value range for `tempo` (BPM).
     range: Option<[f64; 2]>,
-    /// Amount per jog tick for `tempo_nudge` (BPM).
+    /// Amount per jog tick for `tempo_nudge` (BPM) or `swing` (%), per press for `tonic`
+    /// (semitones).
     step: Option<f64>,
     /// Voice played by `drum` (kick, snare, closed_hat, open_hat, clap, perc).
     voice: Option<String>,
-    /// Pattern (1–4) launched by `pattern`.
+    /// Pattern (1–4) launched by `pattern`, or bass line by `bass_line`.
     pattern: Option<u8>,
     /// Voices silenced together by `mute`.
     voices: Option<Vec<String>>,
@@ -398,6 +410,14 @@ impl Mapping {
                 held,
             }),
             (ActionName::DrumDensity, Input::Absolute(v)) => Some(Action::SetDensity(v)),
+            (ActionName::BassLine, Input::Press(true)) => {
+                Some(Action::QueueBassLine(binding.pattern))
+            }
+            (ActionName::BassMute, Input::Press(true)) => Some(Action::ToggleBassMute),
+            (ActionName::Tonic, Input::Press(true)) => Some(Action::NudgeTonic(
+                binding.step.round().clamp(-11.0, 11.0) as i8,
+            )),
+            (ActionName::BassCutoff, Input::Absolute(v)) => Some(Action::SetBassCutoff(v)),
             (ActionName::Swing, Input::Relative(ticks)) => Some(Action::NudgeSwing(
                 ticks as f32 * binding.step as f32 / 100.0,
             )),
@@ -569,11 +589,15 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::MetronomeToggle
         | ActionName::Drum
         | ActionName::Pattern
+        | ActionName::BassLine
+        | ActionName::BassMute
+        | ActionName::Tonic
         | ActionName::Mute
         | ActionName::Fill
         | ActionName::BeatRepeat => matches!(kind, Kind::Press),
         ActionName::Tempo
         | ActionName::DrumDensity
+        | ActionName::BassCutoff
         | ActionName::MasterGain
         | ActionName::MetronomeLevel
         | ActionName::DrumLevel => {
@@ -764,6 +788,51 @@ mod tests {
     #[test]
     fn default_mapping_loads() {
         assert!(mapping().len() >= 8);
+    }
+
+    #[test]
+    fn bass_lines_mute_tonic_and_cutoff() {
+        let mut m = mapping();
+        let hot_cue = |shift| ControllerEvent::Pad {
+            deck: Deck::A,
+            mode: PadMode::HotCue,
+            pad: 2,
+            shift,
+            pressed: true,
+            velocity: 127,
+        };
+        let button = |deck, shift| ControllerEvent::Button {
+            deck,
+            button: Button::Cue,
+            shift,
+            pressed: true,
+        };
+        assert_eq!(m.handle(1, hot_cue(false)), Some(Action::QueuePattern(2)));
+        assert_eq!(m.handle(2, hot_cue(true)), Some(Action::QueueBassLine(2)));
+        assert_eq!(
+            m.handle(3, button(Deck::A, false)),
+            Some(Action::ToggleBassMute)
+        );
+        assert_eq!(
+            m.handle(4, button(Deck::B, false)),
+            Some(Action::NudgeTonic(-1))
+        );
+        assert_eq!(
+            m.handle(5, button(Deck::B, true)),
+            Some(Action::NudgeTonic(1))
+        );
+        let knob = ControllerEvent::Knob {
+            deck: Deck::A,
+            knob: DeckKnob::Bass,
+            value: MAX_14BIT,
+        };
+        assert_eq!(m.handle(6, knob), Some(Action::SetBassCutoff(1.0)));
+        assert_eq!(
+            m.bound(ActionName::BassMute)
+                .filter_map(led_of)
+                .collect::<Vec<_>>(),
+            vec![Led::Cue(Deck::A)]
+        );
     }
 
     #[test]

@@ -50,7 +50,9 @@ Commandes (taper puis Entrée) :
 Deck A : pads Hot Cue = patterns A–D (à la mesure suivante), pads Sampler = fills
 (Shift : kick, snare, hats), pads FX = mutes kick / snare+clap / hats / perc,
 pads Loop tenus = beat-repeat 1/4 … 1/32, fader Tempo = densité, jog bord = swing,
-jog dessus = tempo. Deck B : pads Hot Cue = clap, perc.
+jog dessus = tempo. Basse : chaque pattern amène sa ligne, Shift + Hot Cue = ligne seule,
+Cue A = mute, potard Bass A = filtre, Cue B = tonique −1 (Shift : +1), à la mesure.
+Deck B : pads Hot Cue = clap, perc.
 Chaque son joué au pad affiche sa latence geste → son.";
 
 // Debug builds abort on any allocation inside `assert_no_alloc` (the audio callback); release
@@ -74,6 +76,11 @@ struct Wanted {
     /// Muted drum voices (bit `i` = `DrumVoice::ALL[i]`) and density 0..=1.
     mutes: u8,
     density: f32,
+    /// Bass line (0-based), mute, tonic (0 = C … 11 = B) and filter knob 0..=1.
+    bass_line: u8,
+    bass_muted: bool,
+    tonic: u8,
+    bass_cutoff: f32,
 }
 
 /// Control-thread state.
@@ -110,6 +117,7 @@ struct LedRoles {
     /// Fill pads with the fill index, mute pads with their voice mask.
     fills: Vec<(Led, u8)>,
     mutes: Vec<(Led, u8)>,
+    bass_mute: Vec<Led>,
 }
 
 impl LedRoles {
@@ -128,6 +136,7 @@ impl LedRoles {
             patterns: indexed(ActionName::Pattern),
             fills: indexed(ActionName::Fill),
             mutes: indexed(ActionName::Mute),
+            bass_mute: leds(ActionName::BassMute),
         }
     }
 }
@@ -315,6 +324,10 @@ fn open(
     handle.send(Command::SetSwing(wanted.swing));
     handle.send(Command::SetMutes(wanted.mutes));
     handle.send(Command::SetDensity(wanted.density));
+    handle.send(Command::QueueBassLine(wanted.bass_line));
+    handle.send(Command::BassMute(wanted.bass_muted));
+    handle.send(Command::SetTonic(wanted.tonic));
+    handle.send(Command::SetParam(Param::BassCutoff, wanted.bass_cutoff));
     if wanted.playing {
         handle.send(Command::Start);
     }
@@ -427,7 +440,30 @@ fn handle_controller(
         Action::SetTempo(bpm) => set_tempo(s, handle, bpm, false),
         Action::QueuePattern(index) => {
             s.wanted.pattern = index;
+            s.wanted.bass_line = index;
             handle.send(Command::QueuePattern(index));
+        }
+        Action::QueueBassLine(index) => {
+            s.wanted.bass_line = index;
+            handle.send(Command::QueueBassLine(index));
+            println!("  ♪ ligne de basse {} (à la mesure)", pattern_name(index));
+        }
+        Action::ToggleBassMute => {
+            s.wanted.bass_muted = !s.wanted.bass_muted;
+            handle.send(Command::BassMute(s.wanted.bass_muted));
+            println!("  {} basse", if s.wanted.bass_muted { "🔇" } else { "🔈" });
+        }
+        Action::NudgeTonic(delta) => {
+            s.wanted.tonic = (i16::from(s.wanted.tonic) + i16::from(delta)).rem_euclid(12) as u8;
+            handle.send(Command::SetTonic(s.wanted.tonic));
+            println!(
+                "  ♮ tonalité {} mineur (à la mesure)",
+                engine::bass::tonic_name(s.wanted.tonic)
+            );
+        }
+        Action::SetBassCutoff(value) => {
+            s.wanted.bass_cutoff = value;
+            handle.send(Command::SetParam(Param::BassCutoff, value));
         }
         Action::NudgeSwing(delta) => {
             s.wanted.swing = (s.wanted.swing + delta)
@@ -649,9 +685,25 @@ fn update_leds(leds: &mut LedBank, s: &Session, snap: &EngineSnapshot, beats: f6
         // Lit = the group plays (like a channel on a console).
         leds.set(led, snap.mutes & mask != mask);
     }
+    for &led in &s.leds.bass_mute {
+        // Lit = the bass plays, like the mute pads (replaces the beat display on that button).
+        leds.set_state(
+            led,
+            if snap.bass_muted {
+                LedState::Off
+            } else {
+                LedState::On
+            },
+        );
+    }
     for &led in &s.held {
         leds.set(led, true);
     }
+}
+
+/// "A" … "D".
+fn pattern_name(index: u8) -> char {
+    char::from(b'A' + index.min(25))
 }
 
 /// Applies one keyboard line; returns false to quit.
@@ -715,6 +767,10 @@ fn run() -> Result<(), String> {
             swing: 0.54,
             mutes: 0,
             density: 1.0,
+            bass_line: 0,
+            bass_muted: false,
+            tonic: 9,
+            bass_cutoff: 0.45,
         },
         leds: LedRoles::of(&mapping),
         mapping,

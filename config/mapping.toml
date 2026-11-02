@@ -5,7 +5,7 @@
 # Contrôles : a.<x> / b.<x> pour les decks (play, cue, sync, pfl, volume, filter, bass, tempo,
 #   jog.edge, jog.top, pad.<hotcue|sampler|fx|loop>.<1-4>), mixer.<crossfader|master|headphone>, vinyl.
 #   shift = true : la même touche avec Shift tenu.
-# Actions disponibles (itération 012 ; les actions musicales arrivent avec les decks, 010+) :
+# Actions disponibles (itération 013 ; les actions musicales arrivent avec les decks, 010+) :
 #   transport_toggle, transport_restart, tap_tempo, metronome_toggle   → boutons et pads
 #   pattern (pattern = 1–4), drum (voice = kick, snare, closed_hat, open_hat, clap, perc),
 #   mute (voices = [liste de voix]), fill (fill = 1–4)                → pads
@@ -15,6 +15,8 @@
 #   tempo (range = [min, max] en BPM), master_gain, metronome_level,
 #   drum_level, drum_density (0 = kicks sur les temps → 1 = complet)   → faders et potards
 #   tempo_nudge (step = BPM par cran)                                  → jogs
+#   bass_line (pattern = 1–4), bass_mute, tonic (step = demi-tons)     → boutons et pads
+#   bass_cutoff (coupure du filtre de la basse)                        → potards
 #   pickup = true : soft-takeover (le contrôle ne prend la main qu'en rejoignant la valeur actuelle).
 
 # --- Transport ---
@@ -39,7 +41,7 @@ action = "tap_tempo"
 control = "a.pfl"
 action = "metronome_toggle"
 
-# --- Deck A : patterns de batterie (itération 011), changement à la mesure suivante ---
+# --- Deck A : patterns de batterie (011) avec leur ligne de basse (013), à la mesure suivante ---
 [[bind]]
 control = "a.pad.hotcue.1"
 action = "pattern"
@@ -59,6 +61,50 @@ pattern = 3
 control = "a.pad.hotcue.4"
 action = "pattern"
 pattern = 4
+
+[[bind]]
+control = "a.pad.hotcue.1"
+shift = true
+action = "bass_line"
+pattern = 1
+
+[[bind]]
+control = "a.pad.hotcue.2"
+shift = true
+action = "bass_line"
+pattern = 2
+
+[[bind]]
+control = "a.pad.hotcue.3"
+shift = true
+action = "bass_line"
+pattern = 3
+
+[[bind]]
+control = "a.pad.hotcue.4"
+shift = true
+action = "bass_line"
+pattern = 4
+
+# --- Basse (013) : mute sur Cue A, filtre au potard Bass A, tonique sur Cue B (à la mesure) ---
+[[bind]]
+control = "a.cue"
+action = "bass_mute"
+
+[[bind]]
+control = "a.bass"
+action = "bass_cutoff"
+
+[[bind]]
+control = "b.cue"
+action = "tonic"
+step = -1
+
+[[bind]]
+control = "b.cue"
+shift = true
+action = "tonic"
+step = 1
 
 [[bind]]
 control = "a.jog.edge"
@@ -107,7 +153,6 @@ voices = ["closed_hat", "open_hat"]
 [[bind]]
 control = "a.pad.fx.4"
 action = "mute"
-# la basse prendra ce pad (013)
 voices = ["perc"]
 
 # --- Deck A : beat-repeat (012) du bus batterie, tant que le pad est tenu ---
