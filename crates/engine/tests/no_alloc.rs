@@ -40,6 +40,7 @@ fn ten_seconds_of_audio_without_allocation() {
                 handle.send(Command::QueuePattern((i / 200 % 4) as u8));
                 handle.send(Command::SetSwing(0.5 + (i % 50) as f32 / 200.0));
                 handle.send(Command::QueueBassLine((i / 300 % 4) as u8));
+                handle.send(Command::QueueStyle((i / 400 % 6) as u8));
                 handle.send(Command::SetTonic((i / 100 % 12) as u8));
                 handle.send(Command::BassMute(i % 1_000 == 60));
                 handle.send(Command::SetParam(

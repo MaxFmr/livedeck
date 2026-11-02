@@ -90,6 +90,8 @@ pub enum Action {
     NudgeTonic(i8),
     /// Bass filter cutoff, 0..=1.
     SetBassCutoff(f32),
+    /// Style scroll, in styles (one per `step` jog ticks).
+    NudgeStyle(i8),
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -115,6 +117,7 @@ pub enum ActionName {
     BassMute,
     Tonic,
     BassCutoff,
+    Style,
     Tempo,
     TempoNudge,
     MasterGain,
@@ -135,7 +138,7 @@ struct BindSpec {
     /// Value range for `tempo` (BPM).
     range: Option<[f64; 2]>,
     /// Amount per jog tick for `tempo_nudge` (BPM) or `swing` (%), per press for `tonic`
-    /// (semitones).
+    /// (semitones), jog ticks per style for `style`.
     step: Option<f64>,
     /// Voice played by `drum` (kick, snare, closed_hat, open_hat, clap, perc).
     voice: Option<String>,
@@ -230,6 +233,8 @@ pub struct Mapping {
     /// or to the edge if the touch ends first (sensor flicker while spinning the edge).
     held_ticks: [i32; 2],
     taps: Vec<u64>,
+    /// Jog ticks not yet turned into a style step, per deck.
+    style_ticks: [i32; 2],
 }
 
 /// Default mapping, compiled in (used when `config/mapping.toml` is missing).
@@ -304,6 +309,7 @@ impl Mapping {
             touch_down_us: [None; 2],
             held_ticks: [0; 2],
             taps: Vec::with_capacity(8),
+            style_ticks: [0; 2],
         })
     }
 
@@ -418,6 +424,17 @@ impl Mapping {
                 binding.step.round().clamp(-11.0, 11.0) as i8,
             )),
             (ActionName::BassCutoff, Input::Absolute(v)) => Some(Action::SetBassCutoff(v)),
+            (ActionName::Style, Input::Relative(ticks)) => {
+                let Control::Jog(deck, _) = id.control else {
+                    return None;
+                };
+                let per = binding.step.round().max(1.0) as i32;
+                let acc = self.style_ticks.get_mut(deck_index(deck))?;
+                *acc += ticks;
+                let steps = *acc / per;
+                *acc -= steps * per;
+                (steps != 0).then(|| Action::NudgeStyle(steps.clamp(-8, 8) as i8))
+            }
             (ActionName::Swing, Input::Relative(ticks)) => Some(Action::NudgeSwing(
                 ticks as f32 * binding.step as f32 / 100.0,
             )),
@@ -603,7 +620,9 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::DrumLevel => {
             matches!(kind, Kind::Absolute)
         }
-        ActionName::TempoNudge | ActionName::Swing => matches!(kind, Kind::Relative),
+        ActionName::TempoNudge | ActionName::Swing | ActionName::Style => {
+            matches!(kind, Kind::Relative)
+        }
     }
 }
 
@@ -833,6 +852,27 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![Led::Cue(Deck::A)]
         );
+    }
+
+    #[test]
+    fn shift_jog_scrolls_styles_by_detents() {
+        let mut m = mapping();
+        let jog = |delta| ControllerEvent::Jog {
+            deck: Deck::A,
+            surface: JogSurface::Edge,
+            shift: true,
+            delta,
+        };
+        let actions: Vec<_> = (0..150).filter_map(|t| m.handle(t, jog(1))).collect();
+        assert_eq!(
+            actions,
+            vec![Action::NudgeStyle(1)],
+            "one style per half turn (124 ticks)"
+        );
+        let back: Vec<_> = (0..150)
+            .filter_map(|t| m.handle(200 + t, jog(-1)))
+            .collect();
+        assert_eq!(back, vec![Action::NudgeStyle(-1)]);
     }
 
     #[test]

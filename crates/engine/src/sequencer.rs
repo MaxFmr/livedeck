@@ -14,6 +14,7 @@
 use crate::bass::{BassLine, BassVoice, gate_samples};
 use crate::clock::Clock;
 use crate::drums::{DrumKit, DrumVoice};
+use crate::style::{STYLES, StylePreset, presets};
 
 pub const STEPS: usize = 16;
 pub const PATTERNS: usize = 4;
@@ -226,6 +227,9 @@ pub struct Sequencer {
     /// Off: steps still advance (the bar position stays right) but play nothing.
     enabled: bool,
     bass: BassLine,
+    styles: [StylePreset; STYLES],
+    style: u8,
+    pending_style: Option<u8>,
 }
 
 impl Default for Sequencer {
@@ -251,6 +255,9 @@ impl Sequencer {
             rng: 0x9E37_79B9,
             enabled: true,
             bass: BassLine::new(),
+            styles: presets(),
+            style: 0,
+            pending_style: None,
         }
     }
 
@@ -277,6 +284,44 @@ impl Sequencer {
             self.current = index;
             self.pending = None;
         }
+    }
+
+    /// Queues style `index` for the next bar (the engine applies it now when stopped).
+    pub fn queue_style(&mut self, index: u8) {
+        if usize::from(index) < STYLES {
+            self.pending_style = (index != self.style).then_some(index);
+        }
+    }
+
+    /// Switches to the queued style: patterns, fills, bass lines, kit and bass sound, swing. The
+    /// pattern and bass line indexes playing are kept.
+    pub fn apply_style(&mut self, kit: &mut DrumKit, bass: &mut BassVoice) {
+        let Some(index) = self.pending_style.take() else {
+            return;
+        };
+        let Some(style) = self.styles.get(usize::from(index)) else {
+            return;
+        };
+        self.style = index;
+        self.patterns = style.patterns;
+        self.fills = style.fills;
+        self.swing = style.swing.clamp(MIN_SWING, MAX_SWING);
+        self.grid = style.grid;
+        self.bass.set_patterns(style.bass_lines);
+        bass.set_params(style.bass);
+        for (voice, params) in DrumVoice::ALL.into_iter().zip(style.kit) {
+            kit.set_params(voice, params);
+        }
+    }
+
+    #[must_use]
+    pub fn style(&self) -> u8 {
+        self.style
+    }
+
+    #[must_use]
+    pub fn pending_style(&self) -> Option<u8> {
+        self.pending_style
     }
 
     /// The bass line, its key and mute.
@@ -395,10 +440,11 @@ impl Sequencer {
     pub fn fire(&mut self, kit: &mut DrumKit, bass: &mut BassVoice, clock: &Clock) -> u8 {
         let mut played = 0;
         let step = (self.next_step % STEPS as u64) as usize;
-        if step == 0
-            && let Some(p) = self.pending.take()
-        {
-            self.current = p;
+        if step == 0 {
+            self.apply_style(kit, bass);
+            if let Some(p) = self.pending.take() {
+                self.current = p;
+            }
         }
         if self.fill.is_some_and(|f| self.next_step >= f.end) {
             self.fill = None;

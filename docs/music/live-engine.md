@@ -57,6 +57,11 @@ StylePreset
 Ces presets sont des points de départ ; tous les paramètres restent modifiables en jeu et enregistrables en
 scène.
 
+Implémenté en 014 (`crates/engine/src/style.rs`, 6 styles : « Hybride » = le son de 010–013, puis les cinq
+ci-dessus). Choix de l'utilisateur : un style amène patterns, fills, lignes de basse, son du kit, caractère
+de la basse et **swing** ; **le tempo et la tonique restent ceux du joueur** (le BPM du tableau n'est
+qu'affiché). Tonalité, gamme et effets par style : plus tard (017, 019).
+
 ## Quantification
 
 | Action | Grille par défaut |
@@ -88,7 +93,7 @@ continus en 14 bits (filtres et volumes sans paliers).
 | Pads **Loop** | beat-repeat 1/4, 1/8, 1/16, 1/32 (maintenu) : roule le dernier coup dès la frontière suivante ; pad plus court = subdivise ce qu'on entend, relâcher = retour en phase au pad tenu · Shift : reverse/gate |
 | Jog bord | swing (−/+) |
 | Jog dessus + rotation | tempo |
-| Jog Shift + rotation | densité (élagage ordonné des pas par probabilité) |
+| Shift + jog (bord ou dessus) | style suivant / précédent, un demi-tour par style, à la mesure (014) |
 | Tempo | densité de la batterie (0 = kick seul → 1 = complet) |
 | Filter | filtre DJ du bus rythme |
 | Bass | coupure du filtre de la basse, 60 Hz → 4 kHz (013) |
@@ -149,7 +154,7 @@ Actions disponibles aujourd'hui : `transport_toggle`, `transport_restart`, `tap_
 `metronome_toggle`, `drum` (`voice` = kick, snare, closed_hat, open_hat, clap, perc), `tempo`,
 `tempo_nudge` (`step`), `master_gain`, `metronome_level`, `drum_level` (batterie + basse),
 `pattern`, `swing`, `mute`, `fill`, `beat_repeat`, `drum_density`, `bass_line` (`pattern` = 1–4),
-`bass_mute`, `tonic` (`step` = demi-tons), `bass_cutoff`. Liste commentée en tête de
+`bass_mute`, `tonic` (`step` = demi-tons), `bass_cutoff`, `style` (`step` = crans de jog par style). Liste commentée en tête de
 `config/mapping.toml`.
 
 Lignes de basse (013) : 16 jetons séparés par des espaces — `.` silence, `-` tient la note précédente,

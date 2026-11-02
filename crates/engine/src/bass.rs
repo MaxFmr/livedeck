@@ -16,17 +16,45 @@ const CONTROL: usize = 16;
 /// Lowest and highest base cutoff of the Bass knob, in Hz.
 const CUTOFF_MIN: f32 = 60.0;
 const CUTOFF_MAX: f32 = 4_000.0;
-/// Filter envelope depth in octaves, normal and accented.
-const ENV_OCTAVES: f32 = 2.5;
-const ACCENT_OCTAVES: f32 = 4.0;
-const RESONANCE: f32 = 1.1;
-/// Time constants of the amplitude (attack, release) and of the glide, in seconds.
+/// Time constants of the amplitude (attack, release), in seconds.
 const ATTACK: f32 = 0.002;
 const RELEASE: f32 = 0.03;
-const GLIDE: f32 = 0.045;
 /// Share of the note length the gate stays open (the rest is the release), unless the next note
 /// glides from it.
 const GATE: f64 = 0.8;
+
+/// Character of the bass, set by the style presets (the cutoff stays on the Bass knob).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BassParams {
+    /// Levels of the saw and of the square one octave below.
+    pub saw: f32,
+    pub sub: f32,
+    pub resonance: f32,
+    /// Filter envelope depth in octaves, normal and accented.
+    pub env_octaves: f32,
+    pub accent_octaves: f32,
+    /// Filter envelope decay to -60 dB, seconds (accents: 60 % of it).
+    pub decay: f32,
+    /// Glide time constant, seconds.
+    pub glide: f32,
+    /// Gain into the soft clipper.
+    pub drive: f32,
+}
+
+impl Default for BassParams {
+    fn default() -> Self {
+        Self {
+            saw: 0.5,
+            sub: 0.45,
+            resonance: 1.1,
+            env_octaves: 2.5,
+            accent_octaves: 4.0,
+            decay: 0.2,
+            glide: 0.045,
+            drive: 1.4,
+        }
+    }
+}
 
 /// Scales, as semitones from the tonic.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -207,6 +235,7 @@ pub struct BassVoice {
     /// Current and target pitch (MIDI note, fractional while gliding).
     pitch: f32,
     target: f32,
+    params: BassParams,
     glide_coef: f32,
     /// Phase increment of the saw (cycles per sample).
     inc: f32,
@@ -234,13 +263,14 @@ impl BassVoice {
             sample_rate: sr,
             pitch: 45.0,
             target: 45.0,
-            glide_coef: one_pole(sr, GLIDE),
+            params: BassParams::default(),
+            glide_coef: one_pole(sr, BassParams::default().glide),
             inc: midi_to_hz(45.0) / sr,
             saw: 0.0,
             sub: 0.0,
             filter: Svf::default(),
             filter_env: Decay::default(),
-            env_octaves: ENV_OCTAVES,
+            env_octaves: BassParams::default().env_octaves,
             cutoff: Smoothed::new(0.45, sample_rate, 0.02),
             amp: 0.0,
             amp_target: 0.0,
@@ -258,6 +288,12 @@ impl BassVoice {
         }
     }
 
+    /// Sound of the next notes (a style change).
+    pub fn set_params(&mut self, params: BassParams) {
+        self.params = params;
+        self.glide_coef = one_pole(self.sample_rate, params.glide);
+    }
+
     /// Plays `note` (MIDI) with its gate open for `gate` samples. `glide` slides from the note
     /// still held instead of retriggering it.
     pub fn note_on(&mut self, note: f32, accent: bool, glide: bool, gate: u64) {
@@ -266,9 +302,14 @@ impl BassVoice {
         if !legato {
             self.pitch = note;
             self.inc = midi_to_hz(note) / self.sample_rate;
-            let decay = if accent { 0.12 } else { 0.2 };
+            let p = self.params;
+            let decay = if accent { p.decay * 0.6 } else { p.decay };
             self.filter_env.trigger(1.0, self.sample_rate, decay);
-            self.env_octaves = if accent { ACCENT_OCTAVES } else { ENV_OCTAVES };
+            self.env_octaves = if accent {
+                p.accent_octaves
+            } else {
+                p.env_octaves
+            };
         }
         self.amp_target = if accent { 1.0 } else { 0.75 };
         self.gate = gate.max(1);
@@ -291,7 +332,7 @@ impl BassVoice {
         let base = CUTOFF_MIN * (CUTOFF_MAX / CUTOFF_MIN).powf(knob);
         let env = self.filter_env.level * self.env_octaves;
         self.filter
-            .set(self.sample_rate, base * env.exp2(), RESONANCE);
+            .set(self.sample_rate, base * env.exp2(), self.params.resonance);
     }
 
     /// Adds the voice into `out`.
@@ -346,8 +387,9 @@ impl BassVoice {
                 self.sub -= 1.0;
             }
 
-            let filtered = self.filter.process(0.5 * saw + 0.45 * sub).lp;
-            *sample += soft_clip(1.4 * filtered * self.amp) * 0.6;
+            let p = &self.params;
+            let filtered = self.filter.process(p.saw * saw + p.sub * sub).lp;
+            *sample += soft_clip(p.drive * filtered * self.amp) * 0.6;
         }
         if self.amp < SILENCE && self.amp_target == 0.0 {
             self.amp = 0.0;
@@ -413,6 +455,11 @@ impl BassLine {
             self.key.tonic = tonic;
             self.pending_tonic = None;
         }
+    }
+
+    /// Replaces the four lines (a style change); the line index playing is kept.
+    pub fn set_patterns(&mut self, patterns: [BassPattern; PATTERNS]) {
+        self.patterns = patterns;
     }
 
     pub fn set_muted(&mut self, muted: bool) {

@@ -5,7 +5,7 @@
 # Contrôles : a.<x> / b.<x> pour les decks (play, cue, sync, pfl, volume, filter, bass, tempo,
 #   jog.edge, jog.top, pad.<hotcue|sampler|fx|loop>.<1-4>), mixer.<crossfader|master|headphone>, vinyl.
 #   shift = true : la même touche avec Shift tenu.
-# Actions disponibles (itération 013 ; les actions musicales arrivent avec les decks, 010+) :
+# Actions disponibles (itération 014 ; les actions musicales arrivent avec les decks, 010+) :
 #   transport_toggle, transport_restart, tap_tempo, metronome_toggle   → boutons et pads
 #   pattern (pattern = 1–4), drum (voice = kick, snare, closed_hat, open_hat, clap, perc),
 #   mute (voices = [liste de voix]), fill (fill = 1–4)                → pads
@@ -17,6 +17,7 @@
 #   tempo_nudge (step = BPM par cran)                                  → jogs
 #   bass_line (pattern = 1–4), bass_mute, tonic (step = demi-tons)     → boutons et pads
 #   bass_cutoff (coupure du filtre de la basse)                        → potards
+#   style (step = crans de jog par style), à la mesure suivante        → jogs
 #   pickup = true : soft-takeover (le contrôle ne prend la main qu'en rejoignant la valeur actuelle).
 
 # --- Transport ---
@@ -215,6 +216,20 @@ voice = "perc"
 [[bind]]
 control = "a.tempo"
 action = "drum_density"
+
+# --- Style (014) : Shift + jog gauche fait défiler les styles (kit, patterns, basse, swing) ---
+[[bind]]
+control = "a.jog.edge"
+shift = true
+action = "style"
+# 124 crans (un demi-tour, 248 crans par tour) par style — choix de l'essai 014
+step = 124
+
+[[bind]]
+control = "a.jog.top"
+shift = true
+action = "style"
+step = 124
 
 # --- Tempo : jog A par le dessus, tap tempo sur Sync A ---
 [[bind]]

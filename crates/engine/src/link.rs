@@ -25,6 +25,8 @@ pub enum Command {
     SetParam(Param, f32),
     /// Drum pattern (0-based) for the next bar, or now if stopped.
     QueuePattern(u8),
+    /// Style (see `style::presets`) for the next bar, or now if stopped.
+    QueueStyle(u8),
     /// Bass line (0-based) alone for the next bar, or now if stopped.
     QueueBassLine(u8),
     /// Bass tonic (0 = C … 11 = B) for the next bar, or now if stopped.
@@ -109,6 +111,9 @@ pub struct EngineSnapshot {
     /// Tonic (0 = C … 11 = B) and the one waiting for the next bar.
     pub tonic: u8,
     pub pending_tonic: Option<u8>,
+    /// Style playing and the one waiting for the next bar.
+    pub style: u8,
+    pub pending_style: Option<u8>,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -180,6 +185,8 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         bass_muted: engine.sequencer().bass().muted(),
         tonic: engine.sequencer().bass().key().tonic,
         pending_tonic: engine.sequencer().bass().pending_tonic(),
+        style: engine.sequencer().style(),
+        pending_style: engine.sequencer().pending_style(),
     }
 }
 
@@ -221,6 +228,7 @@ impl AudioEngine {
             Command::SetTempo(bpm) => self.engine.set_tempo(bpm),
             Command::Metronome(on) => self.engine.set_metronome(on),
             Command::QueuePattern(index) => self.engine.queue_pattern(index),
+            Command::QueueStyle(index) => self.engine.queue_style(index),
             Command::QueueBassLine(index) => self.engine.queue_bass_line(index),
             Command::SetTonic(tonic) => self.engine.queue_tonic(tonic),
             Command::BassMute(muted) => self.engine.set_bass_mute(muted),
@@ -441,6 +449,22 @@ mod tests {
         let snap = handle.snapshot();
         assert_eq!((snap.bass_line, snap.pending_bass_line), (3, None));
         assert_eq!((snap.tonic, snap.pending_tonic), (2, None));
+    }
+
+    #[test]
+    fn style_change_waits_for_the_bar_and_brings_its_swing() {
+        let (mut audio, mut handle) = pair();
+        handle.send(Command::Start);
+        run(&mut audio, 10);
+        handle.send(Command::QueueStyle(3));
+        run(&mut audio, 1);
+        let snap = handle.snapshot();
+        assert_eq!((snap.style, snap.pending_style), (0, Some(3)));
+        run(&mut audio, 750);
+        let snap = handle.snapshot();
+        assert_eq!((snap.style, snap.pending_style), (3, None));
+        assert_eq!(snap.swing, crate::style::TEXTS[3].swing);
+        assert_eq!(snap.bpm, 120.0, "the tempo stays the player's");
     }
 
     #[test]

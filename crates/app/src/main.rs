@@ -52,6 +52,7 @@ Deck A : pads Hot Cue = patterns A–D (à la mesure suivante), pads Sampler = f
 pads Loop tenus = beat-repeat 1/4 … 1/32, fader Tempo = densité, jog bord = swing,
 jog dessus = tempo. Basse : chaque pattern amène sa ligne, Shift + Hot Cue = ligne seule,
 Cue A = mute, potard Bass A = filtre, Cue B = tonique −1 (Shift : +1), à la mesure.
+Shift + jog gauche (un demi-tour) = style (kit, patterns, basse, swing), à la mesure ; le tempo reste le tien.
 Deck B : pads Hot Cue = clap, perc.
 Chaque son joué au pad affiche sa latence geste → son.";
 
@@ -81,6 +82,8 @@ struct Wanted {
     bass_muted: bool,
     tonic: u8,
     bass_cutoff: f32,
+    /// Style (see `engine::style`).
+    style: u8,
 }
 
 /// Control-thread state.
@@ -320,6 +323,8 @@ fn open(
         wanted.metronome_level,
     ));
     handle.send(Command::SetParam(Param::DrumLevel, wanted.drum_level));
+    // The style first: it sets the swing, which may have been nudged since.
+    handle.send(Command::QueueStyle(wanted.style));
     handle.send(Command::QueuePattern(wanted.pattern));
     handle.send(Command::SetSwing(wanted.swing));
     handle.send(Command::SetMutes(wanted.mutes));
@@ -460,6 +465,14 @@ fn handle_controller(
                 "  ♮ tonalité {} mineur (à la mesure)",
                 engine::bass::tonic_name(s.wanted.tonic)
             );
+        }
+        Action::NudgeStyle(delta) => {
+            let last = engine::style::STYLES as i16 - 1;
+            let style = (i16::from(s.wanted.style) + i16::from(delta)).clamp(0, last) as u8;
+            if style != s.wanted.style {
+                s.wanted.style = style;
+                handle.send(Command::QueueStyle(style));
+            }
         }
         Action::SetBassCutoff(value) => {
             s.wanted.bass_cutoff = value;
@@ -771,6 +784,7 @@ fn run() -> Result<(), String> {
             bass_muted: false,
             tonic: 9,
             bass_cutoff: 0.45,
+            style: 0,
         },
         leds: LedRoles::of(&mapping),
         mapping,
@@ -820,6 +834,7 @@ fn run() -> Result<(), String> {
     // While stopped, LEDs blink on a free-running beat at the current tempo.
     let mut stopped_since = Instant::now();
     let mut shown_pattern = (u8::MAX, None);
+    let mut shown_style = (u8::MAX, None);
 
     let mut last_report = Instant::now();
     loop {
@@ -876,6 +891,27 @@ fn run() -> Result<(), String> {
         update_leds(link.leds_mut(), &s, &snap, beats);
         if let Some(r) = recording.as_mut() {
             r.drain();
+        }
+        if (snap.style, snap.pending_style) != shown_style {
+            let applied = snap.style != shown_style.0;
+            shown_style = (snap.style, snap.pending_style);
+            let label = |i: u8| {
+                format!(
+                    "{} ({:.0} BPM conseillé)",
+                    engine::style::name(i),
+                    engine::style::bpm(i)
+                )
+            };
+            match snap.pending_style {
+                Some(next) => println!("  ◇ style {} à la mesure suivante", label(next)),
+                None => println!("  ◆ style {}", label(snap.style)),
+            }
+            if applied {
+                // The style brought its swing: the jog edge nudges from there.
+                s.wanted.swing = snap.swing;
+                s.shown_swing = snap.swing;
+                println!("  ≈ swing {:.0} %", snap.swing * 100.0);
+            }
         }
         if (snap.pattern, snap.pending_pattern) != shown_pattern {
             shown_pattern = (snap.pattern, snap.pending_pattern);

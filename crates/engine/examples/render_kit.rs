@@ -2,7 +2,8 @@
 //! of groove), `target/renders/patterns.wav` (the sequencer's patterns A–D, two bars each) and
 //! `target/renders/gestures.wav` (density, fills and beat-repeat on groove B) and
 //! `target/renders/bass.wav` (the four bass lines alone, then with their drums, a filter sweep and
-//! a key change).
+//! a key change) and `target/renders/styles.wav` (each style at its suggested tempo, patterns A–D,
+//! one bar each).
 //! Offline, so it may allocate and write files.
 //!
 //! cargo run -p engine --example render_kit --release
@@ -11,9 +12,9 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-use engine::{Engine, Param};
 use engine::drums::DrumVoice;
 use engine::repeat::Division;
+use engine::{Engine, Param};
 
 const SR: u32 = 48_000;
 const BPM: f64 = 120.0;
@@ -166,7 +167,28 @@ fn main() -> io::Result<()> {
     engine.set_param(Param::BassCutoff, 0.45);
     engine.queue_tonic(4);
     play(&mut engine, bar * 2);
-    save(&dir.join("bass.wav"), &bass)
+    save(&dir.join("bass.wav"), &bass)?;
+
+    // Styles: each at its suggested tempo, patterns A–D one bar each, 24 bars in all.
+    let mut styles = Vec::new();
+    for index in 0..engine::style::STYLES as u8 {
+        let bpm = engine::style::bpm(index);
+        let mut engine = Engine::new(SR, 512, bpm);
+        engine.set_metronome(false);
+        engine.queue_style(index);
+        engine.start();
+        let bar = (f64::from(SR) * 60.0 / bpm * 4.0) as usize;
+        for pattern in 0..4 {
+            engine.queue_pattern(pattern);
+            let start = styles.len();
+            styles.resize(start + bar * 2, 0.0);
+            for chunk in styles[start..].chunks_mut(256) {
+                engine.process(chunk, 2);
+            }
+        }
+        println!("  {} — {bpm:.0} BPM", engine::style::name(index));
+    }
+    save(&dir.join("styles.wav"), &styles)
 }
 
 fn save(path: &Path, audio: &[f32]) -> io::Result<()> {

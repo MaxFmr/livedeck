@@ -21,6 +21,7 @@ pub mod metronome;
 pub mod repeat;
 pub mod sequencer;
 pub mod smooth;
+pub mod style;
 
 use bass::BassVoice;
 use clock::Clock;
@@ -159,6 +160,14 @@ impl Engine {
     /// Queues drum pattern `index` (0-based) for the next bar (now if stopped).
     pub fn queue_pattern(&mut self, index: u8) {
         self.sequencer.queue(index, self.clock.is_playing());
+    }
+
+    /// Style `index` (see `style::presets`) for the next bar, or now if stopped.
+    pub fn queue_style(&mut self, index: u8) {
+        self.sequencer.queue_style(index);
+        if !self.clock.is_playing() {
+            self.sequencer.apply_style(&mut self.drums, &mut self.bass);
+        }
     }
 
     /// Bass line `index` (0-based) alone for the next bar (now if stopped); `queue_pattern` also
