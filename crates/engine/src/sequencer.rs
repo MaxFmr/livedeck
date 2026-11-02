@@ -334,6 +334,12 @@ impl Sequencer {
         self.pending_samples
     }
 
+    /// The style playing.
+    #[must_use]
+    pub fn style_preset(&self) -> Option<&StylePreset> {
+        self.styles.get(usize::from(self.style))
+    }
+
     #[must_use]
     pub fn style(&self) -> u8 {
         self.style

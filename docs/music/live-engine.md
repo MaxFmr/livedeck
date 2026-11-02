@@ -107,17 +107,17 @@ continus en 14 bits (filtres et volumes sans paliers).
 
 | Contrôle | Fonction |
 |---|---|
-| Pads **Hot Cue** | accords degrés I, IV, V, vi · Shift : ii, iii, VII°, ♭VII (selon gamme) |
+| Pads **Hot Cue** | accords degrés I, IV, V, vi, tenus, joués tout de suite (016) · Shift : ii, iii, VII°, ♭VII (selon gamme, 017) |
 | Pads **Sampler** | phrases mélodiques 1–4 · Shift : variations |
 | Pads **FX** | mode d'arpège (off, up, updown, random) · Shift : octaves 1–4 |
 | Pads **Loop** | maintien/latch, renversement −/+, octave −/+ |
 | Jog bord | vitesse d'arpège (1/4 → 1/32) |
 | Jog dessus + rotation | transposition **dans la gamme** (degré par degré) |
 | Jog Shift + rotation | choix de la gamme |
-| Tempo | brillance (coupure du synthé) |
+| Tempo | brillance (coupure du synthé, ±2,5 octaves autour du patch, 016) |
 | Filter | filtre DJ du bus mélodie |
 | Bass | envoi delay/réverb |
-| Volume | niveau mélodie |
+| Volume | niveau mélodie · Shift : niveau du métronome (016) |
 | Play | deck mélodie on/off (quantifié) |
 | Cue | tonique −1 demi-ton · Shift : +1, à la mesure (013, gamme mineure fixe jusqu'en 017) |
 | Sync | progression suivante |
@@ -154,7 +154,7 @@ Actions disponibles aujourd'hui : `transport_toggle`, `transport_restart`, `tap_
 `metronome_toggle`, `drum` (`voice` = kick, snare, closed_hat, open_hat, clap, perc), `tempo`,
 `tempo_nudge` (`step`), `master_gain`, `metronome_level`, `drum_level`, `bass_level`,
 `pattern`, `swing`, `mute`, `fill`, `beat_repeat`, `drum_density`, `bass_line` (`pattern` = 1–4),
-`bass_mute`, `tonic` (`step` = demi-tons), `bass_cutoff`, `style` (`step` = crans de jog par style), `samples_toggle`. Liste commentée en tête de
+`bass_mute`, `tonic` (`step` = demi-tons), `bass_cutoff`, `style` (`step` = crans de jog par style), `samples_toggle`, `chord` (`chord` = 1–4), `melody_level`, `brightness`. Liste commentée en tête de
 `config/mapping.toml`.
 
 Lignes de basse (013) : 16 jetons séparés par des espaces — `.` silence, `-` tient la note précédente,

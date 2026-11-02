@@ -3,7 +3,8 @@
 //! `target/renders/gestures.wav` (density, fills and beat-repeat on groove B) and
 //! `target/renders/bass.wav` (the four bass lines alone, then with their drums, a filter sweep and
 //! a key change) and `target/renders/styles.wav` (each style at its suggested tempo, patterns A–D,
-//! one bar each).
+//! one bar each) and `target/renders/chords.wav` (each style's synth patch on I–vi–IV–V over its
+//! pattern A).
 //! Offline, so it may allocate and write files.
 //!
 //! cargo run -p engine --example render_kit --release
@@ -188,7 +189,32 @@ fn main() -> io::Result<()> {
         }
         println!("  {} — {bpm:.0} BPM", engine::style::name(index));
     }
-    save(&dir.join("styles.wav"), &styles)
+    save(&dir.join("styles.wav"), &styles)?;
+
+    // Chords: each style at its tempo, I–vi–IV–V, one bar each, held three beats.
+    let mut chords = Vec::new();
+    for index in 0..engine::style::STYLES as u8 {
+        let bpm = engine::style::bpm(index);
+        let mut engine = Engine::new(SR, 512, bpm);
+        engine.set_metronome(false);
+        engine.queue_style(index);
+        engine.start();
+        let beat = (f64::from(SR) * 60.0 / bpm) as usize;
+        for pad in [0, 3, 1, 2] {
+            engine.chord(pad, true);
+            let start = chords.len();
+            chords.resize(start + beat * 4 * 2, 0.0);
+            let (held, rest) = chords[start..].split_at_mut(beat * 3 * 2);
+            for chunk in held.chunks_mut(256) {
+                engine.process(chunk, 2);
+            }
+            engine.chord(pad, false);
+            for chunk in rest.chunks_mut(256) {
+                engine.process(chunk, 2);
+            }
+        }
+    }
+    save(&dir.join("chords.wav"), &chords)
 }
 
 fn save(path: &Path, audio: &[f32]) -> io::Result<()> {

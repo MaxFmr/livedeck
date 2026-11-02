@@ -5,7 +5,7 @@
 # Contrôles : a.<x> / b.<x> pour les decks (play, cue, sync, pfl, volume, filter, bass, tempo,
 #   jog.edge, jog.top, pad.<hotcue|sampler|fx|loop>.<1-4>), mixer.<crossfader|master|headphone>, vinyl.
 #   shift = true : la même touche avec Shift tenu.
-# Actions disponibles (itération 015 ; les actions musicales arrivent avec les decks, 010+) :
+# Actions disponibles (itération 016 ; les actions musicales arrivent avec les decks, 010+) :
 #   transport_toggle, transport_restart, tap_tempo, metronome_toggle   → boutons et pads
 #   pattern (pattern = 1–4), drum (voice = kick, snare, closed_hat, open_hat, clap, perc),
 #   mute (voices = [liste de voix]), fill (fill = 1–4)                → pads
@@ -19,6 +19,8 @@
 #   bass_cutoff (coupure du filtre de la basse)                        → potards
 #   style (step = crans de jog par style), à la mesure suivante        → jogs
 #   samples_toggle (batterie : samples ↔ synthé, à la mesure)          → boutons et pads
+#   chord (chord = 1–4 : degrés I, IV, V, vi), tenu tant que le pad l'est → pads
+#   melody_level, brightness (coupure du synthé mélodie)               → faders et potards
 #   pickup = true : soft-takeover (le contrôle ne prend la main qu'en rejoignant la valeur actuelle).
 
 # --- Transport ---
@@ -178,7 +180,7 @@ control = "a.pad.loop.4"
 action = "beat_repeat"
 division = 32
 
-# --- Sons seuls (010) : Shift + pads Sampler A, pads Hot Cue B en attendant la mélodie ---
+# --- Sons seuls (010) : Shift + pads Sampler A ---
 [[bind]]
 control = "a.pad.sampler.1"
 shift = true
@@ -203,15 +205,6 @@ shift = true
 action = "drum"
 voice = "open_hat"
 
-[[bind]]
-control = "b.pad.hotcue.1"
-action = "drum"
-voice = "clap"
-
-[[bind]]
-control = "b.pad.hotcue.2"
-action = "drum"
-voice = "perc"
 
 # --- Densité de la batterie (012) : le fader suit sa position physique, sans pickup ---
 [[bind]]
@@ -263,7 +256,38 @@ shift = true
 action = "bass_level"
 pickup = true
 
+# --- Deck B : mélodie (016) — accords tenus aux pads Hot Cue, joués tout de suite ---
+[[bind]]
+control = "b.pad.hotcue.1"
+action = "chord"
+chord = 1
+
+[[bind]]
+control = "b.pad.hotcue.2"
+action = "chord"
+chord = 2
+
+[[bind]]
+control = "b.pad.hotcue.3"
+action = "chord"
+chord = 3
+
+[[bind]]
+control = "b.pad.hotcue.4"
+action = "chord"
+chord = 4
+
+[[bind]]
+control = "b.tempo"
+action = "brightness"
+
 [[bind]]
 control = "b.volume"
+action = "melody_level"
+pickup = true
+
+[[bind]]
+control = "b.volume"
+shift = true
 action = "metronome_level"
 pickup = true

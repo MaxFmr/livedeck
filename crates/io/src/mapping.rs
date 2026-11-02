@@ -55,6 +55,7 @@ pub enum Target {
     MetronomeLevel,
     DrumLevel,
     BassLevel,
+    MelodyLevel,
 }
 
 /// Result of a mapped gesture, applied by the control thread.
@@ -95,6 +96,13 @@ pub enum Action {
     NudgeStyle(i8),
     /// Drums: samples ↔ synth.
     ToggleSamples,
+    /// Chord pad (0-based) pressed (`held`) or released.
+    Chord {
+        pad: u8,
+        held: bool,
+    },
+    /// Melody synth brightness, 0..=1.
+    SetBrightness(f32),
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -128,6 +136,9 @@ pub enum ActionName {
     MetronomeLevel,
     DrumLevel,
     BassLevel,
+    MelodyLevel,
+    Chord,
+    Brightness,
 }
 
 #[derive(Debug, Deserialize)]
@@ -155,6 +166,8 @@ struct BindSpec {
     fill: Option<u8>,
     /// Note value repeated by `beat_repeat`: 4, 8, 16 or 32 (1/4 … 1/32).
     division: Option<u8>,
+    /// Chord pad (1–4 = I, IV, V, vi) played by `chord`.
+    chord: Option<u8>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -189,6 +202,8 @@ pub enum MappingError {
     BadFill(String),
     #[error("« {0} » : division attendue parmi 4, 8, 16, 32")]
     BadDivision(String),
+    #[error("« {0} » : accord attendu entre 1 et 4")]
+    BadChord(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -212,6 +227,8 @@ struct Binding {
     /// 0-based.
     fill: u8,
     division: Division,
+    /// 0-based.
+    chord: u8,
 }
 
 /// Soft-takeover state of one absolute control.
@@ -281,6 +298,11 @@ impl Mapping {
                 Some(f @ 1..=4) => f - 1,
                 Some(_) => return Err(MappingError::BadFill(b.control)),
             };
+            let chord = match b.chord {
+                None => 0,
+                Some(c @ 1..=4) => c - 1,
+                Some(_) => return Err(MappingError::BadChord(b.control)),
+            };
             let division = match b.division {
                 None => Division::Sixteenth,
                 Some(n) => Division::from_denominator(n)
@@ -305,6 +327,7 @@ impl Mapping {
                 mask,
                 fill,
                 division,
+                chord,
             };
             if bindings.insert(id, binding).is_some() {
                 return Err(MappingError::Duplicate(b.control));
@@ -349,6 +372,7 @@ impl Mapping {
             .map(|(id, b)| {
                 let value = match b.action {
                     ActionName::Fill => b.fill,
+                    ActionName::Chord => b.chord,
                     ActionName::Mute => b.mask,
                     ActionName::BeatRepeat => b.division.denominator(),
                     _ => b.pattern,
@@ -454,6 +478,11 @@ impl Mapping {
             }
             (ActionName::BassMute, Input::Press(true)) => Some(Action::ToggleBassMute),
             (ActionName::SamplesToggle, Input::Press(true)) => Some(Action::ToggleSamples),
+            (ActionName::Chord, Input::Press(held)) => Some(Action::Chord {
+                pad: binding.chord,
+                held,
+            }),
+            (ActionName::Brightness, Input::Absolute(v)) => Some(Action::SetBrightness(v)),
             (ActionName::Tonic, Input::Press(true)) => Some(Action::NudgeTonic(
                 binding.step.round().clamp(-11.0, 11.0) as i8,
             )),
@@ -489,7 +518,8 @@ impl Mapping {
                 ActionName::MasterGain
                 | ActionName::MetronomeLevel
                 | ActionName::DrumLevel
-                | ActionName::BassLevel,
+                | ActionName::BassLevel
+                | ActionName::MelodyLevel,
                 Input::Absolute(v),
             ) => {
                 let target = target_of(binding.action)?;
@@ -608,9 +638,11 @@ fn normalized(binding: &Binding, target: Target, value: f64) -> f32 {
             let [lo, hi] = binding.range;
             ((value - lo) / (hi - lo)).clamp(0.0, 1.0) as f32
         }
-        Target::MasterGain | Target::MetronomeLevel | Target::DrumLevel | Target::BassLevel => {
-            value.clamp(0.0, 1.0) as f32
-        }
+        Target::MasterGain
+        | Target::MetronomeLevel
+        | Target::DrumLevel
+        | Target::BassLevel
+        | Target::MelodyLevel => value.clamp(0.0, 1.0) as f32,
     }
 }
 
@@ -627,6 +659,7 @@ fn target_of(action: ActionName) -> Option<Target> {
         ActionName::MasterGain => Some(Target::MasterGain),
         ActionName::DrumLevel => Some(Target::DrumLevel),
         ActionName::BassLevel => Some(Target::BassLevel),
+        ActionName::MelodyLevel => Some(Target::MelodyLevel),
         ActionName::MetronomeLevel => Some(Target::MetronomeLevel),
         _ => None,
     }
@@ -651,6 +684,7 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::BassLine
         | ActionName::BassMute
         | ActionName::SamplesToggle
+        | ActionName::Chord
         | ActionName::Tonic
         | ActionName::Mute
         | ActionName::Fill
@@ -661,7 +695,9 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::MasterGain
         | ActionName::MetronomeLevel
         | ActionName::DrumLevel
-        | ActionName::BassLevel => {
+        | ActionName::BassLevel
+        | ActionName::MelodyLevel
+        | ActionName::Brightness => {
             matches!(kind, Kind::Absolute)
         }
         ActionName::TempoNudge | ActionName::Swing | ActionName::Style => {
@@ -950,6 +986,52 @@ mod tests {
                 }
             ),
             Some(Action::SetDensity(_))
+        ));
+    }
+
+    #[test]
+    fn deck_b_plays_chords_while_held_and_sets_melody_level_and_brightness() {
+        let mut m = mapping();
+        let pad = |pressed| ControllerEvent::Pad {
+            deck: Deck::B,
+            mode: PadMode::HotCue,
+            pad: 3,
+            shift: false,
+            pressed,
+            velocity: if pressed { 127 } else { 0 },
+        };
+        assert_eq!(
+            m.handle(1, pad(true)),
+            Some(Action::Chord { pad: 3, held: true })
+        );
+        assert_eq!(
+            m.handle(2, pad(false)),
+            Some(Action::Chord {
+                pad: 3,
+                held: false
+            })
+        );
+        assert!(matches!(
+            m.handle(
+                3,
+                ControllerEvent::Tempo {
+                    deck: Deck::B,
+                    value: 0
+                }
+            ),
+            Some(Action::SetBrightness(0.0))
+        ));
+        m.software_changed(Target::MelodyLevel, 0.0);
+        assert!(matches!(
+            m.handle(
+                4,
+                ControllerEvent::Knob {
+                    deck: Deck::B,
+                    knob: DeckKnob::Volume,
+                    value: 0
+                }
+            ),
+            Some(Action::SetLevel(Target::MelodyLevel, _))
         ));
     }
 

@@ -56,7 +56,8 @@ jog dessus = tempo. Basse : chaque pattern amène sa ligne, Shift + Hot Cue = li
 Cue A = mute, potard Bass A = filtre, Cue B = tonique −1 (Shift : +1), à la mesure.
 Shift + PFL A = batterie samples 909 ↔ synthé, à la mesure. Volume A = batterie, Shift + Volume A = basse.
 Shift + jog gauche (un demi-tour) = style (kit, patterns, basse, swing), à la mesure ; le tempo reste le tien.
-Deck B : pads Hot Cue = clap, perc.
+Deck B : pads Hot Cue = accords I, IV, V, vi (tenus), Volume B = mélodie (Shift : métronome),
+fader Tempo B = brillance ; chaque style amène son patch de synthé.
 Chaque son joué au pad affiche sa latence geste → son.";
 
 // Debug builds abort on any allocation inside `assert_no_alloc` (the audio callback); release
@@ -75,6 +76,9 @@ struct Wanted {
     metronome_level: f32,
     drum_level: f32,
     bass_level: f32,
+    melody_level: f32,
+    /// Melody synth brightness 0..=1 (0.5 = the patch).
+    brightness: f32,
     /// Drum pattern asked for (0-based) and swing (0.5..=0.75).
     pattern: u8,
     swing: f32,
@@ -98,7 +102,7 @@ struct Session {
     mapping: Mapping,
     /// Last values echoed to the console (continuous controls are echoed by steps only).
     shown_bpm: f64,
-    shown_levels: [f32; 4],
+    shown_levels: [f32; 5],
     shown_swing: f32,
     shown_density: f32,
     /// Beat-repeat pads held, last pressed last: releasing it falls back to the previous one.
@@ -339,6 +343,8 @@ fn open(
     ));
     handle.send(Command::SetParam(Param::DrumLevel, wanted.drum_level));
     handle.send(Command::SetParam(Param::BassLevel, wanted.bass_level));
+    handle.send(Command::SetParam(Param::MelodyLevel, wanted.melody_level));
+    handle.send(Command::SetParam(Param::Brightness, wanted.brightness));
     // The style first: it sets the swing, which may have been nudged since.
     handle.send(Command::QueueStyle(wanted.style));
     handle.send(Command::UseSamples(wanted.samples));
@@ -483,6 +489,17 @@ fn handle_controller(
                 engine::bass::tonic_name(s.wanted.tonic)
             );
         }
+        Action::Chord { pad, held } => {
+            handle.send(Command::Chord { pad, on: held });
+            if held {
+                const NAMES: [&str; 4] = ["I", "IV", "V", "vi"];
+                println!("  ♫ accord {}", NAMES.get(usize::from(pad)).unwrap_or(&"?"));
+            }
+        }
+        Action::SetBrightness(value) => {
+            s.wanted.brightness = value;
+            handle.send(Command::SetParam(Param::Brightness, value));
+        }
         Action::ToggleSamples => {
             if s.kit_loaded {
                 s.wanted.samples = !s.wanted.samples;
@@ -587,6 +604,10 @@ fn handle_controller(
                 Target::BassLevel => {
                     s.wanted.bass_level = value;
                     (Param::BassLevel, 3, "basse")
+                }
+                Target::MelodyLevel => {
+                    s.wanted.melody_level = value;
+                    (Param::MelodyLevel, 4, "mélodie")
                 }
                 Target::Tempo => return,
             };
@@ -832,6 +853,8 @@ fn run() -> Result<(), String> {
             metronome_level: 0.7,
             drum_level: 0.8,
             bass_level: 0.8,
+            melody_level: 0.8,
+            brightness: 0.5,
             pattern: 0,
             swing: 0.54,
             mutes: 0,
@@ -846,7 +869,7 @@ fn run() -> Result<(), String> {
         leds: LedRoles::of(&mapping),
         mapping,
         shown_bpm: 0.0,
-        shown_levels: [-1.0; 4],
+        shown_levels: [-1.0; 5],
         shown_swing: 0.54,
         shown_density: 1.0,
         repeats_held: Vec::new(),
@@ -868,6 +891,8 @@ fn run() -> Result<(), String> {
         .software_changed(Target::DrumLevel, f64::from(s.wanted.drum_level));
     s.mapping
         .software_changed(Target::BassLevel, f64::from(s.wanted.bass_level));
+    s.mapping
+        .software_changed(Target::MelodyLevel, f64::from(s.wanted.melody_level));
     let mut recording = args.record.clone().map(|path| Recording {
         path,
         sample_rate: 48_000,

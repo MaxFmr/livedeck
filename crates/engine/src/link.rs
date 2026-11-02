@@ -29,6 +29,11 @@ pub enum Command {
     QueueStyle(u8),
     /// Drum source for the next bar (now if stopped): samples (true) or synth.
     UseSamples(bool),
+    /// Chord pad (0..4 = I, IV, V, vi) pressed or released: played now.
+    Chord {
+        pad: u8,
+        on: bool,
+    },
     /// Bass line (0-based) alone for the next bar, or now if stopped.
     QueueBassLine(u8),
     /// Bass tonic (0 = C … 11 = B) for the next bar, or now if stopped.
@@ -120,6 +125,8 @@ pub struct EngineSnapshot {
     pub samples: bool,
     pub pending_samples: Option<bool>,
     pub samples_loaded: bool,
+    /// Melody synth voices sounding (out of `poly::VOICES`).
+    pub synth_voices: u8,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -196,6 +203,7 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         samples: engine.drums().use_samples(),
         pending_samples: engine.sequencer().pending_samples(),
         samples_loaded: engine.drums().has_samples(),
+        synth_voices: engine.synth().active_voices() as u8,
     }
 }
 
@@ -239,6 +247,7 @@ impl AudioEngine {
             Command::QueuePattern(index) => self.engine.queue_pattern(index),
             Command::QueueStyle(index) => self.engine.queue_style(index),
             Command::UseSamples(on) => self.engine.use_samples(on),
+            Command::Chord { pad, on } => self.engine.chord(pad, on),
             Command::QueueBassLine(index) => self.engine.queue_bass_line(index),
             Command::SetTonic(tonic) => self.engine.queue_tonic(tonic),
             Command::BassMute(muted) => self.engine.set_bass_mute(muted),
@@ -505,6 +514,22 @@ mod tests {
         run(&mut audio, 750);
         let snap = handle.snapshot();
         assert_eq!((snap.samples, snap.pending_samples), (true, None));
+    }
+
+    #[test]
+    fn chord_pads_hold_their_triad_and_styles_bring_their_patch() {
+        let (mut audio, mut handle) = pair();
+        handle.send(Command::Start);
+        handle.send(Command::Chord { pad: 0, on: true });
+        handle.send(Command::Chord { pad: 3, on: true });
+        run(&mut audio, 10);
+        assert_eq!(handle.snapshot().synth_voices, 6);
+        handle.send(Command::Chord { pad: 0, on: false });
+        run(&mut audio, 1_000);
+        assert_eq!(handle.snapshot().synth_voices, 3, "vi still held");
+        handle.send(Command::Stop);
+        run(&mut audio, 1_000);
+        assert_eq!(handle.snapshot().synth_voices, 0);
     }
 
     #[test]

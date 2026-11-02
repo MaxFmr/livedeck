@@ -18,6 +18,7 @@ pub mod dsp;
 pub mod limiter;
 pub mod link;
 pub mod metronome;
+pub mod poly;
 pub mod repeat;
 pub mod sampler;
 pub mod sequencer;
@@ -29,6 +30,7 @@ use clock::Clock;
 use drums::{DrumKit, DrumVoice};
 use limiter::Limiter;
 use metronome::Click;
+use poly::PolySynth;
 use repeat::{BeatRepeat, Division};
 use sequencer::Sequencer;
 use smooth::Smoothed;
@@ -42,6 +44,10 @@ pub enum Param {
     DrumLevel,
     /// Level of the bass.
     BassLevel,
+    /// Level of the melody synth.
+    MelodyLevel,
+    /// Melody synth filter around its patch cutoff (0.5 = the patch).
+    Brightness,
     /// Base cutoff of the bass filter (linear knob, exponential in Hz).
     BassCutoff,
 }
@@ -65,6 +71,9 @@ pub struct Engine {
     click: Click,
     drums: DrumKit,
     bass: BassVoice,
+    synth: PolySynth,
+    /// Style whose synth patch is loaded.
+    synth_style: u8,
     sequencer: Sequencer,
     limiter: Limiter,
     metronome: bool,
@@ -72,6 +81,7 @@ pub struct Engine {
     metronome_level: Smoothed,
     drum_level: Smoothed,
     bass_level: Smoothed,
+    melody_level: Smoothed,
     repeat: BeatRepeat,
     /// Clock position of the last drum hit (sequencer or pad) since the transport started.
     last_hit: Option<u64>,
@@ -83,6 +93,8 @@ pub struct Engine {
     drum_bus: Vec<f32>,
     /// Bass bus (kept out of the beat-repeat), same size as `mono`.
     bass_bus: Vec<f32>,
+    /// Melody synth bus, same size as `mono`.
+    synth_bus: Vec<f32>,
 }
 
 impl Engine {
@@ -94,6 +106,8 @@ impl Engine {
             click: Click::new(sample_rate),
             drums: DrumKit::new(sample_rate),
             bass: BassVoice::new(sample_rate),
+            synth: PolySynth::new(sample_rate),
+            synth_style: 0,
             sequencer: Sequencer::new(),
             limiter: Limiter::new(sample_rate),
             metronome: true,
@@ -101,6 +115,7 @@ impl Engine {
             metronome_level: Smoothed::new(gain_curve(0.7), sample_rate, 0.01),
             drum_level: Smoothed::new(gain_curve(0.8), sample_rate, 0.01),
             bass_level: Smoothed::new(gain_curve(0.8), sample_rate, 0.01),
+            melody_level: Smoothed::new(gain_curve(0.8), sample_rate, 0.01),
             // One beat at the slowest tempo: the longest division repeated.
             repeat: BeatRepeat::new(
                 (f64::from(sample_rate) * 60.0 / clock::MIN_BPM).ceil() as usize
@@ -110,6 +125,7 @@ impl Engine {
             mono: vec![0.0; max_block.max(64)],
             drum_bus: vec![0.0; max_block.max(64)],
             bass_bus: vec![0.0; max_block.max(64)],
+            synth_bus: vec![0.0; max_block.max(64)],
         }
     }
 
@@ -124,6 +140,7 @@ impl Engine {
     pub fn stop(&mut self) {
         self.clock.stop();
         self.bass.note_off();
+        self.synth.release_all();
         self.repeat.release();
         self.roll_pending = None;
     }
@@ -143,6 +160,8 @@ impl Engine {
             Param::MetronomeLevel => self.metronome_level.set(gain_curve(value)),
             Param::DrumLevel => self.drum_level.set(gain_curve(value)),
             Param::BassLevel => self.bass_level.set(gain_curve(value)),
+            Param::MelodyLevel => self.melody_level.set(gain_curve(value)),
+            Param::Brightness => self.synth.set_brightness(value),
             Param::BassCutoff => self.bass.set_cutoff(value),
         }
     }
@@ -166,6 +185,30 @@ impl Engine {
     /// Queues drum pattern `index` (0-based) for the next bar (now if stopped).
     pub fn queue_pattern(&mut self, index: u8) {
         self.sequencer.queue(index, self.clock.is_playing());
+    }
+
+    /// Chord pad `pad` (0..4 = degrees I, IV, V, vi) pressed or released: a triad of the key in
+    /// the octave above the bass, played now, held until released.
+    pub fn chord(&mut self, pad: u8, on: bool) {
+        const DEGREES: [u8; 4] = [1, 4, 5, 6];
+        if !on {
+            self.synth.release(pad);
+            return;
+        }
+        let Some(&degree) = DEGREES.get(usize::from(pad)) else {
+            return;
+        };
+        let key = self.sequencer.bass().key();
+        // Retriggering the same pad restarts its chord.
+        self.synth.release(pad);
+        for step in [0, 2, 4] {
+            self.synth.note_on(key.note(degree + step, 1), 0.8, pad);
+        }
+    }
+
+    #[must_use]
+    pub fn synth(&self) -> &PolySynth {
+        &self.synth
     }
 
     /// Hands over the decoded sample kit (control thread, before the stream starts).
@@ -316,16 +359,27 @@ impl Engine {
                 break;
             }
             let n = remaining.min(self.mono.len());
-            let (Some(mono), Some(bus), Some(bass)) = (
+            // The style changed (at the bar, or now when stopped): its synth patch follows.
+            if self.sequencer.style() != self.synth_style {
+                self.synth_style = self.sequencer.style();
+                if let Some(style) = self.sequencer.style_preset() {
+                    self.synth.set_patch(style.synth);
+                }
+            }
+            let (Some(mono), Some(bus), Some(bass), Some(synth)) = (
                 self.mono.get_mut(..n),
                 self.drum_bus.get_mut(..n),
                 self.bass_bus.get_mut(..n),
+                self.synth_bus.get_mut(..n),
             ) else {
                 break;
             };
             mono.fill(0.0);
             bus.fill(0.0);
             bass.fill(0.0);
+            synth.fill(0.0);
+            self.synth.render_add(synth);
+            let melody_gain = self.melody_level.skip(n);
             self.click.gain = self.metronome_level.skip(n);
             let drum_gain = self.drum_level.skip(n);
             let bass_gain = self.bass_level.skip(n);
@@ -349,8 +403,13 @@ impl Engine {
                 },
             );
             self.repeat.process(bus, start);
-            for ((sample, &drum), &bass) in mono.iter_mut().zip(bus.iter()).zip(bass.iter()) {
-                *sample += drum * drum_gain + bass * bass_gain;
+            for (((sample, &drum), &bass), &synth) in mono
+                .iter_mut()
+                .zip(bus.iter())
+                .zip(bass.iter())
+                .zip(synth.iter())
+            {
+                *sample += drum * drum_gain + bass * bass_gain + synth * melody_gain;
             }
             for sample in mono.iter_mut() {
                 *sample *= self.master_gain.tick();

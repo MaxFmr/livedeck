@@ -9,6 +9,7 @@
 
 use crate::bass::{BassParams, BassPattern, default_bass_patterns};
 use crate::drums::{DrumVoice, VoiceParams};
+use crate::poly::{Adsr, SynthPatch, Wave};
 use crate::sequencer::{PATTERNS, Pattern, SwingGrid, default_fills, default_patterns};
 
 /// Number of styles: the hybrid kit of 010–013, then the five starting presets.
@@ -27,6 +28,8 @@ pub struct StyleText {
     /// (tune in semitones, decay factor, level) per voice, in `DrumVoice::ALL` order.
     pub kit: [(f32, f32, f32); 6],
     pub bass: BassParams,
+    /// Patch of the melody synth.
+    pub synth: SynthPatch,
     /// `None` = the patterns and fills of the hybrid kit.
     pub patterns: Option<[Rows; PATTERNS]>,
     pub fills: Option<[Rows; PATTERNS]>,
@@ -43,6 +46,7 @@ pub struct StylePreset {
     pub grid: SwingGrid,
     pub kit: [VoiceParams; 6],
     pub bass: BassParams,
+    pub synth: SynthPatch,
     pub patterns: [Pattern; PATTERNS],
     pub fills: [Pattern; PATTERNS],
     pub bass_lines: [BassPattern; PATTERNS],
@@ -63,6 +67,7 @@ impl StylePreset {
                 .kit
                 .map(|(tune, decay, level)| VoiceParams { tune, decay, level }),
             bass: text.bass,
+            synth: text.synth,
             patterns: build(text.patterns, default_patterns()),
             fills: build(text.fills, default_fills()),
             bass_lines: text
@@ -111,6 +116,27 @@ pub const TEXTS: [StyleText; STYLES] = [
             glide: 0.045,
             drive: 1.4,
         },
+        synth: SynthPatch {
+            wave1: Wave::Saw,
+            wave2: Wave::Saw,
+            detune: 8.0,
+            cutoff: 1_200.0,
+            resonance: 0.9,
+            env_octaves: 1.5,
+            amp: Adsr {
+                attack: 0.25,
+                decay: 0.5,
+                sustain: 0.8,
+                release: 0.6,
+            },
+            filter: Adsr {
+                attack: 0.3,
+                decay: 0.8,
+                sustain: 0.4,
+                release: 0.6,
+            },
+            level: 0.5,
+        },
         patterns: None,
         fills: None,
         bass_lines: None,
@@ -138,6 +164,28 @@ pub const TEXTS: [StyleText; STYLES] = [
             decay: 0.3,
             glide: 0.06,
             drive: 1.6,
+        },
+        // Skank: short, bright, nothing held.
+        synth: SynthPatch {
+            wave1: Wave::Square,
+            wave2: Wave::Saw,
+            detune: 5.0,
+            cutoff: 1_800.0,
+            resonance: 1.2,
+            env_octaves: 2.0,
+            amp: Adsr {
+                attack: 0.002,
+                decay: 0.18,
+                sustain: 0.0,
+                release: 0.08,
+            },
+            filter: Adsr {
+                attack: 0.0,
+                decay: 0.12,
+                sustain: 0.0,
+                release: 0.1,
+            },
+            level: 0.6,
         },
         patterns: Some([
             // One drop.
@@ -211,6 +259,28 @@ pub const TEXTS: [StyleText; STYLES] = [
             glide: 0.04,
             drive: 1.4,
         },
+        // Organ: squares, little filter movement, held.
+        synth: SynthPatch {
+            wave1: Wave::Square,
+            wave2: Wave::Square,
+            detune: 3.0,
+            cutoff: 2_500.0,
+            resonance: 0.7,
+            env_octaves: 0.5,
+            amp: Adsr {
+                attack: 0.005,
+                decay: 0.1,
+                sustain: 0.9,
+                release: 0.08,
+            },
+            filter: Adsr {
+                attack: 0.0,
+                decay: 0.2,
+                sustain: 0.8,
+                release: 0.1,
+            },
+            level: 0.45,
+        },
         patterns: Some([
             // Afrobeat.
             &[
@@ -283,6 +353,28 @@ pub const TEXTS: [StyleText; STYLES] = [
             glide: 0.03,
             drive: 1.8,
         },
+        // Stab: resonant filter snapping shut.
+        synth: SynthPatch {
+            wave1: Wave::Saw,
+            wave2: Wave::Saw,
+            detune: 12.0,
+            cutoff: 900.0,
+            resonance: 1.6,
+            env_octaves: 3.0,
+            amp: Adsr {
+                attack: 0.002,
+                decay: 0.25,
+                sustain: 0.2,
+                release: 0.15,
+            },
+            filter: Adsr {
+                attack: 0.0,
+                decay: 0.15,
+                sustain: 0.0,
+                release: 0.1,
+            },
+            level: 0.55,
+        },
         patterns: Some([
             // 2-step.
             &[
@@ -347,6 +439,28 @@ pub const TEXTS: [StyleText; STYLES] = [
             glide: 0.06,
             drive: 1.2,
         },
+        // Soft keys: dark, slow decay.
+        synth: SynthPatch {
+            wave1: Wave::Saw,
+            wave2: Wave::Square,
+            detune: 4.0,
+            cutoff: 700.0,
+            resonance: 0.8,
+            env_octaves: 1.5,
+            amp: Adsr {
+                attack: 0.01,
+                decay: 0.9,
+                sustain: 0.3,
+                release: 0.4,
+            },
+            filter: Adsr {
+                attack: 0.0,
+                decay: 0.5,
+                sustain: 0.2,
+                release: 0.4,
+            },
+            level: 0.55,
+        },
         patterns: Some([
             // Boom bap.
             &[
@@ -405,6 +519,28 @@ pub const TEXTS: [StyleText; STYLES] = [
             decay: 0.15,
             glide: 0.04,
             drive: 1.5,
+        },
+        // House stab.
+        synth: SynthPatch {
+            wave1: Wave::Saw,
+            wave2: Wave::Saw,
+            detune: 10.0,
+            cutoff: 1_000.0,
+            resonance: 1.4,
+            env_octaves: 3.0,
+            amp: Adsr {
+                attack: 0.002,
+                decay: 0.3,
+                sustain: 0.0,
+                release: 0.12,
+            },
+            filter: Adsr {
+                attack: 0.0,
+                decay: 0.2,
+                sustain: 0.0,
+                release: 0.1,
+            },
+            level: 0.55,
         },
         patterns: Some([
             &[
@@ -495,6 +631,7 @@ mod tests {
         assert_eq!(hybrid.bass_lines, default_bass_patterns());
         assert_eq!(hybrid.bass, BassParams::default());
         assert!(hybrid.kit.iter().all(|p| *p == VoiceParams::default()));
+        assert_eq!(hybrid.synth, SynthPatch::default());
     }
 
     #[test]

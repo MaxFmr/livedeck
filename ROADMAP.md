@@ -61,7 +61,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 ## Phase 4 — Deck B : mélodie
 
-- [ ] Poly synthé 16 voix (2 osc PolyBLEP, SVF, 2 ADSR), vol de voix.
+- [x] Poly synthé 16 voix (2 osc PolyBLEP, SVF, 2 ADSR), vol de voix. → [016](docs/iterations/016-poly-synth.md)
 - [ ] Gammes, tonalité, accords par degrés, voicings, renversements.
 - [ ] Arpégiateur, phrases, transposition dans la gamme au jog.
 - [ ] Delay synchronisé + réverb (pré-alloués), envois.

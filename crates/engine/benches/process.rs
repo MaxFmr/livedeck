@@ -91,11 +91,37 @@ fn process_block_all_samples(c: &mut Criterion) {
     });
 }
 
+/// Worst case of the melody deck: the 16 synth voices sounding (4 chords + stolen voices), with
+/// the drums of the 6-voice case.
+fn process_block_full_synth(c: &mut Criterion) {
+    let mut engine = Engine::new(48_000, 1024, 120.0);
+    engine.start();
+    for _ in 0..2 {
+        for pad in 0..4 {
+            engine.chord(pad, true);
+        }
+    }
+    let mut buf = vec![0.0_f32; 128 * 2];
+    let mut n = 0_u32;
+    c.bench_function("process 128 frames stereo (16 synth voices + drums)", |b| {
+        b.iter(|| {
+            if n.is_multiple_of(8) {
+                for voice in DrumVoice::ALL {
+                    engine.trigger_drum(voice, 1.0);
+                }
+            }
+            n = n.wrapping_add(1);
+            engine.process(black_box(&mut buf), 2);
+        });
+    });
+}
+
 criterion_group!(
     benches,
     process_block,
     process_block_all_drums,
     process_block_all_drums_repeat,
-    process_block_all_samples
+    process_block_all_samples,
+    process_block_full_synth
 );
 criterion_main!(benches);
