@@ -8,6 +8,11 @@
 use core::f32::consts::TAU;
 
 use crate::dsp::{Decay, Noise, Svf, soft_clip};
+use crate::sampler::{SampleBank, SamplePlayer};
+
+/// Gain of the sample kit: the TR-909 samples sounded 0.7–4.4 dB below the synth depending on the
+/// style, too quiet when switching (test of 015) → +3 dB.
+const SAMPLE_GAIN: f32 = 1.41;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DrumVoice {
@@ -268,6 +273,9 @@ pub struct DrumKit {
     open_hat: Hat,
     clap: Clap,
     perc: Perc,
+    /// Sample kit (015), loaded before the stream starts; played instead of the synth when on.
+    samples: Option<SamplePlayer>,
+    use_samples: bool,
 }
 
 fn slot(voice: DrumVoice) -> usize {
@@ -297,7 +305,30 @@ impl DrumKit {
                 ..Clap::default()
             },
             perc: Perc::default(),
+            samples: None,
+            use_samples: false,
         }
+    }
+
+    /// Hands over a decoded sample kit (control thread, before the stream starts).
+    pub fn set_samples(&mut self, bank: SampleBank) {
+        self.samples = Some(SamplePlayer::new(bank, self.sample_rate as u32));
+    }
+
+    #[must_use]
+    pub fn has_samples(&self) -> bool {
+        self.samples.is_some()
+    }
+
+    /// Next hits on the samples (voices without a sample stay synthetic) or the synth. Notes
+    /// already sounding finish on their own.
+    pub fn set_use_samples(&mut self, on: bool) {
+        self.use_samples = on && self.samples.is_some();
+    }
+
+    #[must_use]
+    pub fn use_samples(&self) -> bool {
+        self.use_samples
     }
 
     pub fn set_params(&mut self, voice: DrumVoice, params: VoiceParams) {
@@ -315,6 +346,16 @@ impl DrumKit {
         };
         let sr = self.sample_rate;
         let p = self.params.get(slot(voice)).copied().unwrap_or_default();
+        if self.use_samples
+            && let Some(samples) = self.samples.as_mut()
+            && samples.trigger(voice, p, vel)
+        {
+            if voice == DrumVoice::ClosedHat {
+                // The synthetic open hat may still ring from before the switch.
+                self.open_hat.choke(sr);
+            }
+            return;
+        }
         match voice {
             DrumVoice::Kick => self.kick.trigger(sr, p, vel),
             DrumVoice::Snare => self.snare.trigger(sr, p, vel),
@@ -340,6 +381,9 @@ impl DrumKit {
                 + self.clap.next(sr, n)
                 + self.perc.next(sr);
             *sample += mix * gain;
+        }
+        if let Some(samples) = self.samples.as_mut() {
+            samples.render_add(out, gain * SAMPLE_GAIN);
         }
     }
 }

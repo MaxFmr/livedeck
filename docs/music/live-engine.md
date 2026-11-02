@@ -97,11 +97,11 @@ continus en 14 bits (filtres et volumes sans paliers).
 | Tempo | densité de la batterie (0 = kick seul → 1 = complet) |
 | Filter | filtre DJ du bus rythme |
 | Bass | coupure du filtre de la basse, 60 Hz → 4 kHz (013) |
-| Volume | niveau rythme |
+| Volume | niveau de la batterie · Shift : niveau de la basse (015, soft-takeover par couche) |
 | Play | transport start/stop (global) · Shift : relancer à la mesure 1 |
 | Cue | mute de la basse, LED allumée = elle joue (013 ; le rappel de scène ira ailleurs en phase 6) |
 | Sync | tap tempo · Shift + jog : BPM fin |
-| PFL | métronome on/off |
+| PFL | métronome on/off · Shift : batterie samples 909 ↔ synthé, à la mesure (015) |
 
 ### Deck B — Mélodie
 
@@ -152,9 +152,9 @@ action = "transport_restart"
 
 Actions disponibles aujourd'hui : `transport_toggle`, `transport_restart`, `tap_tempo`,
 `metronome_toggle`, `drum` (`voice` = kick, snare, closed_hat, open_hat, clap, perc), `tempo`,
-`tempo_nudge` (`step`), `master_gain`, `metronome_level`, `drum_level` (batterie + basse),
+`tempo_nudge` (`step`), `master_gain`, `metronome_level`, `drum_level`, `bass_level`,
 `pattern`, `swing`, `mute`, `fill`, `beat_repeat`, `drum_density`, `bass_line` (`pattern` = 1–4),
-`bass_mute`, `tonic` (`step` = demi-tons), `bass_cutoff`, `style` (`step` = crans de jog par style). Liste commentée en tête de
+`bass_mute`, `tonic` (`step` = demi-tons), `bass_cutoff`, `style` (`step` = crans de jog par style), `samples_toggle`. Liste commentée en tête de
 `config/mapping.toml`.
 
 Lignes de basse (013) : 16 jetons séparés par des espaces — `.` silence, `-` tient la note précédente,

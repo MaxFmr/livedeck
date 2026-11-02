@@ -19,6 +19,7 @@ pub mod limiter;
 pub mod link;
 pub mod metronome;
 pub mod repeat;
+pub mod sampler;
 pub mod sequencer;
 pub mod smooth;
 pub mod style;
@@ -37,8 +38,10 @@ use smooth::Smoothed;
 pub enum Param {
     MasterGain,
     MetronomeLevel,
-    /// Level of the rhythm deck (drums and bass).
+    /// Level of the drums.
     DrumLevel,
+    /// Level of the bass.
+    BassLevel,
     /// Base cutoff of the bass filter (linear knob, exponential in Hz).
     BassCutoff,
 }
@@ -68,6 +71,7 @@ pub struct Engine {
     master_gain: Smoothed,
     metronome_level: Smoothed,
     drum_level: Smoothed,
+    bass_level: Smoothed,
     repeat: BeatRepeat,
     /// Clock position of the last drum hit (sequencer or pad) since the transport started.
     last_hit: Option<u64>,
@@ -96,6 +100,7 @@ impl Engine {
             master_gain: Smoothed::new(1.0, sample_rate, 0.01),
             metronome_level: Smoothed::new(gain_curve(0.7), sample_rate, 0.01),
             drum_level: Smoothed::new(gain_curve(0.8), sample_rate, 0.01),
+            bass_level: Smoothed::new(gain_curve(0.8), sample_rate, 0.01),
             // One beat at the slowest tempo: the longest division repeated.
             repeat: BeatRepeat::new(
                 (f64::from(sample_rate) * 60.0 / clock::MIN_BPM).ceil() as usize
@@ -137,6 +142,7 @@ impl Engine {
             Param::MasterGain => self.master_gain.set(gain_curve(value)),
             Param::MetronomeLevel => self.metronome_level.set(gain_curve(value)),
             Param::DrumLevel => self.drum_level.set(gain_curve(value)),
+            Param::BassLevel => self.bass_level.set(gain_curve(value)),
             Param::BassCutoff => self.bass.set_cutoff(value),
         }
     }
@@ -160,6 +166,24 @@ impl Engine {
     /// Queues drum pattern `index` (0-based) for the next bar (now if stopped).
     pub fn queue_pattern(&mut self, index: u8) {
         self.sequencer.queue(index, self.clock.is_playing());
+    }
+
+    /// Hands over the decoded sample kit (control thread, before the stream starts).
+    pub fn set_sample_bank(&mut self, bank: sampler::SampleBank) {
+        self.drums.set_samples(bank);
+    }
+
+    /// Drum source for the next bar (now if stopped): samples (when loaded) or synth.
+    pub fn use_samples(&mut self, on: bool) {
+        self.sequencer.queue_samples(on);
+        if !self.clock.is_playing() {
+            self.sequencer.apply_samples(&mut self.drums);
+        }
+    }
+
+    #[must_use]
+    pub fn drums(&self) -> &DrumKit {
+        &self.drums
     }
 
     /// Style `index` (see `style::presets`) for the next bar, or now if stopped.
@@ -304,6 +328,7 @@ impl Engine {
             bass.fill(0.0);
             self.click.gain = self.metronome_level.skip(n);
             let drum_gain = self.drum_level.skip(n);
+            let bass_gain = self.bass_level.skip(n);
             let start = self.clock.position();
             render_mono(
                 Voices {
@@ -325,7 +350,7 @@ impl Engine {
             );
             self.repeat.process(bus, start);
             for ((sample, &drum), &bass) in mono.iter_mut().zip(bus.iter()).zip(bass.iter()) {
-                *sample += (drum + bass) * drum_gain;
+                *sample += drum * drum_gain + bass * bass_gain;
             }
             for sample in mono.iter_mut() {
                 *sample *= self.master_gain.tick();

@@ -5,7 +5,7 @@
 # Contrôles : a.<x> / b.<x> pour les decks (play, cue, sync, pfl, volume, filter, bass, tempo,
 #   jog.edge, jog.top, pad.<hotcue|sampler|fx|loop>.<1-4>), mixer.<crossfader|master|headphone>, vinyl.
 #   shift = true : la même touche avec Shift tenu.
-# Actions disponibles (itération 014 ; les actions musicales arrivent avec les decks, 010+) :
+# Actions disponibles (itération 015 ; les actions musicales arrivent avec les decks, 010+) :
 #   transport_toggle, transport_restart, tap_tempo, metronome_toggle   → boutons et pads
 #   pattern (pattern = 1–4), drum (voice = kick, snare, closed_hat, open_hat, clap, perc),
 #   mute (voices = [liste de voix]), fill (fill = 1–4)                → pads
@@ -13,11 +13,12 @@
 #   beat_repeat (division = 4, 8, 16, 32 pour 1/4 … 1/32), tant que le pad est tenu → pads
 #   swing (step = % par cran)                                          → jogs
 #   tempo (range = [min, max] en BPM), master_gain, metronome_level,
-#   drum_level, drum_density (0 = kicks sur les temps → 1 = complet)   → faders et potards
+#   drum_level, bass_level, drum_density (0 = kicks sur les temps → 1 = complet)   → faders et potards
 #   tempo_nudge (step = BPM par cran)                                  → jogs
 #   bass_line (pattern = 1–4), bass_mute, tonic (step = demi-tons)     → boutons et pads
 #   bass_cutoff (coupure du filtre de la basse)                        → potards
 #   style (step = crans de jog par style), à la mesure suivante        → jogs
+#   samples_toggle (batterie : samples ↔ synthé, à la mesure)          → boutons et pads
 #   pickup = true : soft-takeover (le contrôle ne prend la main qu'en rejoignant la valeur actuelle).
 
 # --- Transport ---
@@ -217,6 +218,12 @@ voice = "perc"
 control = "a.tempo"
 action = "drum_density"
 
+# --- Kit (015) : Shift + PFL A bascule la batterie entre les samples 909 et le synthé, à la mesure ---
+[[bind]]
+control = "a.pfl"
+shift = true
+action = "samples_toggle"
+
 # --- Style (014) : Shift + jog gauche fait défiler les styles (kit, patterns, basse, swing) ---
 [[bind]]
 control = "a.jog.edge"
@@ -247,6 +254,13 @@ pickup = true
 [[bind]]
 control = "a.volume"
 action = "drum_level"
+pickup = true
+
+# Shift + Volume A : niveau de la basse (015). Le fader rejoint chaque niveau avant de le changer.
+[[bind]]
+control = "a.volume"
+shift = true
+action = "bass_level"
 pickup = true
 
 [[bind]]

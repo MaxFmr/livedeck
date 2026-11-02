@@ -92,6 +92,7 @@ indiqué, LSB sur `CC + 0x20`, MSB envoyé en premier. Valeur = `MSB<<7 | LSB` (
 | Jog — bord (bend) | `B1` / `B2` | `09` | **relatif** : `0x01` = horaire, `0x7F` = anti-horaire (7 bits signé) |
 | Jog — dessus touché | `B1` / `B2` | `0A` | relatif, idem |
 | Jog — dessus + Shift | `B4` / `B5` | `0A` | relatif, idem |
+| Faders et potards de deck + Shift | `B4` / `B5` | mêmes CC (`00`, `01`, `02`, `08` + LSB) | 🧪 2026-11-02 (essai 015 : Shift + Volume A n'arrivait jamais sur `B1`) ; décodés comme le même contrôle, la couche Shift est choisie par le mapping d'après `90 03` |
 
 Jog 🧪 : chaque message vaut **±1 cran** (aucune valeur d'accélération), Mixxx compte **248 crans/tour**.
 Débit max mesuré : **~250 messages/s par le bord, ~300/s par le dessus** → la vitesse se déduit de la

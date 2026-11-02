@@ -54,6 +54,7 @@ pub enum Target {
     MasterGain,
     MetronomeLevel,
     DrumLevel,
+    BassLevel,
 }
 
 /// Result of a mapped gesture, applied by the control thread.
@@ -92,6 +93,8 @@ pub enum Action {
     SetBassCutoff(f32),
     /// Style scroll, in styles (one per `step` jog ticks).
     NudgeStyle(i8),
+    /// Drums: samples ↔ synth.
+    ToggleSamples,
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -118,11 +121,13 @@ pub enum ActionName {
     Tonic,
     BassCutoff,
     Style,
+    SamplesToggle,
     Tempo,
     TempoNudge,
     MasterGain,
     MetronomeLevel,
     DrumLevel,
+    BassLevel,
 }
 
 #[derive(Debug, Deserialize)]
@@ -235,6 +240,9 @@ pub struct Mapping {
     taps: Vec<u64>,
     /// Jog ticks not yet turned into a style step, per deck.
     style_ticks: [i32; 2],
+    /// Shift held (`90 03`). Faders and knobs send the same message with or without Shift, so
+    /// their Shift layer is chosen here.
+    shift_held: bool,
 }
 
 /// Default mapping, compiled in (used when `config/mapping.toml` is missing).
@@ -310,6 +318,7 @@ impl Mapping {
             held_ticks: [0; 2],
             taps: Vec::with_capacity(8),
             style_ticks: [0; 2],
+            shift_held: false,
         })
     }
 
@@ -375,10 +384,34 @@ impl Mapping {
 
     /// Maps one decoded event received at `ts_us` (CoreMIDI host time, µs).
     pub fn handle(&mut self, ts_us: u64, event: ControllerEvent) -> Option<Action> {
+        if let ControllerEvent::Shift { pressed } = event {
+            self.shift_held = pressed;
+        }
         let (mut id, mut input) = match self.jog_touch(ts_us, event) {
             Some(released) => released,
             None => identify(event)?,
         };
+        // Absolute controls with Shift held: their Shift binding if there is one, else the plain
+        // one (moving the tempo fader with Shift held still works).
+        if let Input::Absolute(hw) = input {
+            if self.shift_held {
+                let shifted = ControlId { shift: true, ..id };
+                if self.bindings.contains_key(&shifted) {
+                    id = shifted;
+                }
+            }
+            // The fader moves away from the value of its other layer: that layer must catch it
+            // again (soft-takeover) instead of jumping to wherever the fader ends up.
+            let other = ControlId {
+                shift: !id.shift,
+                ..id
+            };
+            if self.bindings.get(&other).is_some_and(|b| b.pickup) {
+                let state = self.pickups.entry(other).or_default();
+                state.caught = false;
+                state.last_hw = Some(hw);
+            }
+        }
         if let (Control::Jog(deck, JogSurface::Top), Input::Relative(ticks)) = (id.control, input) {
             let d = deck_index(deck);
             match self.touch_down_us.get(d).copied().flatten() {
@@ -420,6 +453,7 @@ impl Mapping {
                 Some(Action::QueueBassLine(binding.pattern))
             }
             (ActionName::BassMute, Input::Press(true)) => Some(Action::ToggleBassMute),
+            (ActionName::SamplesToggle, Input::Press(true)) => Some(Action::ToggleSamples),
             (ActionName::Tonic, Input::Press(true)) => Some(Action::NudgeTonic(
                 binding.step.round().clamp(-11.0, 11.0) as i8,
             )),
@@ -452,13 +486,20 @@ impl Mapping {
                     .then(|| Action::SetTempo(to_bpm(v)))
             }
             (
-                ActionName::MasterGain | ActionName::MetronomeLevel | ActionName::DrumLevel,
+                ActionName::MasterGain
+                | ActionName::MetronomeLevel
+                | ActionName::DrumLevel
+                | ActionName::BassLevel,
                 Input::Absolute(v),
             ) => {
                 let target = target_of(binding.action)?;
                 let soft = self.soft.get(&target).copied();
-                self.take_over(id, binding.pickup, soft, v)
-                    .then_some(Action::SetLevel(target, v))
+                let applied = self.take_over(id, binding.pickup, soft, v);
+                if applied {
+                    // Remembered for when another layer of this control comes back to it.
+                    self.soft.insert(target, v);
+                }
+                applied.then_some(Action::SetLevel(target, v))
             }
             _ => None,
         }
@@ -567,7 +608,7 @@ fn normalized(binding: &Binding, target: Target, value: f64) -> f32 {
             let [lo, hi] = binding.range;
             ((value - lo) / (hi - lo)).clamp(0.0, 1.0) as f32
         }
-        Target::MasterGain | Target::MetronomeLevel | Target::DrumLevel => {
+        Target::MasterGain | Target::MetronomeLevel | Target::DrumLevel | Target::BassLevel => {
             value.clamp(0.0, 1.0) as f32
         }
     }
@@ -585,6 +626,7 @@ fn target_of(action: ActionName) -> Option<Target> {
         ActionName::Tempo | ActionName::TempoNudge | ActionName::TapTempo => Some(Target::Tempo),
         ActionName::MasterGain => Some(Target::MasterGain),
         ActionName::DrumLevel => Some(Target::DrumLevel),
+        ActionName::BassLevel => Some(Target::BassLevel),
         ActionName::MetronomeLevel => Some(Target::MetronomeLevel),
         _ => None,
     }
@@ -608,6 +650,7 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::Pattern
         | ActionName::BassLine
         | ActionName::BassMute
+        | ActionName::SamplesToggle
         | ActionName::Tonic
         | ActionName::Mute
         | ActionName::Fill
@@ -617,7 +660,8 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::BassCutoff
         | ActionName::MasterGain
         | ActionName::MetronomeLevel
-        | ActionName::DrumLevel => {
+        | ActionName::DrumLevel
+        | ActionName::BassLevel => {
             matches!(kind, Kind::Absolute)
         }
         ActionName::TempoNudge | ActionName::Swing | ActionName::Style => {
@@ -852,6 +896,61 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![Led::Cue(Deck::A)]
         );
+    }
+
+    #[test]
+    fn shift_pfl_toggles_samples_and_pfl_keeps_the_metronome() {
+        let mut m = mapping();
+        let pfl = |shift| ControllerEvent::Button {
+            deck: Deck::A,
+            button: Button::Pfl,
+            shift,
+            pressed: true,
+        };
+        assert_eq!(m.handle(1, pfl(false)), Some(Action::MetronomeToggle));
+        assert_eq!(m.handle(2, pfl(true)), Some(Action::ToggleSamples));
+    }
+
+    #[test]
+    fn shift_volume_a_sets_the_bass_level_with_pickup() {
+        let mut m = mapping();
+        let volume = |value| ControllerEvent::Knob {
+            deck: Deck::A,
+            knob: DeckKnob::Volume,
+            value,
+        };
+        let shift = |pressed| ControllerEvent::Shift { pressed };
+        m.software_changed(Target::DrumLevel, 0.8);
+        m.software_changed(Target::BassLevel, 0.8);
+        let at = |v: f32| (v * f32::from(MAX_14BIT)) as u16;
+        // Volume A alone: drums (caught at 0.8).
+        assert!(matches!(
+            m.handle(1, volume(at(0.8))),
+            Some(Action::SetLevel(Target::DrumLevel, _))
+        ));
+        m.handle(2, volume(at(0.3)));
+        // With Shift: bass, which waits for the fader to come back to 0.8.
+        assert_eq!(m.handle(3, shift(true)), None);
+        assert_eq!(m.handle(4, volume(at(0.4))), None, "bass pickup not met");
+        assert!(matches!(
+            m.handle(5, volume(at(0.85))),
+            Some(Action::SetLevel(Target::BassLevel, _))
+        ));
+        // Shift released: drums again, waiting for 0.3.
+        m.handle(6, shift(false));
+        assert_eq!(m.handle(7, volume(at(0.6))), None, "drum pickup not met");
+        // The tempo fader has no Shift layer: it still sets the density with Shift held.
+        m.handle(8, shift(true));
+        assert!(matches!(
+            m.handle(
+                9,
+                ControllerEvent::Tempo {
+                    deck: Deck::A,
+                    value: 100
+                }
+            ),
+            Some(Action::SetDensity(_))
+        ));
     }
 
     #[test]

@@ -14,7 +14,19 @@ static ALLOCATOR: AllocDisabler = AllocDisabler;
 #[test]
 fn ten_seconds_of_audio_without_allocation() {
     // Everything is allocated here, on the "control thread", before audio starts.
-    let (mut audio, mut handle) = link::connect(Engine::new(48_000, 1024, 120.0));
+    let mut engine = Engine::new(48_000, 1024, 120.0);
+    // A sample kit at another rate, so every voice plays resampled.
+    let mut bank = engine::sampler::SampleBank {
+        sample_rate: 44_100,
+        ..Default::default()
+    };
+    for (i, voice) in bank.voices.iter_mut().enumerate() {
+        *voice = (0..4_000 + i * 1_000)
+            .map(|n| (n as f32 * 0.05).sin())
+            .collect();
+    }
+    engine.set_sample_bank(bank);
+    let (mut audio, mut handle) = link::connect(engine);
     let mut block = vec![0.0_f32; 512 * 2];
     let blocks = 48_000 * 10 / 512;
 
@@ -41,6 +53,7 @@ fn ten_seconds_of_audio_without_allocation() {
                 handle.send(Command::SetSwing(0.5 + (i % 50) as f32 / 200.0));
                 handle.send(Command::QueueBassLine((i / 300 % 4) as u8));
                 handle.send(Command::QueueStyle((i / 400 % 6) as u8));
+                handle.send(Command::UseSamples(i / 200 % 2 == 0));
                 handle.send(Command::SetTonic((i / 100 % 12) as u8));
                 handle.send(Command::BassMute(i % 1_000 == 60));
                 handle.send(Command::SetParam(

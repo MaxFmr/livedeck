@@ -196,8 +196,11 @@ impl Continuous {
                     _ => None,
                 };
             }
-            1 => Deck::A,
-            2 => Deck::B,
+            // Shift held moves the deck controls to channels 4/5 (seen in the 015 test: Shift +
+            // Volume A never reached the plain channel). Same control; the mapping picks the layer
+            // from the Shift state.
+            1 | 4 => Deck::A,
+            2 | 5 => Deck::B,
             _ => return None,
         };
         match base_cc {
@@ -219,10 +222,10 @@ impl Continuous {
 }
 
 /// Stateful decoder: the only state is the last MSB/LSB of each continuous control, needed to
-/// rebuild 14-bit values. Indexed by channel (0..=2) and base CC (0x00..=0x0F).
+/// rebuild 14-bit values. Indexed by channel (0..=5) and base CC (0x00..=0x0F).
 #[derive(Debug, Default, Clone)]
 pub struct Decoder {
-    halves: [[[u8; 2]; 16]; 3],
+    halves: [[[u8; 2]; 16]; 6],
 }
 
 impl Decoder {
@@ -605,11 +608,11 @@ mod tests {
             d.decode(&[0xB2, 0x21, 0x7F]),
             Some(knob(Deck::B, DeckKnob::Filter, 0x7F))
         );
-        // Shift channels carry no absolute controls.
-        assert!(matches!(
+        // With Shift held, deck controls come on channels 4/5: same control.
+        assert_eq!(
             d.decode(&[0xB4, 0x00, 0x10]),
-            Some(ControllerEvent::Unknown { .. })
-        ));
+            Some(knob(Deck::A, DeckKnob::Volume, 0x10 << 7))
+        );
     }
 
     #[test]

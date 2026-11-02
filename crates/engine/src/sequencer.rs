@@ -230,6 +230,8 @@ pub struct Sequencer {
     styles: [StylePreset; STYLES],
     style: u8,
     pending_style: Option<u8>,
+    /// Drum source waiting for the bar: samples (true) or synth.
+    pending_samples: Option<bool>,
 }
 
 impl Default for Sequencer {
@@ -258,6 +260,7 @@ impl Sequencer {
             styles: presets(),
             style: 0,
             pending_style: None,
+            pending_samples: None,
         }
     }
 
@@ -312,6 +315,23 @@ impl Sequencer {
         for (voice, params) in DrumVoice::ALL.into_iter().zip(style.kit) {
             kit.set_params(voice, params);
         }
+    }
+
+    /// Drum source for the next bar: samples or synth (the engine switches now when stopped).
+    pub fn queue_samples(&mut self, on: bool) {
+        self.pending_samples = Some(on);
+    }
+
+    /// Applies the drum source waiting for the bar.
+    pub fn apply_samples(&mut self, kit: &mut DrumKit) {
+        if let Some(on) = self.pending_samples.take() {
+            kit.set_use_samples(on);
+        }
+    }
+
+    #[must_use]
+    pub fn pending_samples(&self) -> Option<bool> {
+        self.pending_samples
     }
 
     #[must_use]
@@ -442,6 +462,7 @@ impl Sequencer {
         let step = (self.next_step % STEPS as u64) as usize;
         if step == 0 {
             self.apply_style(kit, bass);
+            self.apply_samples(kit);
             if let Some(p) = self.pending.take() {
                 self.current = p;
             }

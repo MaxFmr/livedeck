@@ -72,6 +72,8 @@ mémoire.** Ces API changent à chaque mineure ; vérifier sur docs.rs pour la v
 
 ### symphonia 0.6
 - Activer uniquement les codecs nécessaires (features) pour réduire binaire et temps de compilation.
+- 015 : **pas utilisé** (ni `rubato`) — les kits sont convertis une fois en WAV 48 kHz par `afconvert`
+  (`tools/import-kit-909.sh`), lus par `hound` 3.5 ; la lecture interpolée couvre 44,1 ↔ 48 kHz.
 
 ## Outillage
 

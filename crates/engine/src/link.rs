@@ -27,6 +27,8 @@ pub enum Command {
     QueuePattern(u8),
     /// Style (see `style::presets`) for the next bar, or now if stopped.
     QueueStyle(u8),
+    /// Drum source for the next bar (now if stopped): samples (true) or synth.
+    UseSamples(bool),
     /// Bass line (0-based) alone for the next bar, or now if stopped.
     QueueBassLine(u8),
     /// Bass tonic (0 = C … 11 = B) for the next bar, or now if stopped.
@@ -114,6 +116,10 @@ pub struct EngineSnapshot {
     /// Style playing and the one waiting for the next bar.
     pub style: u8,
     pub pending_style: Option<u8>,
+    /// Drums played from samples, the source waiting for the bar, and whether a kit is loaded.
+    pub samples: bool,
+    pub pending_samples: Option<bool>,
+    pub samples_loaded: bool,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -187,6 +193,9 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         pending_tonic: engine.sequencer().bass().pending_tonic(),
         style: engine.sequencer().style(),
         pending_style: engine.sequencer().pending_style(),
+        samples: engine.drums().use_samples(),
+        pending_samples: engine.sequencer().pending_samples(),
+        samples_loaded: engine.drums().has_samples(),
     }
 }
 
@@ -229,6 +238,7 @@ impl AudioEngine {
             Command::Metronome(on) => self.engine.set_metronome(on),
             Command::QueuePattern(index) => self.engine.queue_pattern(index),
             Command::QueueStyle(index) => self.engine.queue_style(index),
+            Command::UseSamples(on) => self.engine.use_samples(on),
             Command::QueueBassLine(index) => self.engine.queue_bass_line(index),
             Command::SetTonic(tonic) => self.engine.queue_tonic(tonic),
             Command::BassMute(muted) => self.engine.set_bass_mute(muted),
@@ -465,6 +475,36 @@ mod tests {
         assert_eq!((snap.style, snap.pending_style), (3, None));
         assert_eq!(snap.swing, crate::style::TEXTS[3].swing);
         assert_eq!(snap.bpm, 120.0, "the tempo stays the player's");
+    }
+
+    #[test]
+    fn drum_source_switches_at_the_bar_only_with_a_kit() {
+        let (mut audio, mut handle) = pair();
+        handle.send(Command::UseSamples(true));
+        run(&mut audio, 1);
+        let snap = handle.snapshot();
+        assert!(
+            !snap.samples_loaded && !snap.samples,
+            "no kit: stays on the synth"
+        );
+
+        let mut engine = Engine::new(48_000, 1024, 120.0);
+        let mut bank = crate::sampler::SampleBank {
+            sample_rate: 48_000,
+            ..Default::default()
+        };
+        bank.voices[0] = vec![0.5; 1_000];
+        engine.set_sample_bank(bank);
+        let (mut audio, mut handle) = connect(engine);
+        handle.send(Command::Start);
+        run(&mut audio, 10);
+        handle.send(Command::UseSamples(true));
+        run(&mut audio, 1);
+        let snap = handle.snapshot();
+        assert_eq!((snap.samples, snap.pending_samples), (false, Some(true)));
+        run(&mut audio, 750);
+        let snap = handle.snapshot();
+        assert_eq!((snap.samples, snap.pending_samples), (true, None));
     }
 
     #[test]

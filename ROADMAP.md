@@ -55,7 +55,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 - [x] Mutes, fills, densité ordonnée, beat-repeat. → [012](docs/iterations/012-drum-gestures.md)
 - [x] Basse mono (glide, accent, filtre), patterns en degrés de gamme. → [013](docs/iterations/013-bass.md)
 - [x] `StylePreset` + 5 presets de départ (dub/steppa, afrobeat/reggae, UK garage, lo-fi, house/techno) — voir `docs/music/live-engine.md`. → [014](docs/iterations/014-style-presets.md)
-- [ ] **3b** Lecteur de samples (chargement hors audio, `symphonia` + `rubato`, pool de voix) ; kits copiés dans `assets/` (ex. TR-909 du disque PHILIPS SOL), jamais lus depuis le disque externe en jeu.
+- [x] **3b** Lecteur de samples (chargement hors audio, `symphonia` + `rubato`, pool de voix) ; kits copiés dans `assets/` (ex. TR-909 du disque PHILIPS SOL), jamais lus depuis le disque externe en jeu. → [015](docs/iterations/015-sample-kit.md)
 
 **Sortie** : 15 min de jeu rythmique au contrôleur sans clic ni xrun ; valider le ressenti avec l'utilisateur.
 

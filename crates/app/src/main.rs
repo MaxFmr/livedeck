@@ -15,6 +15,7 @@ use assert_no_alloc::assert_no_alloc;
 use engine::drums::DrumVoice;
 use engine::link::{self, BlockTime, Command, EngineEvent, EngineHandle, EngineSnapshot};
 use engine::repeat::Division;
+use engine::sampler::SampleBank;
 use engine::{Engine, Param};
 use io::audio::{AudioOutput, BlockStamp, start_output};
 use io::controller::{ControllerEvent, Deck, Led, PadMode};
@@ -30,9 +31,10 @@ const USAGE: &str = "\
 LiveDeck — deck rythme (séquenceur de batterie) et métronome
 
 USAGE: app [--bpm <60-200>] [--buffer <frames>] [--mapping <fichier>] [--seconds <n>] [--quiet]
-           [--no-metronome] [--record <wav>]
+           [--no-metronome] [--record <wav>] [--kit <dossier>]
 
   --mapping       fichier de mapping (défaut : config/mapping.toml, sinon le mapping intégré)
+  --kit           dossier du kit de samples, kick.wav, snare.wav… (défaut : assets/kits/tr909)
 
   --seconds       s'arrête après n secondes (endurance)
   --quiet         n'affiche pas chaque temps, seulement les bilans et les incidents
@@ -52,6 +54,7 @@ Deck A : pads Hot Cue = patterns A–D (à la mesure suivante), pads Sampler = f
 pads Loop tenus = beat-repeat 1/4 … 1/32, fader Tempo = densité, jog bord = swing,
 jog dessus = tempo. Basse : chaque pattern amène sa ligne, Shift + Hot Cue = ligne seule,
 Cue A = mute, potard Bass A = filtre, Cue B = tonique −1 (Shift : +1), à la mesure.
+Shift + PFL A = batterie samples 909 ↔ synthé, à la mesure. Volume A = batterie, Shift + Volume A = basse.
 Shift + jog gauche (un demi-tour) = style (kit, patterns, basse, swing), à la mesure ; le tempo reste le tien.
 Deck B : pads Hot Cue = clap, perc.
 Chaque son joué au pad affiche sa latence geste → son.";
@@ -71,6 +74,7 @@ struct Wanted {
     master_gain: f32,
     metronome_level: f32,
     drum_level: f32,
+    bass_level: f32,
     /// Drum pattern asked for (0-based) and swing (0.5..=0.75).
     pattern: u8,
     swing: f32,
@@ -84,6 +88,8 @@ struct Wanted {
     bass_cutoff: f32,
     /// Style (see `engine::style`).
     style: u8,
+    /// Drums from the sample kit rather than the synth.
+    samples: bool,
 }
 
 /// Control-thread state.
@@ -92,7 +98,7 @@ struct Session {
     mapping: Mapping,
     /// Last values echoed to the console (continuous controls are echoed by steps only).
     shown_bpm: f64,
-    shown_levels: [f32; 3],
+    shown_levels: [f32; 4],
     shown_swing: f32,
     shown_density: f32,
     /// Beat-repeat pads held, last pressed last: releasing it falls back to the previous one.
@@ -105,6 +111,8 @@ struct Session {
     latency: Latency,
     /// Last time a tempo control moved without effect because it waits for its pickup.
     tempo_ignored_at: Option<Instant>,
+    /// A sample kit was loaded at start (Shift + PFL A can switch to it).
+    kit_loaded: bool,
 }
 
 /// How long the tap-tempo LED asks for attention after a tempo control moved without effect.
@@ -177,6 +185,7 @@ struct Args {
     metronome: bool,
     mapping: Option<PathBuf>,
     record: Option<PathBuf>,
+    kit: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -187,6 +196,7 @@ fn parse_args() -> Result<Args, String> {
         quiet: false,
         metronome: true,
         mapping: None,
+        kit: None,
         record: None,
     };
     let mut it = std::env::args().skip(1);
@@ -209,6 +219,7 @@ fn parse_args() -> Result<Args, String> {
             "--no-metronome" => args.metronome = false,
             "--mapping" => args.mapping = Some(PathBuf::from(value("--mapping")?)),
             "--record" => args.record = Some(PathBuf::from(value("--record")?)),
+            "--kit" => args.kit = Some(PathBuf::from(value("--kit")?)),
             "-h" | "--help" => {
                 println!("{USAGE}");
                 std::process::exit(0);
@@ -271,6 +282,7 @@ impl Recording {
 fn open(
     buffers: &[u32],
     wanted: Wanted,
+    kit: Option<&SampleBank>,
     recording: Option<&mut Recording>,
 ) -> Result<(AudioOutput, EngineHandle), String> {
     let mut handle = None;
@@ -278,7 +290,10 @@ fn open(
     let mut ring = None;
     let mut rate = 0;
     let output = start_output(buffers, |info| {
-        let engine = Engine::new(info.sample_rate, 4096, wanted.bpm);
+        let mut engine = Engine::new(info.sample_rate, 4096, wanted.bpm);
+        if let Some(kit) = kit {
+            engine.set_sample_bank(kit.clone());
+        }
         let (mut audio, control) = link::connect(engine);
         handle = Some(control);
         rate = info.sample_rate;
@@ -323,8 +338,10 @@ fn open(
         wanted.metronome_level,
     ));
     handle.send(Command::SetParam(Param::DrumLevel, wanted.drum_level));
+    handle.send(Command::SetParam(Param::BassLevel, wanted.bass_level));
     // The style first: it sets the swing, which may have been nudged since.
     handle.send(Command::QueueStyle(wanted.style));
+    handle.send(Command::UseSamples(wanted.samples));
     handle.send(Command::QueuePattern(wanted.pattern));
     handle.send(Command::SetSwing(wanted.swing));
     handle.send(Command::SetMutes(wanted.mutes));
@@ -466,6 +483,14 @@ fn handle_controller(
                 engine::bass::tonic_name(s.wanted.tonic)
             );
         }
+        Action::ToggleSamples => {
+            if s.kit_loaded {
+                s.wanted.samples = !s.wanted.samples;
+                handle.send(Command::UseSamples(s.wanted.samples));
+            } else {
+                println!("  ⚠ pas de kit de samples chargé (voir --kit)");
+            }
+        }
         Action::NudgeStyle(delta) => {
             let last = engine::style::STYLES as i16 - 1;
             let style = (i16::from(s.wanted.style) + i16::from(delta)).clamp(0, last) as u8;
@@ -558,6 +583,10 @@ fn handle_controller(
                 Target::DrumLevel => {
                     s.wanted.drum_level = value;
                     (Param::DrumLevel, 2, "batterie")
+                }
+                Target::BassLevel => {
+                    s.wanted.bass_level = value;
+                    (Param::BassLevel, 3, "basse")
                 }
                 Target::Tempo => return,
             };
@@ -749,6 +778,32 @@ fn handle_line(line: &str, s: &mut Session, handle: &mut EngineHandle) -> bool {
     true
 }
 
+/// Loads the sample kit: explicit folder, else `assets/kits/tr909` if present. A missing or broken
+/// kit is reported and leaves the drums on the synth.
+fn load_kit(path: Option<&PathBuf>) -> Option<SampleBank> {
+    let dir = path
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from(io::samples::DEFAULT_KIT));
+    if path.is_none() && !dir.exists() {
+        return None;
+    }
+    match io::samples::load_kit(&dir) {
+        Ok(bank) => {
+            let count = bank.voices.iter().filter(|v| !v.is_empty()).count();
+            println!(
+                "Kit : {} ({count} samples à {} Hz)",
+                dir.display(),
+                bank.sample_rate
+            );
+            Some(bank)
+        }
+        Err(e) => {
+            println!("⚠ kit non chargé : {e}");
+            None
+        }
+    }
+}
+
 /// Loads the mapping: explicit path, else `config/mapping.toml` if present, else the built-in one.
 fn load_mapping(path: Option<&PathBuf>) -> Result<(Mapping, String), String> {
     let default_path = PathBuf::from("config/mapping.toml");
@@ -776,6 +831,7 @@ fn run() -> Result<(), String> {
             master_gain: 1.0,
             metronome_level: 0.7,
             drum_level: 0.8,
+            bass_level: 0.8,
             pattern: 0,
             swing: 0.54,
             mutes: 0,
@@ -785,11 +841,12 @@ fn run() -> Result<(), String> {
             tonic: 9,
             bass_cutoff: 0.45,
             style: 0,
+            samples: false,
         },
         leds: LedRoles::of(&mapping),
         mapping,
         shown_bpm: 0.0,
-        shown_levels: [-1.0; 3],
+        shown_levels: [-1.0; 4],
         shown_swing: 0.54,
         shown_density: 1.0,
         repeats_held: Vec::new(),
@@ -797,7 +854,10 @@ fn run() -> Result<(), String> {
         pending_hits: Vec::new(),
         latency: Latency::default(),
         tempo_ignored_at: None,
+        kit_loaded: false,
     };
+    let kit = load_kit(args.kit.as_ref());
+    s.kit_loaded = kit.is_some();
     println!("Mapping : {mapping_source} ({} liaisons)", s.mapping.len());
     s.mapping.software_changed(Target::Tempo, s.wanted.bpm);
     s.mapping
@@ -806,13 +866,15 @@ fn run() -> Result<(), String> {
         .software_changed(Target::MetronomeLevel, f64::from(s.wanted.metronome_level));
     s.mapping
         .software_changed(Target::DrumLevel, f64::from(s.wanted.drum_level));
+    s.mapping
+        .software_changed(Target::BassLevel, f64::from(s.wanted.bass_level));
     let mut recording = args.record.clone().map(|path| Recording {
         path,
         sample_rate: 48_000,
         frames: Vec::with_capacity(48_000 * 2 * RECORD_SECONDS),
         ring: None,
     });
-    let (mut output, mut handle) = open(&args.buffers, s.wanted, recording.as_mut())?;
+    let (mut output, mut handle) = open(&args.buffers, s.wanted, kit.as_ref(), recording.as_mut())?;
     let session = Instant::now();
     let mut seen_xruns = 0;
     let mut seen_changes = 0;
@@ -835,6 +897,7 @@ fn run() -> Result<(), String> {
     let mut stopped_since = Instant::now();
     let mut shown_pattern = (u8::MAX, None);
     let mut shown_style = (u8::MAX, None);
+    let mut shown_samples = (false, None);
 
     let mut last_report = Instant::now();
     loop {
@@ -891,6 +954,14 @@ fn run() -> Result<(), String> {
         update_leds(link.leds_mut(), &s, &snap, beats);
         if let Some(r) = recording.as_mut() {
             r.drain();
+        }
+        if (snap.samples, snap.pending_samples) != shown_samples {
+            shown_samples = (snap.samples, snap.pending_samples);
+            let source = |on: bool| if on { "samples 909" } else { "synthé" };
+            match snap.pending_samples {
+                Some(next) => println!("  ◇ batterie {} à la mesure suivante", source(next)),
+                None => println!("  🥁 batterie {}", source(snap.samples)),
+            }
         }
         if (snap.style, snap.pending_style) != shown_style {
             let applied = snap.style != shown_style.0;
@@ -951,7 +1022,7 @@ fn run() -> Result<(), String> {
             drop(output);
             loop {
                 sleep(Duration::from_millis(500));
-                match open(&args.buffers, s.wanted, recording.as_mut()) {
+                match open(&args.buffers, s.wanted, kit.as_ref(), recording.as_mut()) {
                     Ok(reopened) => {
                         (output, handle) = reopened;
                         break;

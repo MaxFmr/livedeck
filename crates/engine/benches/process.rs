@@ -63,10 +63,39 @@ fn process_block_all_drums_repeat(c: &mut Criterion) {
     });
 }
 
+/// The six voices from samples (44.1 kHz, so resampled), each retriggered every 8 blocks.
+fn process_block_all_samples(c: &mut Criterion) {
+    let mut engine = Engine::new(48_000, 1024, 120.0);
+    let mut bank = engine::sampler::SampleBank {
+        sample_rate: 44_100,
+        ..Default::default()
+    };
+    for voice in &mut bank.voices {
+        *voice = (0..44_100).map(|n| (n as f32 * 0.01).sin()).collect();
+    }
+    engine.set_sample_bank(bank);
+    engine.use_samples(true);
+    engine.start();
+    let mut buf = vec![0.0_f32; 128 * 2];
+    let mut n = 0_u32;
+    c.bench_function("process 128 frames stereo (6 sample voices)", |b| {
+        b.iter(|| {
+            if n.is_multiple_of(8) {
+                for voice in DrumVoice::ALL {
+                    engine.trigger_drum(voice, 1.0);
+                }
+            }
+            n = n.wrapping_add(1);
+            engine.process(black_box(&mut buf), 2);
+        });
+    });
+}
+
 criterion_group!(
     benches,
     process_block,
     process_block_all_drums,
-    process_block_all_drums_repeat
+    process_block_all_drums_repeat,
+    process_block_all_samples
 );
 criterion_main!(benches);
