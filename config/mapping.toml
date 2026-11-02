@@ -5,7 +5,7 @@
 # Contrôles : a.<x> / b.<x> pour les decks (play, cue, sync, pfl, volume, filter, bass, tempo,
 #   jog.edge, jog.top, pad.<hotcue|sampler|fx|loop>.<1-4>), mixer.<crossfader|master|headphone>, vinyl.
 #   shift = true : la même touche avec Shift tenu.
-# Actions disponibles (itération 016 ; les actions musicales arrivent avec les decks, 010+) :
+# Actions disponibles (itération 017 ; les actions musicales arrivent avec les decks, 010+) :
 #   transport_toggle, transport_restart, tap_tempo, metronome_toggle   → boutons et pads
 #   pattern (pattern = 1–4), drum (voice = kick, snare, closed_hat, open_hat, clap, perc),
 #   mute (voices = [liste de voix]), fill (fill = 1–4)                → pads
@@ -21,6 +21,9 @@
 #   samples_toggle (batterie : samples ↔ synthé, à la mesure)          → boutons et pads
 #   chord (chord = 1–4 : degrés I, IV, V, vi), tenu tant que le pad l'est → pads
 #   melody_level, brightness (coupure du synthé mélodie)               → faders et potards
+#   latch_toggle, inversion / chord_octave (step = ±1),
+#   extension (step = 1 : suivante, 0 : retour à la triade)            → boutons et pads
+#   scale (step = crans de jog par gamme), à la mesure                 → jogs
 #   pickup = true : soft-takeover (le contrôle ne prend la main qu'en rejoignant la valeur actuelle).
 
 # --- Transport ---
@@ -276,6 +279,82 @@ chord = 3
 control = "b.pad.hotcue.4"
 action = "chord"
 chord = 4
+
+# Shift + pads Hot Cue B : ii, iii, vii, I à l'octave (017)
+[[bind]]
+control = "b.pad.hotcue.1"
+shift = true
+action = "chord"
+chord = 5
+
+[[bind]]
+control = "b.pad.hotcue.2"
+shift = true
+action = "chord"
+chord = 6
+
+[[bind]]
+control = "b.pad.hotcue.3"
+shift = true
+action = "chord"
+chord = 7
+
+[[bind]]
+control = "b.pad.hotcue.4"
+shift = true
+action = "chord"
+chord = 8
+
+# --- Deck B : voicings (017) aux pads Loop — latch, renversement, octave, extension ---
+[[bind]]
+control = "b.pad.loop.1"
+action = "latch_toggle"
+
+[[bind]]
+control = "b.pad.loop.2"
+action = "inversion"
+step = 1
+
+[[bind]]
+control = "b.pad.loop.2"
+shift = true
+action = "inversion"
+step = -1
+
+[[bind]]
+control = "b.pad.loop.3"
+action = "chord_octave"
+step = 1
+
+[[bind]]
+control = "b.pad.loop.3"
+shift = true
+action = "chord_octave"
+step = -1
+
+[[bind]]
+control = "b.pad.loop.4"
+action = "extension"
+step = 1
+
+[[bind]]
+control = "b.pad.loop.4"
+shift = true
+action = "extension"
+step = 0
+
+# --- Gamme (017) : Shift + jog droit, un demi-tour par gamme, à la mesure ---
+[[bind]]
+control = "b.jog.edge"
+shift = true
+action = "scale"
+step = 124
+
+[[bind]]
+control = "b.jog.top"
+shift = true
+action = "scale"
+step = 124
 
 [[bind]]
 control = "b.tempo"

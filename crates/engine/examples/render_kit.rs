@@ -4,7 +4,8 @@
 //! `target/renders/bass.wav` (the four bass lines alone, then with their drums, a filter sweep and
 //! a key change) and `target/renders/styles.wav` (each style at its suggested tempo, patterns A–D,
 //! one bar each) and `target/renders/chords.wav` (each style's synth patch on I–vi–IV–V over its
-//! pattern A).
+//! pattern A) and `target/renders/voicings.wav` (I–vi–IV–V: triads, inversions, 7ths, then in
+//! dorian and major).
 //! Offline, so it may allocate and write files.
 //!
 //! cargo run -p engine --example render_kit --release
@@ -13,6 +14,8 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
+use engine::bass::Scale;
+use engine::chords::{Extension, Voicing};
 use engine::drums::DrumVoice;
 use engine::repeat::Division;
 use engine::{Engine, Param};
@@ -214,7 +217,60 @@ fn main() -> io::Result<()> {
             }
         }
     }
-    save(&dir.join("chords.wav"), &chords)
+    save(&dir.join("chords.wav"), &chords)?;
+
+    // Voicings on the hybrid pad at 120 BPM, drums at low density: four passes of I–vi–IV–V.
+    let mut engine = Engine::new(SR, 512, BPM);
+    engine.set_metronome(false);
+    engine.set_density(0.0);
+    engine.start();
+    let mut voicings = Vec::new();
+    let passes = [
+        (Voicing::default(), Scale::Minor),
+        // Inversions that keep the hands close: I root, vi first, IV second, V first.
+        (
+            Voicing {
+                inversion: 1,
+                ..Voicing::default()
+            },
+            Scale::Minor,
+        ),
+        (
+            Voicing {
+                extension: Extension::Seventh,
+                ..Voicing::default()
+            },
+            Scale::Minor,
+        ),
+        (
+            Voicing {
+                extension: Extension::Add9,
+                ..Voicing::default()
+            },
+            Scale::Dorian,
+        ),
+    ];
+    for (voicing, scale) in passes {
+        engine.queue_scale(scale);
+        engine.set_voicing(voicing);
+        for pad in [0, 3, 1, 2] {
+            let start = voicings.len();
+            voicings.resize(start + bar * 2, 0.0);
+            let (held, rest) = voicings[start..].split_at_mut(bar * 2 * 7 / 8);
+            // One frame first: the bar's first step applies the queued scale, then the chord.
+            let (first, held) = held.split_at_mut(2);
+            engine.process(first, 2);
+            engine.chord(pad, true);
+            for chunk in held.chunks_mut(256) {
+                engine.process(chunk, 2);
+            }
+            engine.chord(pad, false);
+            for chunk in rest.chunks_mut(256) {
+                engine.process(chunk, 2);
+            }
+        }
+    }
+    save(&dir.join("voicings.wav"), &voicings)
 }
 
 fn save(path: &Path, audio: &[f32]) -> io::Result<()> {

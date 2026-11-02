@@ -103,6 +103,15 @@ pub enum Action {
     },
     /// Melody synth brightness, 0..=1.
     SetBrightness(f32),
+    ToggleLatch,
+    /// Chord inversion change (±1).
+    NudgeInversion(i8),
+    /// Chord octave change (±1).
+    NudgeChordOctave(i8),
+    /// Next extension (1) or back to the triad (0).
+    Extension(i8),
+    /// Scale scroll, in scales (one per `step` jog ticks).
+    NudgeScale(i8),
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -139,6 +148,11 @@ pub enum ActionName {
     MelodyLevel,
     Chord,
     Brightness,
+    LatchToggle,
+    Inversion,
+    ChordOctave,
+    Extension,
+    Scale,
 }
 
 #[derive(Debug, Deserialize)]
@@ -166,7 +180,7 @@ struct BindSpec {
     fill: Option<u8>,
     /// Note value repeated by `beat_repeat`: 4, 8, 16 or 32 (1/4 … 1/32).
     division: Option<u8>,
-    /// Chord pad (1–4 = I, IV, V, vi) played by `chord`.
+    /// Chord pad played by `chord`: 1–4 = I, IV, V, vi; 5–8 = ii, iii, vii, I an octave up.
     chord: Option<u8>,
 }
 
@@ -202,7 +216,7 @@ pub enum MappingError {
     BadFill(String),
     #[error("« {0} » : division attendue parmi 4, 8, 16, 32")]
     BadDivision(String),
-    #[error("« {0} » : accord attendu entre 1 et 4")]
+    #[error("« {0} » : accord attendu entre 1 et 8")]
     BadChord(String),
 }
 
@@ -300,7 +314,7 @@ impl Mapping {
             };
             let chord = match b.chord {
                 None => 0,
-                Some(c @ 1..=4) => c - 1,
+                Some(c @ 1..=8) => c - 1,
                 Some(_) => return Err(MappingError::BadChord(b.control)),
             };
             let division = match b.division {
@@ -483,11 +497,21 @@ impl Mapping {
                 held,
             }),
             (ActionName::Brightness, Input::Absolute(v)) => Some(Action::SetBrightness(v)),
+            (ActionName::LatchToggle, Input::Press(true)) => Some(Action::ToggleLatch),
+            (ActionName::Inversion, Input::Press(true)) => {
+                Some(Action::NudgeInversion(sign(binding.step)))
+            }
+            (ActionName::ChordOctave, Input::Press(true)) => {
+                Some(Action::NudgeChordOctave(sign(binding.step)))
+            }
+            (ActionName::Extension, Input::Press(true)) => {
+                Some(Action::Extension(sign(binding.step)))
+            }
             (ActionName::Tonic, Input::Press(true)) => Some(Action::NudgeTonic(
                 binding.step.round().clamp(-11.0, 11.0) as i8,
             )),
             (ActionName::BassCutoff, Input::Absolute(v)) => Some(Action::SetBassCutoff(v)),
-            (ActionName::Style, Input::Relative(ticks)) => {
+            (ActionName::Style | ActionName::Scale, Input::Relative(ticks)) => {
                 let Control::Jog(deck, _) = id.control else {
                     return None;
                 };
@@ -496,7 +520,12 @@ impl Mapping {
                 *acc += ticks;
                 let steps = *acc / per;
                 *acc -= steps * per;
-                (steps != 0).then(|| Action::NudgeStyle(steps.clamp(-8, 8) as i8))
+                let steps = steps.clamp(-8, 8) as i8;
+                (steps != 0).then_some(if binding.action == ActionName::Scale {
+                    Action::NudgeScale(steps)
+                } else {
+                    Action::NudgeStyle(steps)
+                })
             }
             (ActionName::Swing, Input::Relative(ticks)) => Some(Action::NudgeSwing(
                 ticks as f32 * binding.step as f32 / 100.0,
@@ -685,6 +714,10 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::BassMute
         | ActionName::SamplesToggle
         | ActionName::Chord
+        | ActionName::LatchToggle
+        | ActionName::Inversion
+        | ActionName::ChordOctave
+        | ActionName::Extension
         | ActionName::Tonic
         | ActionName::Mute
         | ActionName::Fill
@@ -700,9 +733,20 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::Brightness => {
             matches!(kind, Kind::Absolute)
         }
-        ActionName::TempoNudge | ActionName::Swing | ActionName::Style => {
+        ActionName::TempoNudge | ActionName::Swing | ActionName::Style | ActionName::Scale => {
             matches!(kind, Kind::Relative)
         }
+    }
+}
+
+/// -1, 0 or +1 from a `step` (0 stays 0).
+fn sign(step: f64) -> i8 {
+    if step > 0.0 {
+        1
+    } else if step < 0.0 {
+        -1
+    } else {
+        0
     }
 }
 
@@ -1033,6 +1077,56 @@ mod tests {
             ),
             Some(Action::SetLevel(Target::MelodyLevel, _))
         ));
+    }
+
+    #[test]
+    fn deck_b_voicing_pads_and_scale_jog() {
+        let mut m = mapping();
+        let pad = |mode, pad, shift| ControllerEvent::Pad {
+            deck: Deck::B,
+            mode,
+            pad,
+            shift,
+            pressed: true,
+            velocity: 127,
+        };
+        assert_eq!(
+            m.handle(1, pad(PadMode::HotCue, 2, true)),
+            Some(Action::Chord { pad: 6, held: true }),
+            "Shift + pad 3 = vii"
+        );
+        assert_eq!(
+            m.handle(2, pad(PadMode::Loop, 0, false)),
+            Some(Action::ToggleLatch)
+        );
+        assert_eq!(
+            m.handle(3, pad(PadMode::Loop, 1, false)),
+            Some(Action::NudgeInversion(1))
+        );
+        assert_eq!(
+            m.handle(4, pad(PadMode::Loop, 1, true)),
+            Some(Action::NudgeInversion(-1))
+        );
+        assert_eq!(
+            m.handle(5, pad(PadMode::Loop, 2, true)),
+            Some(Action::NudgeChordOctave(-1))
+        );
+        assert_eq!(
+            m.handle(6, pad(PadMode::Loop, 3, false)),
+            Some(Action::Extension(1))
+        );
+        assert_eq!(
+            m.handle(7, pad(PadMode::Loop, 3, true)),
+            Some(Action::Extension(0))
+        );
+        let jog = ControllerEvent::Jog {
+            deck: Deck::B,
+            surface: JogSurface::Edge,
+            shift: true,
+            delta: 1,
+        };
+        let scrolled: Vec<_> = (0..130).filter_map(|t| m.handle(100 + t, jog)).collect();
+        assert_eq!(scrolled, vec![Action::NudgeScale(1)]);
     }
 
     #[test]

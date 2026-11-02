@@ -12,6 +12,7 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use assert_no_alloc::assert_no_alloc;
+use engine::chords::{Extension, Voicing};
 use engine::drums::DrumVoice;
 use engine::link::{self, BlockTime, Command, EngineEvent, EngineHandle, EngineSnapshot};
 use engine::repeat::Division;
@@ -57,7 +58,9 @@ Cue A = mute, potard Bass A = filtre, Cue B = tonique −1 (Shift : +1), à la m
 Shift + PFL A = batterie samples 909 ↔ synthé, à la mesure. Volume A = batterie, Shift + Volume A = basse.
 Shift + jog gauche (un demi-tour) = style (kit, patterns, basse, swing), à la mesure ; le tempo reste le tien.
 Deck B : pads Hot Cue = accords I, IV, V, vi (tenus), Volume B = mélodie (Shift : métronome),
-fader Tempo B = brillance ; chaque style amène son patch de synthé.
+fader Tempo B = brillance ; chaque style amène son patch de synthé. Shift + Hot Cue B = ii, iii,
+vii, I à l'octave ; pads Loop B = latch, renversement +/−, octave +/−, extension (Shift : triade) ;
+Shift + jog droit = gamme, à la mesure.
 Chaque son joué au pad affiche sa latence geste → son.";
 
 // Debug builds abort on any allocation inside `assert_no_alloc` (the audio callback); release
@@ -92,6 +95,10 @@ struct Wanted {
     bass_cutoff: f32,
     /// Style (see `engine::style`).
     style: u8,
+    /// Scale (index of `engine::bass::Scale::ALL`), chord latch and voicing.
+    scale: u8,
+    latch: bool,
+    voicing: Voicing,
     /// Drums from the sample kit rather than the synth.
     samples: bool,
 }
@@ -133,6 +140,7 @@ struct LedRoles {
     fills: Vec<(Led, u8)>,
     mutes: Vec<(Led, u8)>,
     bass_mute: Vec<Led>,
+    latch: Vec<Led>,
 }
 
 impl LedRoles {
@@ -152,6 +160,7 @@ impl LedRoles {
             fills: indexed(ActionName::Fill),
             mutes: indexed(ActionName::Mute),
             bass_mute: leds(ActionName::BassMute),
+            latch: leds(ActionName::LatchToggle),
         }
     }
 }
@@ -347,6 +356,13 @@ fn open(
     handle.send(Command::SetParam(Param::Brightness, wanted.brightness));
     // The style first: it sets the swing, which may have been nudged since.
     handle.send(Command::QueueStyle(wanted.style));
+    handle.send(Command::SetScale(wanted.scale));
+    handle.send(Command::Latch(wanted.latch));
+    handle.send(Command::Voicing {
+        inversion: wanted.voicing.inversion,
+        octave: wanted.voicing.octave,
+        extension: wanted.voicing.extension.index(),
+    });
     handle.send(Command::UseSamples(wanted.samples));
     handle.send(Command::QueuePattern(wanted.pattern));
     handle.send(Command::SetSwing(wanted.swing));
@@ -485,15 +501,49 @@ fn handle_controller(
             s.wanted.tonic = (i16::from(s.wanted.tonic) + i16::from(delta)).rem_euclid(12) as u8;
             handle.send(Command::SetTonic(s.wanted.tonic));
             println!(
-                "  ♮ tonalité {} mineur (à la mesure)",
-                engine::bass::tonic_name(s.wanted.tonic)
+                "  ♮ tonalité {} {} (à la mesure)",
+                engine::bass::tonic_name(s.wanted.tonic),
+                scale_name(s.wanted.scale)
             );
         }
         Action::Chord { pad, held } => {
             handle.send(Command::Chord { pad, on: held });
             if held {
-                const NAMES: [&str; 4] = ["I", "IV", "V", "vi"];
+                const NAMES: [&str; 8] = ["I", "IV", "V", "vi", "ii", "iii", "vii", "I'"];
                 println!("  ♫ accord {}", NAMES.get(usize::from(pad)).unwrap_or(&"?"));
+            }
+        }
+        Action::ToggleLatch => {
+            s.wanted.latch = !s.wanted.latch;
+            handle.send(Command::Latch(s.wanted.latch));
+            println!("  ⚓ latch {}", if s.wanted.latch { "on" } else { "off" });
+        }
+        Action::NudgeInversion(delta) => {
+            s.wanted.voicing.inversion = (s.wanted.voicing.inversion + delta).clamp(
+                -engine::chords::MAX_INVERSION,
+                engine::chords::MAX_INVERSION,
+            );
+            send_voicing(s, handle);
+        }
+        Action::NudgeChordOctave(delta) => {
+            s.wanted.voicing.octave = (s.wanted.voicing.octave + delta)
+                .clamp(-engine::chords::MAX_OCTAVE, engine::chords::MAX_OCTAVE);
+            send_voicing(s, handle);
+        }
+        Action::Extension(step) => {
+            s.wanted.voicing.extension = if step == 0 {
+                Extension::Triad
+            } else {
+                Extension::from_index(s.wanted.voicing.extension.index() + 1)
+            };
+            send_voicing(s, handle);
+        }
+        Action::NudgeScale(delta) => {
+            let last = engine::bass::Scale::ALL.len() as i16 - 1;
+            let scale = (i16::from(s.wanted.scale) + i16::from(delta)).clamp(0, last) as u8;
+            if scale != s.wanted.scale {
+                s.wanted.scale = scale;
+                handle.send(Command::SetScale(scale));
             }
         }
         Action::SetBrightness(value) => {
@@ -748,6 +798,9 @@ fn update_leds(leds: &mut LedBank, s: &Session, snap: &EngineSnapshot, beats: f6
         // Lit = the group plays (like a channel on a console).
         leds.set(led, snap.mutes & mask != mask);
     }
+    for &led in &s.leds.latch {
+        leds.set(led, s.wanted.latch);
+    }
     for &led in &s.leds.bass_mute {
         // Lit = the bass plays, like the mute pads (replaces the beat display on that button).
         leds.set_state(
@@ -762,6 +815,26 @@ fn update_leds(leds: &mut LedBank, s: &Session, snap: &EngineSnapshot, beats: f6
     for &led in &s.held {
         leds.set(led, true);
     }
+}
+
+/// Sends the chord voicing and echoes it.
+fn send_voicing(s: &Session, handle: &mut EngineHandle) {
+    let v = s.wanted.voicing;
+    handle.send(Command::Voicing {
+        inversion: v.inversion,
+        octave: v.octave,
+        extension: v.extension.index(),
+    });
+    println!(
+        "  ♯ voicing : renversement {:+}, octave {:+}, {}",
+        v.inversion,
+        v.octave,
+        v.extension.name()
+    );
+}
+
+fn scale_name(index: u8) -> &'static str {
+    engine::bass::Scale::from_index(index).map_or("?", engine::bass::Scale::name)
 }
 
 /// "A" … "D".
@@ -864,6 +937,9 @@ fn run() -> Result<(), String> {
             tonic: 9,
             bass_cutoff: 0.45,
             style: 0,
+            scale: 0,
+            latch: false,
+            voicing: Voicing::default(),
             samples: false,
         },
         leds: LedRoles::of(&mapping),
@@ -923,6 +999,7 @@ fn run() -> Result<(), String> {
     let mut shown_pattern = (u8::MAX, None);
     let mut shown_style = (u8::MAX, None);
     let mut shown_samples = (false, None);
+    let mut shown_scale = (u8::MAX, None);
 
     let mut last_report = Instant::now();
     loop {
@@ -979,6 +1056,13 @@ fn run() -> Result<(), String> {
         update_leds(link.leds_mut(), &s, &snap, beats);
         if let Some(r) = recording.as_mut() {
             r.drain();
+        }
+        if (snap.scale, snap.pending_scale) != shown_scale {
+            shown_scale = (snap.scale, snap.pending_scale);
+            match snap.pending_scale {
+                Some(next) => println!("  ◇ gamme {} à la mesure suivante", scale_name(next)),
+                None => println!("  ◆ gamme {}", scale_name(snap.scale)),
+            }
         }
         if (snap.samples, snap.pending_samples) != shown_samples {
             shown_samples = (snap.samples, snap.pending_samples);

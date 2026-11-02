@@ -54,7 +54,14 @@ fn ten_seconds_of_audio_without_allocation() {
                 handle.send(Command::QueueBassLine((i / 300 % 4) as u8));
                 handle.send(Command::QueueStyle((i / 400 % 6) as u8));
                 handle.send(Command::UseSamples(i / 200 % 2 == 0));
-                for pad in 0..4 {
+                handle.send(Command::Latch(i / 300 % 2 == 0));
+                handle.send(Command::Voicing {
+                    inversion: (i / 100 % 7) as i8 - 3,
+                    octave: (i / 100 % 3) as i8 - 1,
+                    extension: (i / 100 % 4) as u8,
+                });
+                handle.send(Command::SetScale((i / 200 % 6) as u8));
+                for pad in 0..8 {
                     handle.send(Command::Chord {
                         pad,
                         on: (i / 100 + usize::from(pad)) % 3 != 0,

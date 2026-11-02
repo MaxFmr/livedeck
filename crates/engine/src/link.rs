@@ -29,11 +29,21 @@ pub enum Command {
     QueueStyle(u8),
     /// Drum source for the next bar (now if stopped): samples (true) or synth.
     UseSamples(bool),
-    /// Chord pad (0..4 = I, IV, V, vi) pressed or released: played now.
+    /// Chord pad (0..4 = I, IV, V, vi; 4..8 = ii, iii, vii, I + 8ve) pressed or released.
     Chord {
         pad: u8,
         on: bool,
     },
+    /// Chord latch on/off.
+    Latch(bool),
+    /// Chord voicing: inversion, octave, extension (index of `chords::Extension::ALL`).
+    Voicing {
+        inversion: i8,
+        octave: i8,
+        extension: u8,
+    },
+    /// Scale (index of `bass::Scale::ALL`) for the next bar, or now if stopped.
+    SetScale(u8),
     /// Bass line (0-based) alone for the next bar, or now if stopped.
     QueueBassLine(u8),
     /// Bass tonic (0 = C … 11 = B) for the next bar, or now if stopped.
@@ -127,6 +137,11 @@ pub struct EngineSnapshot {
     pub samples_loaded: bool,
     /// Melody synth voices sounding (out of `poly::VOICES`).
     pub synth_voices: u8,
+    /// Chord pads sounding (bit `i` = pad `i`).
+    pub chords: u8,
+    /// Scale playing (index of `bass::Scale::ALL`) and the one waiting for the bar.
+    pub scale: u8,
+    pub pending_scale: Option<u8>,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -204,6 +219,9 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         pending_samples: engine.sequencer().pending_samples(),
         samples_loaded: engine.drums().has_samples(),
         synth_voices: engine.synth().active_voices() as u8,
+        chords: engine.chords().sounding(),
+        scale: engine.sequencer().bass().key().scale.index(),
+        pending_scale: engine.sequencer().bass().pending_scale().map(|s| s.index()),
     }
 }
 
@@ -248,6 +266,21 @@ impl AudioEngine {
             Command::QueueStyle(index) => self.engine.queue_style(index),
             Command::UseSamples(on) => self.engine.use_samples(on),
             Command::Chord { pad, on } => self.engine.chord(pad, on),
+            Command::Latch(on) => self.engine.set_latch(on),
+            Command::Voicing {
+                inversion,
+                octave,
+                extension,
+            } => self.engine.set_voicing(crate::chords::Voicing {
+                inversion,
+                octave,
+                extension: crate::chords::Extension::from_index(extension),
+            }),
+            Command::SetScale(index) => {
+                if let Some(scale) = crate::bass::Scale::from_index(index) {
+                    self.engine.queue_scale(scale);
+                }
+            }
             Command::QueueBassLine(index) => self.engine.queue_bass_line(index),
             Command::SetTonic(tonic) => self.engine.queue_tonic(tonic),
             Command::BassMute(muted) => self.engine.set_bass_mute(muted),
@@ -530,6 +563,23 @@ mod tests {
         handle.send(Command::Stop);
         run(&mut audio, 1_000);
         assert_eq!(handle.snapshot().synth_voices, 0);
+    }
+
+    #[test]
+    fn scale_waits_for_the_bar_and_latch_holds_chords() {
+        let (mut audio, mut handle) = pair();
+        handle.send(Command::Start);
+        run(&mut audio, 10);
+        handle.send(Command::SetScale(2));
+        handle.send(Command::Latch(true));
+        handle.send(Command::Chord { pad: 5, on: true });
+        handle.send(Command::Chord { pad: 5, on: false });
+        run(&mut audio, 1);
+        let snap = handle.snapshot();
+        assert_eq!((snap.scale, snap.pending_scale), (0, Some(2)));
+        assert_eq!(snap.chords, 0b10_0000, "iii latched");
+        run(&mut audio, 750);
+        assert_eq!(handle.snapshot().scale, 2);
     }
 
     #[test]

@@ -12,6 +12,7 @@
 )]
 
 pub mod bass;
+pub mod chords;
 pub mod clock;
 pub mod drums;
 pub mod dsp;
@@ -72,6 +73,7 @@ pub struct Engine {
     drums: DrumKit,
     bass: BassVoice,
     synth: PolySynth,
+    chords: chords::ChordPads,
     /// Style whose synth patch is loaded.
     synth_style: u8,
     sequencer: Sequencer,
@@ -107,6 +109,7 @@ impl Engine {
             drums: DrumKit::new(sample_rate),
             bass: BassVoice::new(sample_rate),
             synth: PolySynth::new(sample_rate),
+            chords: chords::ChordPads::default(),
             synth_style: 0,
             sequencer: Sequencer::new(),
             limiter: Limiter::new(sample_rate),
@@ -140,7 +143,7 @@ impl Engine {
     pub fn stop(&mut self) {
         self.clock.stop();
         self.bass.note_off();
-        self.synth.release_all();
+        self.chords.release_all(&mut self.synth);
         self.repeat.release();
         self.roll_pending = None;
     }
@@ -187,23 +190,33 @@ impl Engine {
         self.sequencer.queue(index, self.clock.is_playing());
     }
 
-    /// Chord pad `pad` (0..4 = degrees I, IV, V, vi) pressed or released: a triad of the key in
-    /// the octave above the bass, played now, held until released.
+    /// Chord pad `pad` (0..4 = I, IV, V, vi; 4..8 = ii, iii, vii, I an octave up) pressed or
+    /// released: played now in the key of the bass, held until released (or latched).
     pub fn chord(&mut self, pad: u8, on: bool) {
-        const DEGREES: [u8; 4] = [1, 4, 5, 6];
-        if !on {
-            self.synth.release(pad);
-            return;
-        }
-        let Some(&degree) = DEGREES.get(usize::from(pad)) else {
-            return;
-        };
         let key = self.sequencer.bass().key();
-        // Retriggering the same pad restarts its chord.
-        self.synth.release(pad);
-        for step in [0, 2, 4] {
-            self.synth.note_on(key.note(degree + step, 1), 0.8, pad);
-        }
+        self.chords.pad(&mut self.synth, key, pad, on);
+    }
+
+    /// Latch of the chord pads.
+    pub fn set_latch(&mut self, on: bool) {
+        self.chords.set_latch(&mut self.synth, on);
+    }
+
+    /// Voicing of the chords, applied to those sounding too.
+    pub fn set_voicing(&mut self, voicing: chords::Voicing) {
+        let key = self.sequencer.bass().key();
+        self.chords.set_voicing(&mut self.synth, key, voicing);
+    }
+
+    /// Scale (bass and chords) for the next bar, or now if stopped.
+    pub fn queue_scale(&mut self, scale: bass::Scale) {
+        let playing = self.clock.is_playing();
+        self.sequencer.bass_mut().queue_scale(scale, playing);
+    }
+
+    #[must_use]
+    pub fn chords(&self) -> &chords::ChordPads {
+        &self.chords
     }
 
     #[must_use]

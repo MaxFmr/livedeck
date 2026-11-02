@@ -69,6 +69,39 @@ pub enum Scale {
 }
 
 impl Scale {
+    /// Order of the Shift + jog B scroll.
+    pub const ALL: [Self; 6] = [
+        Self::Minor,
+        Self::Major,
+        Self::Dorian,
+        Self::Phrygian,
+        Self::Mixolydian,
+        Self::MinorPentatonic,
+    ];
+
+    #[must_use]
+    pub fn index(self) -> u8 {
+        Self::ALL.iter().position(|&s| s == self).unwrap_or(0) as u8
+    }
+
+    #[must_use]
+    pub fn from_index(index: u8) -> Option<Self> {
+        Self::ALL.get(usize::from(index)).copied()
+    }
+
+    /// Name for display (French).
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Minor => "mineur",
+            Self::Major => "majeur",
+            Self::Dorian => "dorien",
+            Self::Phrygian => "phrygien",
+            Self::Mixolydian => "mixolydien",
+            Self::MinorPentatonic => "penta mineure",
+        }
+    }
+
     #[must_use]
     pub fn intervals(self) -> &'static [u8] {
         match self {
@@ -407,6 +440,7 @@ pub struct BassLine {
     pending: Option<u8>,
     key: Key,
     pending_tonic: Option<u8>,
+    pending_scale: Option<Scale>,
     muted: bool,
 }
 
@@ -429,6 +463,7 @@ impl BassLine {
                 scale: Scale::Minor,
             },
             pending_tonic: None,
+            pending_scale: None,
             muted: false,
         }
     }
@@ -457,6 +492,21 @@ impl BassLine {
         }
     }
 
+    /// Scale for the next bar, or now if stopped.
+    pub fn queue_scale(&mut self, scale: Scale, playing: bool) {
+        if playing && scale != self.key.scale {
+            self.pending_scale = Some(scale);
+        } else {
+            self.key.scale = scale;
+            self.pending_scale = None;
+        }
+    }
+
+    #[must_use]
+    pub fn pending_scale(&self) -> Option<Scale> {
+        self.pending_scale
+    }
+
     /// Replaces the four lines (a style change); the line index playing is kept.
     pub fn set_patterns(&mut self, patterns: [BassPattern; PATTERNS]) {
         self.patterns = patterns;
@@ -473,6 +523,9 @@ impl BassLine {
         }
         if let Some(t) = self.pending_tonic.take() {
             self.key.tonic = t;
+        }
+        if let Some(s) = self.pending_scale.take() {
+            self.key.scale = s;
         }
     }
 
