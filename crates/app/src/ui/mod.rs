@@ -16,6 +16,7 @@ use egui::{
 
 use crate::theme::{self, Accent, Rgb, TextStyle};
 
+mod melody;
 mod rhythm;
 
 /// A pad as its LED shows it on the controller (the window mirrors the hardware).
@@ -26,6 +27,30 @@ pub enum Light {
     On,
     /// Blinking on the controller: waiting for the bar or the beat.
     Wait,
+}
+
+/// Where a gesture's HUD shows: over the deck of the control, or in the middle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Zone {
+    A,
+    Center,
+    B,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HudValue {
+    /// 0..=1, shown in %.
+    Percent(f32),
+    Bpm(f64),
+}
+
+/// The control just touched: its name, value and, waiting for pickup, the value to reach.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Hud {
+    pub zone: Zone,
+    pub label: &'static str,
+    pub value: HudValue,
+    pub pickup: Option<HudValue>,
 }
 
 /// One step of the bass line as drawn.
@@ -79,6 +104,22 @@ pub struct View {
     /// Pad LEDs, `[deck][mode][pad]` (modes in `PadMode::ALL` order), and the mode each deck shows.
     pub pads: [[[Light; 4]; 4]; 2],
     pub shown_mode: [u8; 2],
+    /// Chord pads sounding (bit `i` = pad `i`: I, IV, V, vi, ii, iii, vii, I').
+    pub chords: u8,
+    pub transpose: i8,
+    pub octave: i8,
+    pub inversion: i8,
+    /// Index of `chords::Extension::ALL`.
+    pub extension: u8,
+    pub latch: bool,
+    pub arp_mode: u8,
+    pub arp_rate: u8,
+    pub arp_octaves: u8,
+    pub phrase: Option<(u8, bool)>,
+    pub pending_phrase: Option<Option<(u8, bool)>>,
+    pub delay_time: u8,
+    /// The HUD of the last gesture, while it is shown.
+    pub hud: Option<Hud>,
 }
 
 /// The control thread → window link.
@@ -240,7 +281,7 @@ fn font(style: TextStyle) -> FontId {
     FontId::new(style.size, family)
 }
 
-fn layout(p: &Painter, s: &str, style: TextStyle, c: Rgb) -> Arc<egui::Galley> {
+pub(super) fn layout(p: &Painter, s: &str, style: TextStyle, c: Rgb) -> Arc<egui::Galley> {
     let s = if style.caps {
         s.to_uppercase()
     } else {
@@ -492,18 +533,6 @@ fn time_bar(p: &Painter, rect: Rect, v: &View) {
     }
 }
 
-fn deck(p: &Painter, rect: Rect, label: &str, accent: Accent) {
-    panel(p, rect, Some(accent));
-    text(
-        p,
-        rect.min + Vec2::new(theme::SPACE_5, theme::SPACE_5),
-        Align2::LEFT_TOP,
-        label,
-        theme::LABEL,
-        accent.base,
-    );
-}
-
 impl eframe::App for Window {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -543,7 +572,8 @@ impl eframe::App for Window {
         rhythm::deck_a(p, deck_a, &v);
         panel(p, bass, Some(theme::ACCENT_AMBER));
         rhythm::bass_column(p, bass, &v);
-        deck(p, deck_b, "B · Mélodie", theme::ACCENT_COLD);
+        panel(p, deck_b, Some(theme::ACCENT_COLD));
+        melody::deck_b(p, deck_b, &v);
         panel(p, footer, None);
         text(
             p,
@@ -553,6 +583,13 @@ impl eframe::App for Window {
             theme::BODY,
             theme::TEXT_DIM,
         );
+        if let Some(h) = &v.hud {
+            melody::hud(
+                p,
+                [deck_a, Rect::from_min_max(deck_a.min, deck_b.max), deck_b],
+                h,
+            );
+        }
         if v.playing {
             ctx.request_repaint_after(FRAME);
         }

@@ -143,6 +143,8 @@ struct Session {
     latency: Latency,
     /// Last time a tempo control moved without effect because it waits for its pickup.
     tempo_ignored_at: Option<Instant>,
+    /// The window's HUD: the last continuous control touched, and when.
+    hud: Option<(ui::Hud, Instant)>,
     /// A sample kit was loaded at start (Shift + PFL A can switch to it).
     kit_loaded: bool,
 }
@@ -500,9 +502,22 @@ fn handle_controller(
             && s.mapping.pending_pickup(Target::Tempo).is_some()
         {
             s.tempo_ignored_at = Some(Instant::now());
+            if let Some(hw) = s.mapping.pending_pickup(Target::Tempo) {
+                let hud = ui::Hud {
+                    zone: ui::Zone::Center,
+                    label: "Fader tempo",
+                    value: ui::HudValue::Percent(hw),
+                    pickup: Some(ui::HudValue::Bpm(s.wanted.bpm)),
+                };
+                s.hud = Some((hud, Instant::now()));
+            }
         }
         return;
     };
+    let hud = hud_of(action, s);
+    if let Some(hud) = hud {
+        s.hud = Some((hud, Instant::now()));
+    }
     match action {
         Action::TransportToggle => toggle_play(&mut s.wanted, handle),
         Action::TransportRestart => {
@@ -1099,6 +1114,7 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
         pending_hits: Vec::new(),
         latency: Latency::default(),
         tempo_ignored_at: None,
+        hud: None,
         kit_loaded: false,
     };
     let kit = load_kit(args.kit.as_ref());
@@ -1419,6 +1435,19 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
                 bass_cutoff: s.wanted.bass_cutoff,
                 pads: view::pad_lights(link.leds()),
                 shown_mode: view::shown_modes(link.leds()),
+                chords: snap.chords,
+                transpose: s.wanted.transpose,
+                octave: s.wanted.voicing.octave,
+                inversion: s.wanted.voicing.inversion,
+                extension: s.wanted.voicing.extension.index(),
+                latch: s.wanted.latch,
+                arp_mode: snap.arp_mode,
+                arp_rate: snap.arp_rate,
+                arp_octaves: snap.arp_octaves,
+                phrase: snap.phrase,
+                pending_phrase: snap.pending_phrase,
+                delay_time: snap.delay_time,
+                hud: shown_hud(&s),
             };
             // Playing, the window repaints at its own pace; otherwise only on a change.
             if w.shared.publish(view) {
@@ -1429,6 +1458,63 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
         // keeps LEDs and reports going.
         std::thread::park_timeout(Duration::from_millis(2));
     }
+}
+
+/// The HUD a continuous gesture shows (read before the action is applied: levels carry their own
+/// value, nudged settings are completed by `hud_value`).
+fn hud_of(action: Action, s: &Session) -> Option<ui::Hud> {
+    use ui::{HudValue::Percent, Zone};
+    let (zone, label, value) = match action {
+        Action::SetLevel(target, v) => {
+            let (zone, label) = match target {
+                Target::MasterGain => (Zone::Center, "Master"),
+                Target::MetronomeLevel => (Zone::B, "Métronome"),
+                Target::DrumLevel => (Zone::A, "Batterie"),
+                Target::BassLevel => (Zone::A, "Basse"),
+                Target::MelodyLevel => (Zone::B, "Mélodie"),
+                Target::DelaySend => (Zone::B, "Envoi delay"),
+                Target::DelayFeedback => (Zone::B, "Répétitions"),
+                Target::ReverbSend => (Zone::Center, "Réverb"),
+                Target::Tempo => return None,
+            };
+            (zone, label, Percent(v))
+        }
+        Action::SetTempo(bpm) => (Zone::Center, "Tempo", ui::HudValue::Bpm(bpm)),
+        Action::NudgeTempo(delta) => (
+            Zone::Center,
+            "Tempo",
+            ui::HudValue::Bpm(s.wanted.bpm + delta),
+        ),
+        Action::SetDensity(v) => (Zone::A, "Densité", Percent(v)),
+        Action::SetBassCutoff(v) => (Zone::A, "Filtre basse", Percent(v)),
+        Action::SetBrightness(v) => (Zone::B, "Brillance", Percent(v)),
+        Action::NudgeSwing(delta) => (
+            Zone::A,
+            "Swing",
+            Percent(
+                (s.wanted.swing + delta)
+                    .clamp(engine::sequencer::MIN_SWING, engine::sequencer::MAX_SWING),
+            ),
+        ),
+        _ => return None,
+    };
+    Some(ui::Hud {
+        zone,
+        label,
+        value,
+        pickup: None,
+    })
+}
+
+/// The HUD while it is shown: ~1 s after the last movement, longer while waiting for pickup.
+fn shown_hud(s: &Session) -> Option<ui::Hud> {
+    let (hud, at) = s.hud?;
+    let ms = if hud.pickup.is_some() {
+        theme::PICKUP_HUD_MS
+    } else {
+        theme::HUD_MS
+    };
+    (at.elapsed() < Duration::from_millis(ms)).then_some(hud)
 }
 
 /// "97397F" → [0x97, 0x39, 0x7F].
