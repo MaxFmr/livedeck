@@ -97,11 +97,14 @@ once it has come back to the setting's current value, so levels never jump.
 | Control | Alone | With Shift |
 |---|---|---|
 | **Hot Cue** pads 1–4 | chords I, IV, V, vi, held while the pad is, played right away | ii, iii, vii, I an octave up |
+| **Sampler** pads 1–4 | phrases of the style, looped, started and stopped on the next bar | variation: second half a third higher |
+| **FX** pads 1–4 | arpeggio: off · up · up-down · random (plays the held or latched chords while playing) | arpeggio over 1 to 4 octaves |
 | **Loop** pad 1 | latch: the chord keeps sounding after release, until the next one (LED on = active) | — |
 | **Loop** pad 2 | inversion + | inversion − |
 | **Loop** pad 3 | octave + | octave − |
 | **Loop** pad 4 | next extension: triad → 7th → sus4 → add9 | back to the triad |
-| Jog | — | scale (half a turn per scale), on the next bar |
+| Jog — edge | arpeggio rate: 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32 (a quarter turn per rate) | scale (half a turn per scale), on the next bar |
+| Jog — top | transpose chords, arpeggio and phrases within the scale (a quarter turn per degree, ±7), right away | scale |
 | **Tempo** fader | synth brightness (filter ±2.5 octaves around the patch) | — |
 | **Volume** | melody level | metronome level |
 | **Cue** | tonic −1 semitone, on the next bar | tonic +1 |
@@ -304,11 +307,14 @@ le fader n'agit qu'une fois revenu à la valeur actuelle du réglage, pour évit
 | Contrôle | Seul | Avec Shift |
 |---|---|---|
 | Pads **Hot Cue** 1–4 | accords I, IV, V, vi, tenus tant que le pad l'est, joués tout de suite | ii, iii, vii, I à l'octave |
+| Pads **Sampler** 1–4 | phrases du style, en boucle, lancées et arrêtées à la mesure | variation : seconde moitié une tierce plus haut |
+| Pads **FX** 1–4 | arpège : off · montant · aller-retour · aléatoire (joue les accords tenus ou latchés pendant la lecture) | arpège sur 1 à 4 octaves |
 | Pad **Loop** 1 | latch : l'accord tient après le relâchement, jusqu'au suivant (LED allumée = actif) | — |
 | Pad **Loop** 2 | renversement + | renversement − |
 | Pad **Loop** 3 | octave + | octave − |
 | Pad **Loop** 4 | extension suivante : triade → 7e → sus4 → add9 | retour à la triade |
-| Jog | — | gamme (un demi-tour par gamme), à la mesure |
+| Jog — bord | vitesse d'arpège : 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32 (un quart de tour par vitesse) | gamme (un demi-tour par gamme), à la mesure |
+| Jog — dessus | transposition des accords, de l'arpège et des phrases dans la gamme (un quart de tour par degré, ±7), tout de suite | gamme |
 | Fader **Tempo** | brillance du synthé (filtre ±2,5 octaves autour du patch) | — |
 | **Volume** | niveau de la mélodie | niveau du métronome |
 | **Cue** | tonique −1 demi-ton, à la mesure | tonique +1 |

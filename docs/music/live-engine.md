@@ -108,11 +108,11 @@ continus en 14 bits (filtres et volumes sans paliers).
 | Contrôle | Fonction |
 |---|---|
 | Pads **Hot Cue** | accords degrés I, IV, V, vi, tenus, joués tout de suite (016) · Shift : ii, iii, vii, I à l'octave (017) |
-| Pads **Sampler** | phrases mélodiques 1–4 · Shift : variations |
-| Pads **FX** | mode d'arpège (off, up, updown, random) · Shift : octaves 1–4 |
+| Pads **Sampler** | phrases 1–4 du style, en boucle, lancées et arrêtées à la mesure · Shift : variation (seconde moitié une tierce plus haut) (018) |
+| Pads **FX** | arpège off / montant / aller-retour / aléatoire, il joue les accords tenus ou latchés pendant la lecture · Shift : 1 à 4 octaves (018) |
 | Pads **Loop** | 1 latch · 2 renversement + (Shift −) · 3 octave + (Shift −) · 4 extension triade → 7e → sus4 → add9 (Shift : triade) ; rejoue l'accord tenu (017) |
-| Jog bord | vitesse d'arpège (1/4 → 1/32) |
-| Jog dessus + rotation | transposition **dans la gamme** (degré par degré) |
+| Jog bord | vitesse d'arpège 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32, un quart de tour par vitesse ; croches et doubles suivent le swing (018) |
+| Jog dessus + rotation | transposition **dans la gamme** des accords, de l'arpège et des phrases, un degré par quart de tour, ±7, tout de suite ; la basse ne bouge pas (018) |
 | Jog Shift + rotation | choix de la gamme, un demi-tour par gamme, à la mesure (017) |
 | Tempo | brillance (coupure du synthé, ±2,5 octaves autour du patch, 016) |
 | Filter | filtre DJ du bus mélodie |

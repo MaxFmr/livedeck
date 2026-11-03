@@ -1,5 +1,5 @@
-//! Style presets: everything a style brings to the rhythm deck — drum patterns and fills, bass
-//! lines, kit and bass sound, swing. The tempo and the key stay the player's (choice of
+//! Style presets: everything a style brings — drum patterns and fills, bass lines, kit and bass
+//! sound, swing, synth patch and melody phrases. The tempo and the key stay the player's (choice of
 //! 2026-11-02); `bpm` is only shown as a hint.
 //!
 //! Presets are written as text tables (`StyleText`) and built once, on the control thread, by
@@ -35,6 +35,9 @@ pub struct StyleText {
     pub fills: Option<[Rows; PATTERNS]>,
     /// `None` = the bass lines of the hybrid kit.
     pub bass_lines: Option<[&'static str; PATTERNS]>,
+    /// Melody phrases of the Sampler pads B, in the notation of the bass lines; `None` = those of
+    /// the hybrid kit.
+    pub phrases: Option<[&'static str; PATTERNS]>,
 }
 
 /// A style ready to be switched to.
@@ -50,6 +53,7 @@ pub struct StylePreset {
     pub patterns: [Pattern; PATTERNS],
     pub fills: [Pattern; PATTERNS],
     pub bass_lines: [BassPattern; PATTERNS],
+    pub phrases: [BassPattern; PATTERNS],
 }
 
 impl StylePreset {
@@ -73,9 +77,21 @@ impl StylePreset {
             bass_lines: text
                 .bass_lines
                 .map_or_else(default_bass_patterns, |lines| lines.map(BassPattern::parse)),
+            phrases: text
+                .phrases
+                .unwrap_or(DEFAULT_PHRASES)
+                .map(BassPattern::parse),
         }
     }
 }
+
+/// Phrases of the hybrid kit: a falling answer, a repeated hook, a slow descent, offbeat thirds.
+const DEFAULT_PHRASES: [&str; PATTERNS] = [
+    "1 - 3 - 5 - 4 3 2 - . . 1 - . .",
+    "5 . 5 6 5 . 3 . 4 . 4 5 4 . 2 .",
+    "1' - 7 - 5 - 3 - 4 - 5 - 3 - - -",
+    ". 3 . 5 . 3 . 1 . 3 . 5 . 6 5 .",
+];
 
 /// Every style, in the order of the Shift + jog scroll.
 #[must_use]
@@ -140,6 +156,7 @@ pub const TEXTS: [StyleText; STYLES] = [
         patterns: None,
         fills: None,
         bass_lines: None,
+        phrases: None,
     },
     // Half-time at 140: the snare lands on beat 3 (step 8). Deep kick, sub-heavy bass, long notes.
     StyleText {
@@ -233,6 +250,12 @@ pub const TEXTS: [StyleText; STYLES] = [
             "1! - . 1 . . 1 . 3 - . 3 . . 5, .",
             "1! - - . 1 . 5, . 7, - - . 1 - 3 .",
             "1! - . . 4 - . . 5 - . . 1 - 7, -",
+        ]),
+        phrases: Some([
+            "5 - - - . . 3 - 4 - - - . . . .",
+            ". . 1' - . . 7 - 5 - - - . . . .",
+            "3 . . 3 . . 3 . 4 . . 4 . . 5 .",
+            "1 - - - 3 - - - 5 - - - 4 - 3 -",
         ]),
     },
     // Swung 16ths, congas on the perc, melodic bass.
@@ -328,6 +351,12 @@ pub const TEXTS: [StyleText; STYLES] = [
             "1 . 3 . 5 . 3 . 4 . 6 . 5 . 3 .",
             "1! . 1' . 7 . 5 4 . 3 . 1 . 3 4 5",
         ]),
+        phrases: Some([
+            "1 . 3 1 . 5 . 3 . 1 . 3 5 . 3 .",
+            "5 5 . 6 . 5 3 . 5 5 . 6 . 8 . .",
+            ". 3 5 . 3 5 . 6 . 5 3 . 2 . 1 .",
+            "1' . 7 . 5 . 7 . 1' . 7 . 5 3 5 .",
+        ]),
     },
     // 2-step: shuffled 16ths, short kick, loud clap, short punchy bass notes.
     StyleText {
@@ -414,6 +443,12 @@ pub const TEXTS: [StyleText; STYLES] = [
             ". . 1! . . . 1 . . . 1' . . . 7 .",
             "1! . 1 . . 4 . . 3 . . 1 . 7, ~1 .",
         ]),
+        phrases: Some([
+            ". . 5 . . 5 . . 4 . . 3 . . 1 .",
+            "1' . . 7 . . 5 . . 7 . . 1' - . .",
+            "3 - 5 . . 3 . 5 . . 6 - 5 . . .",
+            ". 5 . 5 . 6 . 5 . 3 . 3 . 2 . 1",
+        ]),
     },
     // Heavy, darker kit; long warm bass notes.
     StyleText {
@@ -494,6 +529,12 @@ pub const TEXTS: [StyleText; STYLES] = [
             "1 . . 1 . . 7, - . . 5, - 6, - 7, .",
             "1 - - - 3 - . . 4 - - - 3 - 2 .",
             "1 . . 5, 7, . 1 . . 3 . . 4 . 3 .",
+        ]),
+        phrases: Some([
+            "3 - - 2 1 - - - 5, - - - . . . .",
+            ". . 5 - 4 - 3 - . . 2 - 3 - - -",
+            "1' - - - 7 - - - 6 - - - 5 - - -",
+            ". 3 5 7 . . 6 . . 5 3 . 2 - . .",
         ]),
     },
     // Four to the floor, open hats on the offbeats, offbeat or rolling bass.
@@ -578,6 +619,12 @@ pub const TEXTS: [StyleText; STYLES] = [
             ". . 1! 1 . . 1 . . . 1! 1 . 7, ~1 .",
             ". 1 1 1 . 1 1 1 . 1 1 1 . 1 1 1",
             "1! . . 1 . . 3 . . 1 . . 5, . 7, .",
+        ]),
+        phrases: Some([
+            "1' . 1' . 5 . 1' . 6 . 5 . 3 . 5 .",
+            ". . 5 . . . 5 . . . 6 . . . 5 .",
+            "1 3 5 1' 5 3 1 3 5 1' 5 3 1 3 5 1'",
+            "5 - - 3 - - 1 - 5 - - 6 - - 5 -",
         ]),
     },
 ];

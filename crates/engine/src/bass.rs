@@ -127,14 +127,18 @@ impl Key {
     /// tonic sits between E2 and D#3, so the sub octave stays above 40 Hz.
     #[must_use]
     pub fn note(self, degree: u8, octave: i8) -> f32 {
+        self.note_at(i32::from(degree.max(1)) - 1, octave)
+    }
+
+    /// MIDI note of scale step `index` (0 = tonic, negative = below it) shifted by `octave`.
+    #[must_use]
+    pub fn note_at(self, index: i32, octave: i8) -> f32 {
         let intervals = self.scale.intervals();
-        let len = intervals.len().max(1);
-        let index = usize::from(degree.max(1) - 1);
-        let interval = intervals.get(index % len).copied().unwrap_or(0);
+        let len = i32::try_from(intervals.len()).unwrap_or(1).max(1);
+        let slot = usize::try_from(index.rem_euclid(len)).unwrap_or(0);
+        let interval = intervals.get(slot).copied().unwrap_or(0);
         let root = 40 + (i32::from(self.tonic % 12) + 8) % 12;
-        let semis = root
-            + i32::from(interval)
-            + 12 * (i32::try_from(index / len).unwrap_or(0) + i32::from(octave));
+        let semis = root + i32::from(interval) + 12 * (index.div_euclid(len) + i32::from(octave));
         semis as f32
     }
 }

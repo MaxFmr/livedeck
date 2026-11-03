@@ -61,6 +61,16 @@ fn ten_seconds_of_audio_without_allocation() {
                     extension: (i / 100 % 4) as u8,
                 });
                 handle.send(Command::SetScale((i / 200 % 6) as u8));
+                handle.send(Command::Arp {
+                    mode: (i / 100 % 4) as u8,
+                    rate: (i / 100 % 6) as u8,
+                    octaves: (i / 300 % 4) as u8 + 1,
+                });
+                handle.send(Command::Phrase {
+                    index: (i / 200 % 4) as u8,
+                    variation: i / 400 % 2 == 0,
+                });
+                handle.send(Command::Transpose((i / 100 % 15) as i8 - 7));
                 for pad in 0..8 {
                     handle.send(Command::Chord {
                         pad,

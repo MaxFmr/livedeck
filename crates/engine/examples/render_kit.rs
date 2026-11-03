@@ -5,7 +5,9 @@
 //! a key change) and `target/renders/styles.wav` (each style at its suggested tempo, patterns A–D,
 //! one bar each) and `target/renders/chords.wav` (each style's synth patch on I–vi–IV–V over its
 //! pattern A) and `target/renders/voicings.wav` (I–vi–IV–V: triads, inversions, 7ths, then in
-//! dorian and major).
+//! dorian and major) and `target/renders/arp.wav` (latched I–vi–IV–V arpeggiated up, up-down
+//! on 2 octaves, random in 1/16 triplets, then phrases 1–4 of the hybrid style, a variation and a
+//! transposition).
 //! Offline, so it may allocate and write files.
 //!
 //! cargo run -p engine --example render_kit --release
@@ -17,6 +19,7 @@ use std::path::Path;
 use engine::bass::Scale;
 use engine::chords::{Extension, Voicing};
 use engine::drums::DrumVoice;
+use engine::melody::{ArpMode, ArpRate, ArpSettings};
 use engine::repeat::Division;
 use engine::{Engine, Param};
 
@@ -270,7 +273,57 @@ fn main() -> io::Result<()> {
             }
         }
     }
-    save(&dir.join("voicings.wav"), &voicings)
+    save(&dir.join("voicings.wav"), &voicings)?;
+
+    // Arpeggios and phrases at 120 BPM, drums at low density.
+    let mut engine = Engine::new(SR, 512, BPM);
+    engine.set_metronome(false);
+    engine.set_density(0.0);
+    engine.set_latch(true);
+    engine.start();
+    let mut arp = Vec::new();
+    let mut play_bar = |engine: &mut Engine| {
+        let start = arp.len();
+        arp.resize(start + bar * 2, 0.0);
+        for chunk in arp[start..].chunks_mut(256) {
+            engine.process(chunk, 2);
+        }
+    };
+    let modes = [
+        (ArpMode::Up, ArpRate::Sixteenth, 1),
+        (ArpMode::UpDown, ArpRate::Sixteenth, 2),
+        (ArpMode::Random, ArpRate::SixteenthTriplet, 1),
+    ];
+    for (mode, rate, octaves) in modes {
+        engine.set_arp(ArpSettings {
+            mode,
+            rate,
+            octaves,
+        });
+        for pad in [0, 3, 1, 2] {
+            engine.chord(pad, true);
+            engine.chord(pad, false);
+            play_bar(&mut engine);
+        }
+    }
+    // Phrases over a latched I (no arpeggio), each started at the bar.
+    engine.set_arp(ArpSettings::default());
+    engine.chord(0, true);
+    engine.chord(0, false);
+    for (index, variation, transpose) in [
+        (0, false, 0),
+        (1, false, 0),
+        (2, false, 0),
+        (3, false, 0),
+        (3, true, 0),
+        (0, false, 2),
+    ] {
+        engine.press_phrase(index, variation);
+        engine.set_transpose(transpose);
+        play_bar(&mut engine);
+        play_bar(&mut engine);
+    }
+    save(&dir.join("arp.wav"), &arp)
 }
 
 fn save(path: &Path, audio: &[f32]) -> io::Result<()> {

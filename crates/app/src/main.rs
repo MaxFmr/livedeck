@@ -15,6 +15,7 @@ use assert_no_alloc::assert_no_alloc;
 use engine::chords::{Extension, Voicing};
 use engine::drums::DrumVoice;
 use engine::link::{self, BlockTime, Command, EngineEvent, EngineHandle, EngineSnapshot};
+use engine::melody::{ArpMode, ArpRate, ArpSettings};
 use engine::repeat::Division;
 use engine::sampler::SampleBank;
 use engine::{Engine, Param};
@@ -60,7 +61,9 @@ Shift + jog gauche (un demi-tour) = style (kit, patterns, basse, swing), à la m
 Deck B : pads Hot Cue = accords I, IV, V, vi (tenus), Volume B = mélodie (Shift : métronome),
 fader Tempo B = brillance ; chaque style amène son patch de synthé. Shift + Hot Cue B = ii, iii,
 vii, I à l'octave ; pads Loop B = latch, renversement +/−, octave +/−, extension (Shift : triade) ;
-Shift + jog droit = gamme, à la mesure.
+Shift + jog droit = gamme, à la mesure. Pads FX B = arpège off / montant / aller-retour / aléatoire
+(Shift : 1 à 4 octaves), bord du jog B = vitesse 1/4 … 1/32 ; pads Sampler B = phrases du style, à la
+mesure (Shift : variation) ; jog B par le dessus = transposition dans la gamme, un degré par quart de tour.
 Chaque son joué au pad affiche sa latence geste → son.";
 
 // Debug builds abort on any allocation inside `assert_no_alloc` (the audio callback); release
@@ -99,6 +102,9 @@ struct Wanted {
     scale: u8,
     latch: bool,
     voicing: Voicing,
+    /// Arpeggiator and melody transposition (scale degrees).
+    arp: ArpSettings,
+    transpose: i8,
     /// Drums from the sample kit rather than the synth.
     samples: bool,
 }
@@ -141,6 +147,9 @@ struct LedRoles {
     mutes: Vec<(Led, u8)>,
     bass_mute: Vec<Led>,
     latch: Vec<Led>,
+    /// Arpeggio mode pads with the mode index, phrase pads with the phrase index.
+    arp_modes: Vec<(Led, u8)>,
+    phrases: Vec<(Led, u8)>,
 }
 
 impl LedRoles {
@@ -161,6 +170,8 @@ impl LedRoles {
             mutes: indexed(ActionName::Mute),
             bass_mute: leds(ActionName::BassMute),
             latch: leds(ActionName::LatchToggle),
+            arp_modes: indexed(ActionName::ArpMode),
+            phrases: indexed(ActionName::Phrase),
         }
     }
 }
@@ -363,6 +374,8 @@ fn open(
         octave: wanted.voicing.octave,
         extension: wanted.voicing.extension.index(),
     });
+    send_arp(&mut handle, wanted.arp);
+    handle.send(Command::Transpose(wanted.transpose));
     handle.send(Command::UseSamples(wanted.samples));
     handle.send(Command::QueuePattern(wanted.pattern));
     handle.send(Command::SetSwing(wanted.swing));
@@ -544,6 +557,38 @@ fn handle_controller(
             if scale != s.wanted.scale {
                 s.wanted.scale = scale;
                 handle.send(Command::SetScale(scale));
+            }
+        }
+        Action::ArpMode(index) => {
+            s.wanted.arp.mode = ArpMode::from_index(index);
+            send_arp(handle, s.wanted.arp);
+            echo_arp(s.wanted.arp);
+        }
+        Action::ArpOctaves(octaves) => {
+            s.wanted.arp.octaves = octaves;
+            send_arp(handle, s.wanted.arp);
+            echo_arp(s.wanted.arp);
+        }
+        Action::NudgeArpRate(delta) => {
+            let last = ArpRate::ALL.len() as i16 - 1;
+            let index = s.wanted.arp.rate.index();
+            let rate = (i16::from(index) + i16::from(delta)).clamp(0, last) as u8;
+            if rate != index {
+                s.wanted.arp.rate = ArpRate::from_index(rate);
+                send_arp(handle, s.wanted.arp);
+                echo_arp(s.wanted.arp);
+            }
+        }
+        Action::Phrase { index, variation } => {
+            handle.send(Command::Phrase { index, variation });
+        }
+        Action::NudgeTranspose(delta) => {
+            let max = engine::chords::MAX_TRANSPOSE;
+            let transpose = (s.wanted.transpose + delta).clamp(-max, max);
+            if transpose != s.wanted.transpose {
+                s.wanted.transpose = transpose;
+                handle.send(Command::Transpose(transpose));
+                println!("  ⇅ transposition {transpose:+} degré(s)");
             }
         }
         Action::SetBrightness(value) => {
@@ -801,6 +846,21 @@ fn update_leds(leds: &mut LedBank, s: &Session, snap: &EngineSnapshot, beats: f6
     for &led in &s.leds.latch {
         leds.set(led, s.wanted.latch);
     }
+    for &(led, mode) in &s.leds.arp_modes {
+        leds.set(led, snap.arp_mode == mode);
+    }
+    for &(led, index) in &s.leds.phrases {
+        // Playing lit, waiting for the bar (start or stop) blinks.
+        let playing = snap.phrase.is_some_and(|(p, _)| p == index);
+        let state = match snap.pending_phrase {
+            Some(next) if next.is_some_and(|(p, _)| p == index) || (next.is_none() && playing) => {
+                LedState::Blink
+            }
+            _ if playing => LedState::On,
+            _ => LedState::Off,
+        };
+        leds.set_state(led, state);
+    }
     for &led in &s.leds.bass_mute {
         // Lit = the bass plays, like the mute pads (replaces the beat display on that button).
         leds.set_state(
@@ -831,6 +891,33 @@ fn send_voicing(s: &Session, handle: &mut EngineHandle) {
         v.octave,
         v.extension.name()
     );
+}
+
+fn send_arp(handle: &mut EngineHandle, arp: ArpSettings) {
+    handle.send(Command::Arp {
+        mode: arp.mode.index(),
+        rate: arp.rate.index(),
+        octaves: arp.octaves,
+    });
+}
+
+fn echo_arp(arp: ArpSettings) {
+    if arp.mode == ArpMode::Off {
+        println!("  ⁘ arpège off");
+    } else {
+        println!(
+            "  ⁘ arpège {}, {}, {} octave(s)",
+            arp.mode.name(),
+            arp.rate.name(),
+            arp.octaves
+        );
+    }
+}
+
+/// "phrase 2" or "phrase 2 (variation)".
+fn phrase_label((index, variation): (u8, bool)) -> String {
+    let suffix = if variation { " (variation)" } else { "" };
+    format!("phrase {}{suffix}", index + 1)
 }
 
 fn scale_name(index: u8) -> &'static str {
@@ -940,6 +1027,8 @@ fn run() -> Result<(), String> {
             scale: 0,
             latch: false,
             voicing: Voicing::default(),
+            arp: ArpSettings::default(),
+            transpose: 0,
             samples: false,
         },
         leds: LedRoles::of(&mapping),
@@ -1000,6 +1089,7 @@ fn run() -> Result<(), String> {
     let mut shown_style = (u8::MAX, None);
     let mut shown_samples = (false, None);
     let mut shown_scale = (u8::MAX, None);
+    let mut shown_phrase = (None, None);
 
     let mut last_report = Instant::now();
     loop {
@@ -1062,6 +1152,17 @@ fn run() -> Result<(), String> {
             match snap.pending_scale {
                 Some(next) => println!("  ◇ gamme {} à la mesure suivante", scale_name(next)),
                 None => println!("  ◆ gamme {}", scale_name(snap.scale)),
+            }
+        }
+        if (snap.phrase, snap.pending_phrase) != shown_phrase {
+            shown_phrase = (snap.phrase, snap.pending_phrase);
+            match (snap.pending_phrase, snap.phrase) {
+                (Some(Some(next)), _) => {
+                    println!("  ◇ {} à la mesure suivante", phrase_label(next));
+                }
+                (Some(None), _) => println!("  ◇ phrase arrêtée à la mesure suivante"),
+                (None, Some(now)) => println!("  ◆ {}", phrase_label(now)),
+                (None, None) => println!("  ◆ pas de phrase"),
             }
         }
         if (snap.samples, snap.pending_samples) != shown_samples {

@@ -112,6 +112,19 @@ pub enum Action {
     Extension(i8),
     /// Scale scroll, in scales (one per `step` jog ticks).
     NudgeScale(i8),
+    /// Arpeggiator mode (index of `engine::melody::ArpMode::ALL`).
+    ArpMode(u8),
+    /// Octaves spanned by the arpeggio, 1–4.
+    ArpOctaves(u8),
+    /// Arpeggio rate scroll, in rates (one per `step` jog ticks).
+    NudgeArpRate(i8),
+    /// Phrase pad (0-based), its variation with Shift.
+    Phrase {
+        index: u8,
+        variation: bool,
+    },
+    /// Melody transposition, in scale degrees (one per `step` jog ticks).
+    NudgeTranspose(i8),
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -153,6 +166,11 @@ pub enum ActionName {
     ChordOctave,
     Extension,
     Scale,
+    ArpMode,
+    ArpOctaves,
+    ArpRate,
+    Phrase,
+    Transpose,
 }
 
 #[derive(Debug, Deserialize)]
@@ -182,6 +200,13 @@ struct BindSpec {
     division: Option<u8>,
     /// Chord pad played by `chord`: 1–4 = I, IV, V, vi; 5–8 = ii, iii, vii, I an octave up.
     chord: Option<u8>,
+    /// Arpeggio mode set by `arp_mode`: off, up, updown, random.
+    mode: Option<String>,
+    /// Octaves (1–4) set by `arp_octaves`.
+    octaves: Option<u8>,
+    /// `phrase` plays the variation of its phrase (`pattern`).
+    #[serde(default)]
+    variation: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -218,6 +243,10 @@ pub enum MappingError {
     BadDivision(String),
     #[error("« {0} » : accord attendu entre 1 et 8")]
     BadChord(String),
+    #[error("« {0} » : mode d'arpège attendu parmi off, up, updown, random")]
+    BadArpMode(String),
+    #[error("« {0} » : octaves attendues entre 1 et 4")]
+    BadOctaves(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -243,6 +272,9 @@ struct Binding {
     division: Division,
     /// 0-based.
     chord: u8,
+    /// Arpeggio mode index of `arp_mode`, octaves of `arp_octaves`.
+    value: u8,
+    variation: bool,
 }
 
 /// Soft-takeover state of one absolute control.
@@ -269,8 +301,8 @@ pub struct Mapping {
     /// or to the edge if the touch ends first (sensor flicker while spinning the edge).
     held_ticks: [i32; 2],
     taps: Vec<u64>,
-    /// Jog ticks not yet turned into a style step, per deck.
-    style_ticks: [i32; 2],
+    /// Jog ticks not yet turned into a step, per deck and per stepped action (`jog_slot`).
+    jog_ticks: [[i32; 3]; 2],
     /// Shift held (`90 03`). Faders and knobs send the same message with or without Shift, so
     /// their Shift layer is chosen here.
     shift_held: bool,
@@ -331,6 +363,22 @@ impl Mapping {
                     })?;
                 mask |= voice_bit(voice);
             }
+            let value = match b.action {
+                ActionName::ArpMode => {
+                    const MODES: [&str; 4] = ["off", "up", "updown", "random"];
+                    let mode = b.mode.as_deref().unwrap_or("off");
+                    MODES
+                        .iter()
+                        .position(|&m| m == mode)
+                        .ok_or_else(|| MappingError::BadArpMode(b.control.clone()))?
+                        as u8
+                }
+                ActionName::ArpOctaves => match b.octaves {
+                    Some(o @ 1..=4) => o,
+                    _ => return Err(MappingError::BadOctaves(b.control)),
+                },
+                _ => 0,
+            };
             let binding = Binding {
                 action: b.action,
                 pickup: b.pickup,
@@ -342,6 +390,8 @@ impl Mapping {
                 fill,
                 division,
                 chord,
+                value,
+                variation: b.variation,
             };
             if bindings.insert(id, binding).is_some() {
                 return Err(MappingError::Duplicate(b.control));
@@ -354,7 +404,7 @@ impl Mapping {
             touch_down_us: [None; 2],
             held_ticks: [0; 2],
             taps: Vec::with_capacity(8),
-            style_ticks: [0; 2],
+            jog_ticks: [[0; 3]; 2],
             shift_held: false,
         })
     }
@@ -387,6 +437,7 @@ impl Mapping {
                 let value = match b.action {
                     ActionName::Fill => b.fill,
                     ActionName::Chord => b.chord,
+                    ActionName::ArpMode | ActionName::ArpOctaves => b.value,
                     ActionName::Mute => b.mask,
                     ActionName::BeatRepeat => b.division.denominator(),
                     _ => b.pattern,
@@ -511,20 +562,33 @@ impl Mapping {
                 binding.step.round().clamp(-11.0, 11.0) as i8,
             )),
             (ActionName::BassCutoff, Input::Absolute(v)) => Some(Action::SetBassCutoff(v)),
-            (ActionName::Style | ActionName::Scale, Input::Relative(ticks)) => {
+            (ActionName::ArpMode, Input::Press(true)) => Some(Action::ArpMode(binding.value)),
+            (ActionName::ArpOctaves, Input::Press(true)) => Some(Action::ArpOctaves(binding.value)),
+            (ActionName::Phrase, Input::Press(true)) => Some(Action::Phrase {
+                index: binding.pattern,
+                variation: binding.variation,
+            }),
+            (
+                ActionName::Style | ActionName::Scale | ActionName::ArpRate | ActionName::Transpose,
+                Input::Relative(ticks),
+            ) => {
                 let Control::Jog(deck, _) = id.control else {
                     return None;
                 };
                 let per = binding.step.round().max(1.0) as i32;
-                let acc = self.style_ticks.get_mut(deck_index(deck))?;
+                let acc = self
+                    .jog_ticks
+                    .get_mut(deck_index(deck))?
+                    .get_mut(jog_slot(binding.action))?;
                 *acc += ticks;
                 let steps = *acc / per;
                 *acc -= steps * per;
                 let steps = steps.clamp(-8, 8) as i8;
-                (steps != 0).then_some(if binding.action == ActionName::Scale {
-                    Action::NudgeScale(steps)
-                } else {
-                    Action::NudgeStyle(steps)
+                (steps != 0).then_some(match binding.action {
+                    ActionName::Scale => Action::NudgeScale(steps),
+                    ActionName::ArpRate => Action::NudgeArpRate(steps),
+                    ActionName::Transpose => Action::NudgeTranspose(steps),
+                    _ => Action::NudgeStyle(steps),
                 })
             }
             (ActionName::Swing, Input::Relative(ticks)) => Some(Action::NudgeSwing(
@@ -718,6 +782,9 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::Inversion
         | ActionName::ChordOctave
         | ActionName::Extension
+        | ActionName::ArpMode
+        | ActionName::ArpOctaves
+        | ActionName::Phrase
         | ActionName::Tonic
         | ActionName::Mute
         | ActionName::Fill
@@ -733,9 +800,22 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::Brightness => {
             matches!(kind, Kind::Absolute)
         }
-        ActionName::TempoNudge | ActionName::Swing | ActionName::Style | ActionName::Scale => {
-            matches!(kind, Kind::Relative)
-        }
+        ActionName::TempoNudge
+        | ActionName::Swing
+        | ActionName::Style
+        | ActionName::Scale
+        | ActionName::ArpRate
+        | ActionName::Transpose => matches!(kind, Kind::Relative),
+    }
+}
+
+/// Accumulator of a jog action stepped every `step` ticks (style and scale share one: they are
+/// on the Shift layer of different decks).
+fn jog_slot(action: ActionName) -> usize {
+    match action {
+        ActionName::ArpRate => 1,
+        ActionName::Transpose => 2,
+        _ => 0,
     }
 }
 
@@ -1127,6 +1207,65 @@ mod tests {
         };
         let scrolled: Vec<_> = (0..130).filter_map(|t| m.handle(100 + t, jog)).collect();
         assert_eq!(scrolled, vec![Action::NudgeScale(1)]);
+    }
+
+    #[test]
+    fn deck_b_arp_pads_phrases_and_rate_jog() {
+        let mut m = mapping();
+        let pad = |mode, pad, shift| ControllerEvent::Pad {
+            deck: Deck::B,
+            mode,
+            pad,
+            shift,
+            pressed: true,
+            velocity: 127,
+        };
+        assert_eq!(
+            m.handle(1, pad(PadMode::Fx, 2, false)),
+            Some(Action::ArpMode(2)),
+            "FX 3 = up-down"
+        );
+        assert_eq!(
+            m.handle(2, pad(PadMode::Fx, 3, true)),
+            Some(Action::ArpOctaves(4))
+        );
+        assert_eq!(
+            m.handle(3, pad(PadMode::Sampler, 1, false)),
+            Some(Action::Phrase {
+                index: 1,
+                variation: false
+            })
+        );
+        assert_eq!(
+            m.handle(4, pad(PadMode::Sampler, 1, true)),
+            Some(Action::Phrase {
+                index: 1,
+                variation: true
+            })
+        );
+        let jog = |delta| ControllerEvent::Jog {
+            deck: Deck::B,
+            surface: JogSurface::Edge,
+            shift: false,
+            delta,
+        };
+        let faster: Vec<_> = (0..70).filter_map(|t| m.handle(100 + t, jog(1))).collect();
+        assert_eq!(
+            faster,
+            vec![Action::NudgeArpRate(1)],
+            "a quarter turn per rate"
+        );
+        // The scale (Shift) keeps its own count: the 8 ticks left over do not leak into it.
+        let shifted = ControllerEvent::Jog {
+            deck: Deck::B,
+            surface: JogSurface::Edge,
+            shift: true,
+            delta: 1,
+        };
+        let scale: Vec<_> = (0..120)
+            .filter_map(|t| m.handle(300 + t, shifted))
+            .collect();
+        assert!(scale.is_empty());
     }
 
     #[test]

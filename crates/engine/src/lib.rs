@@ -18,6 +18,7 @@ pub mod drums;
 pub mod dsp;
 pub mod limiter;
 pub mod link;
+pub mod melody;
 pub mod metronome;
 pub mod poly;
 pub mod repeat;
@@ -30,6 +31,7 @@ use bass::BassVoice;
 use clock::Clock;
 use drums::{DrumKit, DrumVoice};
 use limiter::Limiter;
+use melody::Melody;
 use metronome::Click;
 use poly::PolySynth;
 use repeat::{BeatRepeat, Division};
@@ -74,6 +76,7 @@ pub struct Engine {
     bass: BassVoice,
     synth: PolySynth,
     chords: chords::ChordPads,
+    melody: Melody,
     /// Style whose synth patch is loaded.
     synth_style: u8,
     sequencer: Sequencer,
@@ -110,6 +113,7 @@ impl Engine {
             bass: BassVoice::new(sample_rate),
             synth: PolySynth::new(sample_rate),
             chords: chords::ChordPads::default(),
+            melody: Melody::new(),
             synth_style: 0,
             sequencer: Sequencer::new(),
             limiter: Limiter::new(sample_rate),
@@ -135,6 +139,8 @@ impl Engine {
     pub fn start(&mut self) {
         self.clock.start();
         self.sequencer.reset();
+        self.melody.reset();
+        self.sync_arp();
         self.repeat.release();
         self.last_hit = None;
         self.roll_pending = None;
@@ -144,8 +150,46 @@ impl Engine {
         self.clock.stop();
         self.bass.note_off();
         self.chords.release_all(&mut self.synth);
+        self.melody.stop();
+        self.sync_arp();
         self.repeat.release();
         self.roll_pending = None;
+    }
+
+    /// The arpeggio plays the chords while it is on and the transport runs; otherwise the pads
+    /// sound their chords themselves.
+    fn sync_arp(&mut self) {
+        let on = self.melody.arp_active(&self.clock);
+        if !on {
+            self.synth.release(melody::ARP_OWNER);
+        }
+        let key = self.sequencer.bass().key();
+        self.chords.set_arp(&mut self.synth, key, on);
+    }
+
+    /// Arpeggiator settings (mode, rate, octaves), from its next tick.
+    pub fn set_arp(&mut self, settings: melody::ArpSettings) {
+        let (swing, grid) = (self.sequencer.swing(), self.sequencer.grid());
+        self.melody.set_arp(settings, &self.clock, swing, grid);
+        self.sync_arp();
+    }
+
+    /// Phrase pad `index` (0..4, `variation` with Shift): starts or stops at the next bar (now if
+    /// stopped).
+    pub fn press_phrase(&mut self, index: u8, variation: bool) {
+        self.melody
+            .press_phrase(index, variation, self.clock.is_playing());
+    }
+
+    /// Melody transposition in scale degrees (chords, arpeggio, phrases), right away.
+    pub fn set_transpose(&mut self, degrees: i8) {
+        let key = self.sequencer.bass().key();
+        self.chords.set_transpose(&mut self.synth, key, degrees);
+    }
+
+    #[must_use]
+    pub fn melody(&self) -> &Melody {
+        &self.melody
     }
 
     pub fn set_tempo(&mut self, bpm: f64) {
@@ -391,7 +435,6 @@ impl Engine {
             bus.fill(0.0);
             bass.fill(0.0);
             synth.fill(0.0);
-            self.synth.render_add(synth);
             let melody_gain = self.melody_level.skip(n);
             self.click.gain = self.metronome_level.skip(n);
             let drum_gain = self.drum_level.skip(n);
@@ -405,6 +448,9 @@ impl Engine {
                     sequencer: &mut self.sequencer,
                     drums: &mut self.drums,
                     bass: &mut self.bass,
+                    synth: &mut self.synth,
+                    chords: &self.chords,
+                    melody: &mut self.melody,
                     last_hit: &mut self.last_hit,
                     roll_pending: &mut self.roll_pending,
                     repeat: &mut self.repeat,
@@ -413,6 +459,7 @@ impl Engine {
                     mono,
                     drums: bus,
                     bass,
+                    synth,
                 },
             );
             self.repeat.process(bus, start);
@@ -455,38 +502,50 @@ struct Voices<'a> {
     sequencer: &'a mut Sequencer,
     drums: &'a mut DrumKit,
     bass: &'a mut BassVoice,
+    synth: &'a mut PolySynth,
+    chords: &'a chords::ChordPads,
+    melody: &'a mut Melody,
     last_hit: &'a mut Option<u64>,
     roll_pending: &'a mut Option<usize>,
     repeat: &'a mut BeatRepeat,
 }
 
-/// Buffers of one slice: click, drums, bass (same length).
+/// Buffers of one slice: click, drums, bass, melody synth (same length).
 struct Buses<'a> {
     mono: &'a mut [f32],
     drums: &'a mut [f32],
     bass: &'a mut [f32],
+    synth: &'a mut [f32],
 }
 
-/// Renders one slice (click into `mono`, drums and bass into their buses), splitting it at beats
-/// and sequencer steps so every click, drum hit and bass note starts on its exact sample.
+/// Renders one slice (click into `mono`, drums, bass and synth into their buses), splitting it at
+/// beats, sequencer steps and melody events so every click, hit and note starts on its exact
+/// sample.
 fn render_mono(v: Voices<'_>, buses: Buses<'_>) {
     let mut rest = buses.mono;
     let mut bus_rest = buses.drums;
     let mut bass_rest = buses.bass;
+    let mut synth_rest = buses.synth;
     while !rest.is_empty() {
         let len = rest.len();
+        let swing = (v.sequencer.swing(), v.sequencer.grid());
         let beat = v.clock.next_beat_within(len);
         let step = v.sequencer.next_step_within(v.clock, len);
+        let melody = v.melody.next_event_within(v.clock, swing.0, swing.1, len);
         let beat_at = beat.map_or(len, |(offset, _)| offset);
         let step_at = step.unwrap_or(len);
-        // Both offsets are < len by construction; clamped anyway so the split can never panic.
-        let segment_len = beat_at.min(step_at).min(len);
+        let melody_at = melody.unwrap_or(len);
+        // Every offset is < len by construction; clamped anyway so the split can never panic.
+        let segment_len = beat_at.min(step_at).min(melody_at).min(len);
         let (segment, tail) = rest.split_at_mut(segment_len);
         let (bus_segment, bus_tail) = bus_rest.split_at_mut(segment_len.min(bus_rest.len()));
         let (bass_segment, bass_tail) = bass_rest.split_at_mut(segment_len.min(bass_rest.len()));
+        let (synth_segment, synth_tail) =
+            synth_rest.split_at_mut(segment_len.min(synth_rest.len()));
         v.click.render_add(segment);
         v.drums.render_add(bus_segment, 1.0);
         v.bass.render_add(bass_segment);
+        v.synth.render_add(synth_segment);
         v.clock.advance(segment_len);
         if let Some((_, beat)) = beat
             && beat_at == segment_len
@@ -496,19 +555,33 @@ fn render_mono(v: Voices<'_>, buses: Buses<'_>) {
             }
             v.clock.consume_beat();
         }
-        if step_at == segment_len
-            && step.is_some()
-            && v.sequencer.fire(v.drums, v.bass, v.clock) != 0
-        {
-            let hit = v.clock.position();
-            *v.last_hit = Some(hit);
-            if let Some(len) = v.roll_pending.take() {
-                v.repeat.engage(hit, len, hit + len as u64);
+        if step_at == segment_len && step.is_some() {
+            let bar_step = usize::from(v.sequencer.step_in_bar());
+            if v.sequencer.fire(v.drums, v.bass, v.clock) != 0 {
+                let hit = v.clock.position();
+                *v.last_hit = Some(hit);
+                if let Some(len) = v.roll_pending.take() {
+                    v.repeat.engage(hit, len, hit + len as u64);
+                }
             }
+            let sequencer = &*v.sequencer;
+            v.melody.fire_step(
+                bar_step,
+                v.synth,
+                (sequencer.bass().key(), v.chords.transpose()),
+                sequencer.style_preset().map(|style| &style.phrases),
+                v.clock,
+                |len, held| sequencer.gate_of_fired(v.clock, len, held),
+            );
+        }
+        if melody_at == segment_len && melody.is_some() {
+            let key = v.sequencer.bass().key();
+            v.melody.on_time(v.synth, v.chords, key, v.clock, swing);
         }
         rest = tail;
         bus_rest = bus_tail;
         bass_rest = bass_tail;
+        synth_rest = synth_tail;
     }
 }
 
@@ -618,6 +691,31 @@ mod tests {
             .zip(turn(3))
             .fold(0.0_f32, |m, (a, b)| m.max((a - b).abs()));
         assert!(diff < 1.0e-3, "{diff}");
+    }
+
+    #[test]
+    fn arpeggio_plays_the_held_chord_and_stops_with_the_transport() {
+        let mut engine = Engine::new(SR, 128, 120.0);
+        engine.set_metronome(false);
+        engine.set_sequencer(false);
+        engine.set_bass_mute(true);
+        engine.set_arp(melody::ArpSettings {
+            mode: melody::ArpMode::Up,
+            rate: melody::ArpRate::Quarter,
+            octaves: 1,
+        });
+        engine.chord(0, true);
+        // Stopped: the pad sounds its chord itself.
+        assert_eq!(engine.synth().active_voices(), 3);
+        engine.start();
+        // Playing: the arpeggio takes over, one note per beat; the chord releases.
+        let out = render(&mut engine, 24_000 * 3, 1, 128);
+        assert!(out[..1_000].iter().any(|s| s.abs() > 0.01));
+        let melody = engine.melody();
+        assert_eq!(melody.arp().mode, melody::ArpMode::Up);
+        engine.stop();
+        // Stopped again: the held chord is released by the stop, nothing sounds new.
+        assert_eq!(engine.chords().sounding(), 0);
     }
 
     #[test]

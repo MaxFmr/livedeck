@@ -183,7 +183,7 @@ pub fn voice_bit(voice: DrumVoice) -> u8 {
 
 /// Beat of `step`: inside each swung pair (two 8ths or two 16ths), the second note moves from
 /// half-way to `swing`, and the 16ths in between follow linearly.
-fn step_beats(step: u64, swing: f32, grid: SwingGrid) -> f64 {
+pub(crate) fn step_beats(step: u64, swing: f32, grid: SwingGrid) -> f64 {
     let pair = match grid {
         SwingGrid::Eighth => 1.0,
         SwingGrid::Sixteenth => 0.5,
@@ -435,6 +435,21 @@ impl Sequencer {
 
     pub fn set_swing_grid(&mut self, grid: SwingGrid) {
         self.grid = grid;
+    }
+
+    #[must_use]
+    pub fn grid(&self) -> SwingGrid {
+        self.grid
+    }
+
+    /// Gate in samples of a note of `len` steps starting on the step just fired (`held`: kept
+    /// open into the next note, which glides from it).
+    #[must_use]
+    pub fn gate_of_fired(&self, clock: &Clock, len: u8, held: bool) -> u64 {
+        let n = self.next_step.saturating_sub(1);
+        let from = clock.sample_at(self.step_beats(n));
+        let to = clock.sample_at(self.step_beats(n + u64::from(len)));
+        gate_samples(to.saturating_sub(from), held)
     }
 
     fn step_beats(&self, step: u64) -> f64 {

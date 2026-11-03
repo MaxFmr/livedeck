@@ -63,7 +63,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 - [x] Poly synthé 16 voix (2 osc PolyBLEP, SVF, 2 ADSR), vol de voix. → [016](docs/iterations/016-poly-synth.md)
 - [x] Gammes, tonalité, accords par degrés, voicings, renversements. → [017](docs/iterations/017-scales-voicings.md)
-- [ ] Arpégiateur, phrases, transposition dans la gamme au jog.
+- [x] Arpégiateur, phrases, transposition dans la gamme au jog. → [018](docs/iterations/018-arp-phrases.md)
 - [ ] Delay synchronisé + réverb (pré-alloués), envois.
 
 **Sortie** : morceau complet jouable (rythme + mélodie) ; charge < 30 % toutes voix actives.

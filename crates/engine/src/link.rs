@@ -44,6 +44,20 @@ pub enum Command {
     },
     /// Scale (index of `bass::Scale::ALL`) for the next bar, or now if stopped.
     SetScale(u8),
+    /// Arpeggiator: mode (index of `melody::ArpMode::ALL`), rate (of `melody::ArpRate::ALL`),
+    /// octaves 1..=4.
+    Arp {
+        mode: u8,
+        rate: u8,
+        octaves: u8,
+    },
+    /// Phrase pad (0..4, `variation` with Shift): starts or stops at the next bar.
+    Phrase {
+        index: u8,
+        variation: bool,
+    },
+    /// Melody transposition in scale degrees, right away.
+    Transpose(i8),
     /// Bass line (0-based) alone for the next bar, or now if stopped.
     QueueBassLine(u8),
     /// Bass tonic (0 = C … 11 = B) for the next bar, or now if stopped.
@@ -142,6 +156,15 @@ pub struct EngineSnapshot {
     /// Scale playing (index of `bass::Scale::ALL`) and the one waiting for the bar.
     pub scale: u8,
     pub pending_scale: Option<u8>,
+    /// Arpeggiator mode, rate (indexes of `melody::ArpMode::ALL` / `ArpRate::ALL`), octaves.
+    pub arp_mode: u8,
+    pub arp_rate: u8,
+    pub arp_octaves: u8,
+    /// Phrase playing (index, variation) and the change waiting for the bar (`Some(None)` = stop).
+    pub phrase: Option<(u8, bool)>,
+    pub pending_phrase: Option<Option<(u8, bool)>>,
+    /// Melody transposition, in scale degrees.
+    pub transpose: i8,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -222,6 +245,12 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         chords: engine.chords().sounding(),
         scale: engine.sequencer().bass().key().scale.index(),
         pending_scale: engine.sequencer().bass().pending_scale().map(|s| s.index()),
+        arp_mode: engine.melody().arp().mode.index(),
+        arp_rate: engine.melody().arp().rate.index(),
+        arp_octaves: engine.melody().arp().octaves,
+        phrase: engine.melody().phrase(),
+        pending_phrase: engine.melody().pending_phrase(),
+        transpose: engine.chords().transpose(),
     }
 }
 
@@ -281,6 +310,17 @@ impl AudioEngine {
                     self.engine.queue_scale(scale);
                 }
             }
+            Command::Arp {
+                mode,
+                rate,
+                octaves,
+            } => self.engine.set_arp(crate::melody::ArpSettings {
+                mode: crate::melody::ArpMode::from_index(mode),
+                rate: crate::melody::ArpRate::from_index(rate),
+                octaves,
+            }),
+            Command::Phrase { index, variation } => self.engine.press_phrase(index, variation),
+            Command::Transpose(degrees) => self.engine.set_transpose(degrees),
             Command::QueueBassLine(index) => self.engine.queue_bass_line(index),
             Command::SetTonic(tonic) => self.engine.queue_tonic(tonic),
             Command::BassMute(muted) => self.engine.set_bass_mute(muted),

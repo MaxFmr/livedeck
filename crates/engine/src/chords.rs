@@ -2,7 +2,9 @@
 //! inversion, an octave and an extension, played on the poly synth by the pads that hold them.
 //!
 //! Pads 0–3 play degrees I, IV, V, vi; pads 4–7 (Shift) ii, iii, vii and I an octave up. With latch
-//! on, a chord keeps sounding after its pad is released, until another one is played.
+//! on, a chord keeps sounding after its pad is released, until another one is played. The
+//! transposition moves every chord along the scale (degree by degree, still in the key). With the
+//! arpeggiator on, the pads only choose the notes: `notes` hands them to `melody::Arp`.
 //!
 //! Runs on: audio thread.
 
@@ -17,6 +19,8 @@ const DEGREES: [u8; PADS] = [1, 4, 5, 6, 2, 3, 7, 8];
 const OCTAVE: i8 = 1;
 pub const MAX_INVERSION: i8 = 3;
 pub const MAX_OCTAVE: i8 = 2;
+/// Transposition range, in scale degrees.
+pub const MAX_TRANSPOSE: i8 = 7;
 const VELOCITY: f32 = 0.8;
 
 /// What is stacked on the degree.
@@ -77,14 +81,17 @@ pub struct Voicing {
     pub extension: Extension,
 }
 
-/// MIDI notes of `degree` in `key` with `voicing`, lowest first; returns how many are used.
+/// MIDI notes of `degree` moved by `transpose` degrees in `key` with `voicing`, lowest first;
+/// returns how many are used.
 #[must_use]
-pub fn chord_notes(key: Key, degree: u8, voicing: Voicing) -> ([f32; 4], usize) {
+pub fn chord_notes(key: Key, degree: u8, voicing: Voicing, transpose: i8) -> ([f32; 4], usize) {
     let mut notes = [0.0_f32; 4];
     let steps = voicing.extension.steps();
     let octave = OCTAVE + voicing.octave.clamp(-MAX_OCTAVE, MAX_OCTAVE);
+    let root =
+        i32::from(degree.max(1)) - 1 + i32::from(transpose.clamp(-MAX_TRANSPOSE, MAX_TRANSPOSE));
     for (note, &step) in notes.iter_mut().zip(steps) {
-        *note = key.note(degree + step, octave);
+        *note = key.note_at(root + i32::from(step), octave);
     }
     let count = steps.len().min(notes.len());
     let Some(used) = notes.get_mut(..count) else {
@@ -112,6 +119,9 @@ pub struct ChordPads {
     sounding: [bool; PADS],
     latch: bool,
     voicing: Voicing,
+    transpose: i8,
+    /// The arpeggiator plays the chords: pads sound nothing themselves.
+    arp: bool,
 }
 
 impl ChordPads {
@@ -120,9 +130,11 @@ impl ChordPads {
             return;
         };
         synth.release(pad);
-        let (notes, count) = chord_notes(key, degree, self.voicing);
-        for &note in notes.iter().take(count) {
-            synth.note_on(note, VELOCITY, pad);
+        if !self.arp {
+            let (notes, count) = chord_notes(key, degree, self.voicing, self.transpose);
+            for &note in notes.iter().take(count) {
+                synth.note_on(note, VELOCITY, pad);
+            }
         }
         if let Some(s) = self.sounding.get_mut(usize::from(pad)) {
             *s = true;
@@ -175,6 +187,49 @@ impl ChordPads {
     /// New voicing, applied to the chords sounding right away.
     pub fn set_voicing(&mut self, synth: &mut PolySynth, key: Key, voicing: Voicing) {
         self.voicing = voicing;
+        self.replay(synth, key);
+    }
+
+    /// Transposition in scale degrees (±`MAX_TRANSPOSE`), applied to the chords sounding.
+    pub fn set_transpose(&mut self, synth: &mut PolySynth, key: Key, transpose: i8) {
+        self.transpose = transpose.clamp(-MAX_TRANSPOSE, MAX_TRANSPOSE);
+        self.replay(synth, key);
+    }
+
+    /// Arpeggiator on: the chords sounding go quiet (the arpeggio plays them); off: they sound
+    /// again.
+    pub fn set_arp(&mut self, synth: &mut PolySynth, key: Key, on: bool) {
+        if on != self.arp {
+            self.arp = on;
+            self.replay(synth, key);
+        }
+    }
+
+    /// Notes of every chord sounding, lowest first, without duplicates; returns how many.
+    pub fn notes(&self, key: Key, out: &mut [f32]) -> usize {
+        let mut count = 0;
+        for (&degree, _) in DEGREES
+            .iter()
+            .zip(self.sounding)
+            .filter(|&(_, sounding)| sounding)
+        {
+            let (notes, n) = chord_notes(key, degree, self.voicing, self.transpose);
+            for &note in notes.iter().take(n) {
+                let fresh = out.get(..count).is_some_and(|used| !used.contains(&note));
+                if let Some(slot) = out.get_mut(count).filter(|_| fresh) {
+                    *slot = note;
+                    count += 1;
+                }
+            }
+        }
+        if let Some(used) = out.get_mut(..count) {
+            used.sort_by(f32::total_cmp);
+        }
+        count
+    }
+
+    /// Plays again the chords sounding (new voicing, transposition or arpeggiator state).
+    fn replay(&mut self, synth: &mut PolySynth, key: Key) {
         for pad in 0..PADS as u8 {
             if self
                 .sounding
@@ -203,6 +258,11 @@ impl ChordPads {
         self.voicing
     }
 
+    #[must_use]
+    pub fn transpose(&self) -> i8 {
+        self.transpose
+    }
+
     /// Bit `i` set = chord pad `i` sounding.
     #[must_use]
     pub fn sounding(&self) -> u8 {
@@ -225,7 +285,7 @@ mod tests {
     };
 
     fn notes(degree: u8, voicing: Voicing) -> Vec<f32> {
-        let (n, c) = chord_notes(A_MINOR, degree, voicing);
+        let (n, c) = chord_notes(A_MINOR, degree, voicing, 0);
         n[..c].to_vec()
     }
 
@@ -239,7 +299,7 @@ mod tests {
             tonic: 0,
             scale: Scale::Major,
         };
-        let (n, c) = chord_notes(major, 5, Voicing::default());
+        let (n, c) = chord_notes(major, 5, Voicing::default(), 0);
         assert_eq!(&n[..c], &[67.0, 71.0, 74.0]); // G B D (C sits at C3, chords an octave up)
     }
 
@@ -294,5 +354,32 @@ mod tests {
         pads.set_voicing(&mut synth, A_MINOR, seventh);
         // The old triad is releasing, the new 7th chord sounds.
         assert_eq!(synth.active_voices(), 7);
+    }
+
+    #[test]
+    fn transposition_walks_the_scale() {
+        let (n, c) = chord_notes(A_MINOR, 1, Voicing::default(), 1);
+        assert_eq!(&n[..c], &[59.0, 62.0, 65.0]); // B D F
+        let (n, c) = chord_notes(A_MINOR, 1, Voicing::default(), -1);
+        assert_eq!(&n[..c], &[55.0, 59.0, 62.0]); // G B D, below the tonic
+        let (n, c) = chord_notes(A_MINOR, 1, Voicing::default(), 7);
+        assert_eq!(&n[..c], &[69.0, 72.0, 76.0]); // an octave up
+    }
+
+    #[test]
+    fn arp_silences_the_pads_and_lists_their_notes() {
+        let mut synth = PolySynth::new(48_000);
+        let mut pads = ChordPads::default();
+        pads.pad(&mut synth, A_MINOR, 0, true);
+        pads.pad(&mut synth, A_MINOR, 1, true);
+        pads.set_arp(&mut synth, A_MINOR, true);
+        let mut notes = [0.0; 16];
+        let n = pads.notes(A_MINOR, &mut notes);
+        // A C E + D F A: the shared A once.
+        assert_eq!(&notes[..n], &[57.0, 60.0, 62.0, 64.0, 65.0, 69.0]);
+        pads.pad(&mut synth, A_MINOR, 2, true);
+        assert_eq!(pads.sounding(), 0b111);
+        // The 6 chord voices are releasing, none was started for pad 2.
+        assert_eq!(synth.active_voices(), 6);
     }
 }
