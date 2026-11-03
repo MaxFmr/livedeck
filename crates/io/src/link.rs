@@ -110,6 +110,11 @@ impl ControllerLink {
             .map_or(0, |c| c.dropped.load(Ordering::Relaxed))
     }
 
+    #[must_use]
+    pub fn leds(&self) -> &LedBank {
+        &self.leds
+    }
+
     pub fn leds_mut(&mut self) -> &mut LedBank {
         &mut self.leds
     }

@@ -185,6 +185,15 @@ impl LedBank {
     }
 
     /// The controller now displays `mode` on `deck`: its pad LEDs must be (re)sent.
+    /// Pad mode the controller displays on `deck` (the last mode button or pad seen).
+    #[must_use]
+    pub fn shown_mode(&self, deck: Deck) -> PadMode {
+        self.shown_mode
+            .get(deck_index(deck))
+            .copied()
+            .unwrap_or(PadMode::HotCue)
+    }
+
     pub fn mode_shown(&mut self, deck: Deck, mode: PadMode) {
         if let Some(shown) = self.shown_mode.get_mut(deck_index(deck)) {
             *shown = mode;

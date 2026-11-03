@@ -9,6 +9,7 @@
 #[allow(dead_code)]
 mod theme;
 mod ui;
+mod view;
 use std::io::BufRead;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -52,6 +53,8 @@ USAGE: app [--bpm <60-200>] [--buffer <frames>] [--mapping <fichier>] [--seconds
 
 Commandes (taper puis Entrée) :
   p        lecture / arrêt
+  midi <hex…>  rejoue des messages du contrôleur (ex. midi 900B7F 900B00)
+  shot <f.bmp> capture de la fenêtre
   + / -    tempo ±1 BPM par signe (+++ = +3)
   t <bpm>  tempo exact         m        métronome on/off
   h        kick (comme le pad Hot Cue 1 du deck A)
@@ -1140,6 +1143,7 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
     });
 
     let mut link = ControllerLink::new();
+    let mut replay = io::controller::Decoder::new();
     let mut link_events = Vec::new();
     // While stopped, LEDs blink on a free-running beat at the current tempo.
     let mut stopped_since = Instant::now();
@@ -1152,6 +1156,8 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
 
     let mut last_report = Instant::now();
     let mut last_xrun: Option<Instant> = None;
+    // The window draws the patterns and bass lines of the style heard.
+    let presets = engine::style::presets();
     let mut shown_load = 0.0;
     loop {
         if window.is_some_and(|w| w.shared.quit_requested()) {
@@ -1185,6 +1191,28 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
             }
         }
         while let Ok(line) = keys.try_recv() {
+            // Development commands: gestures replayed from raw MIDI, window captures.
+            if let Some(hex) = line.trim().strip_prefix("midi ") {
+                for event in hex
+                    .split_whitespace()
+                    .filter_map(|h| replay.decode(&parse_hex(h)))
+                {
+                    if let ControllerEvent::PadModeSelect { deck, mode, .. }
+                    | ControllerEvent::Pad { deck, mode, .. } = event
+                    {
+                        link.leds_mut().mode_shown(deck, mode);
+                    }
+                    handle_controller(host_time_us(), event, &mut s, &mut handle, args.quiet);
+                }
+                continue;
+            }
+            if let Some(path) = line.trim().strip_prefix("shot ") {
+                match window {
+                    Some(w) => ui::capture(&w.ctx, PathBuf::from(path)),
+                    None => println!("shot : pas de fenêtre (--headless)"),
+                }
+                continue;
+            }
             if !handle_line(&line, &mut s, &mut handle) {
                 finish(&s, recording.as_mut());
                 return Ok(());
@@ -1368,6 +1396,29 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
                 controller: link.is_connected(),
                 load: shown_load as f32,
                 xrun_recent: last_xrun.is_some_and(|t| t.elapsed() < Duration::from_secs(10)),
+                step: snap.step,
+                pattern: snap.pattern,
+                pending_pattern: snap.pending_pattern,
+                grid: presets
+                    .get(usize::from(snap.style))
+                    .and_then(|style| style.patterns.get(usize::from(snap.pattern)))
+                    .map(view::drum_grid)
+                    .unwrap_or_default(),
+                mutes: snap.mutes,
+                density: snap.density,
+                fill: snap.fill,
+                beat_repeat: snap.beat_repeat,
+                bass_line: snap.bass_line,
+                pending_bass_line: snap.pending_bass_line,
+                bass_muted: snap.bass_muted,
+                bass: presets
+                    .get(usize::from(snap.style))
+                    .and_then(|style| style.bass_lines.get(usize::from(snap.bass_line)))
+                    .map(view::bass_cells)
+                    .unwrap_or_default(),
+                bass_cutoff: s.wanted.bass_cutoff,
+                pads: view::pad_lights(link.leds()),
+                shown_mode: view::shown_modes(link.leds()),
             };
             // Playing, the window repaints at its own pace; otherwise only on a change.
             if w.shared.publish(view) {
@@ -1378,6 +1429,15 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
         // keeps LEDs and reports going.
         std::thread::park_timeout(Duration::from_millis(2));
     }
+}
+
+/// "97397F" → [0x97, 0x39, 0x7F].
+fn parse_hex(hex: &str) -> Vec<u8> {
+    hex.as_bytes()
+        .chunks(2)
+        .filter_map(|pair| std::str::from_utf8(pair).ok())
+        .filter_map(|pair| u8::from_str_radix(pair, 16).ok())
+        .collect()
 }
 
 /// End-of-session summary; writes the recording if any.
