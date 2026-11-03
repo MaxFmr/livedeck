@@ -17,8 +17,8 @@ Everything stays in key: drum patterns, bass lines and chords are written in **s
 the tonic or the scale transposes everything without a wrong note. Musical changes (patterns, styles, key,
 scale) land **on the next bar**.
 
-> Status: phases 0–4 done (rhythm, melody, effects) — next: design system, then the egui interface. No graphical interface
-> yet: the app runs in the terminal. See [ROADMAP.md](ROADMAP.md) (in French).
+> Status: phases 0–4 done (rhythm, melody, effects), design system done; phase 5 (egui interface) in progress:
+> the window shows the time bar, the deck widgets come next. The terminal keeps its messages (`--headless`: no window). See [ROADMAP.md](ROADMAP.md) (in French).
 
 ### Targets
 
@@ -230,8 +230,8 @@ Tout reste dans la tonalité : patterns, lignes de basse et accords sont écrits
 donc changer de tonique ou de gamme transpose tout sans fausse note. Les changements musicaux (patterns,
 styles, tonalité, gamme) tombent **à la mesure suivante**.
 
-> État : phases 0 à 4 terminées (rythme, mélodie, effets) — prochaine étape : système de design, puis l'interface egui. Pas encore d'interface
-> graphique : l'app tourne en console. Voir [ROADMAP.md](ROADMAP.md).
+> État : phases 0 à 4 terminées (rythme, mélodie, effets), système de design fait ; phase 5 (interface egui) en cours :
+> la fenêtre montre la barre du temps, les widgets des decks arrivent ensuite. La console garde ses messages (`--headless` : sans fenêtre). Voir [ROADMAP.md](ROADMAP.md).
 
 ### Objectifs
 

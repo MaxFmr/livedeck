@@ -58,6 +58,16 @@ pub enum LinkEvent {
     },
 }
 
+/// Creates the process's first CoreMIDI client on the calling thread and keeps it alive (drop the
+/// result at exit). CoreMIDI refreshes its port list through the run loop of the thread that created
+/// its first client: with a window, call this on the main thread (whose event loop runs) before the
+/// control thread opens `ControllerLink`, or a controller unplugged later is never seen as gone
+/// (020).
+#[must_use]
+pub fn bind_midi_to_this_thread() -> Option<MidiInput> {
+    MidiInput::new("livedeck-main").ok()
+}
+
 pub struct ControllerLink {
     scanner: Option<MidiInput>,
     connection: Option<Connection>,

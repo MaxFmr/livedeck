@@ -11,6 +11,15 @@ engine.workspace = true
 io.workspace = true
 assert_no_alloc.workspace = true
 rtrb.workspace = true
+eframe = { workspace = true, default-features = false }
+egui.workspace = true
+
+# Renderer of the window: glow (020, measured and kept). wgpu stays available but was not measured:
+# `--no-default-features --features wgpu`.
+[features]
+default = ["glow"]
+glow = ["eframe/glow"]
+wgpu = ["eframe/wgpu"]
 
 [lints]
 workspace = true

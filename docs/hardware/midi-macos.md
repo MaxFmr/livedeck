@@ -11,6 +11,9 @@
 - Hot-plug : midir ne notifie pas. Stratégie : relister les ports toutes les ~1 s sur un thread de contrôle ;
   si `DJControl MIX` disparaît → passer en état « contrôleur absent » (UI) sans couper le son, et se
   reconnecter automatiquement quand il revient (puis renvoyer `B0 7F 7F` + l'état des LEDs).
+  ⚠ CoreMIDI met cette liste à jour par la **boucle d'événements du thread qui a créé son premier
+  client** : avec la fenêtre, ce premier client est créé sur le thread principal
+  (`io::link::bind_midi_to_this_thread`, 020), sinon un débranchement n'est jamais vu.
 - Sortie (LEDs) : `MidiOutputConnection::send(&[u8])` est **bloquant/système** → jamais depuis le thread
   audio. L'audio publie l'état, le thread de contrôle calcule le diff de LEDs et envoie.
 

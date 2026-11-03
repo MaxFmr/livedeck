@@ -78,7 +78,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 ## Phase 5 — Interface egui
 
-- [ ] Coquille eframe, thème, police embarquée ; comparaison RSS/CPU glow vs wgpu.
+- [x] Coquille eframe, thème, police embarquée ; glow retenu (wgpu non mesuré). → [020](docs/iterations/020-egui-shell.md)
 - [ ] Widgets : barre de temps, pads, grille de pas, accords/gamme, HUD de paramètres, vumètres.
 - [ ] États : en attente, actif, muté, pickup, contrôleur absent, surcharge CPU.
 - [ ] Repaint cadencé ; CPU UI à l'arrêt ≈ 0.

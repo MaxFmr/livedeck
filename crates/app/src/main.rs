@@ -1,16 +1,18 @@
 //! LiveDeck application: UI (eframe/egui) and thread wiring.
 //!
-//! The main thread is the control thread: it owns the `EngineHandle`, maps controller gestures
-//! through `config/mapping.toml`, reads keyboard commands, shows the engine state and rebuilds the
-//! audio stream if the device goes away.
+//! The main thread runs the window (macOS event loop, `ui`); the control thread owns the
+//! `EngineHandle`, maps controller gestures through `config/mapping.toml`, reads keyboard commands,
+//! prints the engine state, publishes it to the window and rebuilds the audio stream if the device
+//! goes away. `--headless`: no window, the control loop runs on the main thread.
 
-// Design tokens of the egui interface (phase 5); only their tests use them for now.
+// Design tokens (D5); the widgets that use the rest come with D6.
 #[allow(dead_code)]
 mod theme;
+mod ui;
 use std::io::BufRead;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -36,10 +38,11 @@ const USAGE: &str = "\
 LiveDeck — deck rythme (séquenceur de batterie) et métronome
 
 USAGE: app [--bpm <60-200>] [--buffer <frames>] [--mapping <fichier>] [--seconds <n>] [--quiet]
-           [--no-metronome] [--record <wav>] [--kit <dossier>]
+           [--no-metronome] [--record <wav>] [--kit <dossier>] [--headless]
 
   --mapping       fichier de mapping (défaut : config/mapping.toml, sinon le mapping intégré)
   --kit           dossier du kit de samples, kick.wav, snare.wav… (défaut : assets/kits/tr909)
+  --headless      sans fenêtre (console seule) ; dans la fenêtre, F = plein écran
 
   --seconds       s'arrête après n secondes (endurance)
   --quiet         n'affiche pas chaque temps, seulement les bilans et les incidents
@@ -219,6 +222,7 @@ struct Args {
     mapping: Option<PathBuf>,
     record: Option<PathBuf>,
     kit: Option<PathBuf>,
+    headless: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -231,6 +235,7 @@ fn parse_args() -> Result<Args, String> {
         mapping: None,
         kit: None,
         record: None,
+        headless: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -253,6 +258,7 @@ fn parse_args() -> Result<Args, String> {
             "--mapping" => args.mapping = Some(PathBuf::from(value("--mapping")?)),
             "--record" => args.record = Some(PathBuf::from(value("--record")?)),
             "--kit" => args.kit = Some(PathBuf::from(value("--kit")?)),
+            "--headless" => args.headless = true,
             "-h" | "--help" => {
                 println!("{USAGE}");
                 std::process::exit(0);
@@ -1028,8 +1034,23 @@ fn load_mapping(path: Option<&PathBuf>) -> Result<(Mapping, String), String> {
     .map_err(|e| e.to_string())
 }
 
-fn run() -> Result<(), String> {
-    let args = parse_args()?;
+/// The control thread's side of the window.
+struct WindowLink {
+    shared: Arc<ui::Shared>,
+    ctx: egui::Context,
+}
+
+/// The control loop; with a window, closing it ends the session, and the end of the session
+/// closes it.
+fn run(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
+    let result = control(args, window);
+    if let Some(w) = window {
+        w.ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+    result
+}
+
+fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
     let _awake = io::system::keep_alive("LiveDeck live session");
     let (mapping, mapping_source) = load_mapping(args.mapping.as_ref())?;
     let mut s = Session {
@@ -1130,7 +1151,13 @@ fn run() -> Result<(), String> {
     let mut shown_delay = u8::MAX;
 
     let mut last_report = Instant::now();
+    let mut last_xrun: Option<Instant> = None;
+    let mut shown_load = 0.0;
     loop {
+        if window.is_some_and(|w| w.shared.quit_requested()) {
+            finish(&s, recording.as_mut());
+            return Ok(());
+        }
         link.poll(|event| link_events.push(event));
         for event in link_events.drain(..) {
             match event {
@@ -1257,6 +1284,7 @@ fn run() -> Result<(), String> {
         let xruns = output.stats.xruns.load(Ordering::Relaxed);
         if xruns != seen_xruns {
             seen_xruns = xruns;
+            last_xrun = Some(Instant::now());
             let at = output.stats.last_xrun_at_ms.load(Ordering::Relaxed) as f64 / 1000.0;
             println!(
                 "⚠ xrun n°{xruns} à {at:.3} s du démarrage du flux ({:.1} s de session)",
@@ -1304,10 +1332,11 @@ fn run() -> Result<(), String> {
                     s.wanted.bpm
                 );
             }
+            shown_load = output.stats.take_max_load(output.info.sample_rate);
             println!(
                 "  [{:.0} BPM │ charge max {:.1} % │ xruns {} │ NaN {} │ commandes {} │ contrôleur {}]",
                 snap.bpm,
-                output.stats.take_max_load(output.info.sample_rate) * 100.0,
+                shown_load * 100.0,
                 output.stats.xruns.load(Ordering::Relaxed),
                 snap.nan_count,
                 snap.commands,
@@ -1317,6 +1346,33 @@ fn run() -> Result<(), String> {
                     "absent".to_string()
                 }
             );
+        }
+        if let Some(w) = window {
+            let view = ui::View {
+                playing: snap.playing,
+                bpm: snap.bpm,
+                beats: snap.beats,
+                tonic: snap.tonic,
+                scale: snap.scale,
+                pending_key: (snap.pending_tonic.is_some() || snap.pending_scale.is_some()).then(
+                    || {
+                        (
+                            snap.pending_tonic.unwrap_or(snap.tonic),
+                            snap.pending_scale.unwrap_or(snap.scale),
+                        )
+                    },
+                ),
+                style: snap.style,
+                pending_style: snap.pending_style,
+                swing: snap.swing,
+                controller: link.is_connected(),
+                load: shown_load as f32,
+                xrun_recent: last_xrun.is_some_and(|t| t.elapsed() < Duration::from_secs(10)),
+            };
+            // Playing, the window repaints at its own pace; otherwise only on a change.
+            if w.shared.publish(view) {
+                w.ctx.request_repaint();
+            }
         }
         // Woken at once by controller messages (and keyboard lines); otherwise one turn per 2 ms
         // keeps LEDs and reports going.
@@ -1342,8 +1398,60 @@ fn finish(s: &Session, recording: Option<&mut Recording>) {
 }
 
 fn main() {
-    if let Err(e) = run() {
-        eprintln!("erreur : {e}");
-        std::process::exit(1);
+    let args = match parse_args() {
+        Ok(args) => args,
+        Err(e) => fail(&e),
+    };
+    if args.headless {
+        if let Err(e) = run(&args, None) {
+            fail(&e);
+        }
+        return;
     }
+    // Before the control thread touches MIDI: the window's event loop keeps CoreMIDI's port list
+    // current (hot-plug).
+    let _midi = io::link::bind_midi_to_this_thread();
+    let shared = Arc::new(ui::Shared::default());
+    let mut control_thread = None;
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("LiveDeck")
+            .with_inner_size(theme::MIN_WINDOW)
+            .with_min_inner_size(theme::MIN_WINDOW),
+        ..eframe::NativeOptions::default()
+    };
+    let result = eframe::run_native(
+        "LiveDeck",
+        options,
+        Box::new(|cc| {
+            let link = WindowLink {
+                shared: Arc::clone(&shared),
+                ctx: cc.egui_ctx.clone(),
+            };
+            let spawned = std::thread::Builder::new()
+                .name("control".into())
+                .spawn(move || {
+                    if let Err(e) = run(&args, Some(&link)) {
+                        fail(&e);
+                    }
+                })
+                .map_err(|e| format!("thread de contrôle : {e}"))?;
+            control_thread = Some(spawned);
+            Ok(Box::new(ui::Window::new(&cc.egui_ctx, Arc::clone(&shared))))
+        }),
+    );
+    // The window is gone (closed, or the session ended): let the control thread finish (recording,
+    // latency summary).
+    shared.request_quit();
+    if let Some(thread) = control_thread {
+        let _ = thread.join();
+    }
+    if let Err(e) = result {
+        fail(&format!("fenêtre : {e}"));
+    }
+}
+
+fn fail(message: &str) -> ! {
+    eprintln!("erreur : {message}");
+    std::process::exit(1);
 }

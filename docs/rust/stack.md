@@ -60,6 +60,10 @@ mémoire.** Ces API changent à chaque mineure ; vérifier sur docs.rs pour la v
   transport (≈ 60 fps en lecture, rien à l'arrêt hors événement).
 - Comparer RSS/CPU des rendus `glow` et `wgpu` (feature d'eframe) en phase 5 ; garder le plus sobre.
 - Polices : en embarquer une seule (sous-ensemble Latin) via `FontDefinitions`.
+- 020 : glow retenu (fenêtre : 9,3 % CPU en lecture à 60 i/s, 1,6 % à l'arrêt, RSS 55–60 Mo) ; wgpu non
+  mesuré. Inter Medium + Bold statiques (`FontDefinitions::empty()`, une `FontFamily::Name` par graisse) ;
+  pas de `tnum` dans egui → chiffres dessinés en cases fixes (`ui::tabular`). API 0.37 : `App::ui(&mut
+  self, ui, frame)`, `ctx.send_viewport_cmd(ViewportCommand::Fullscreen(..))`.
 
 ### assert_no_alloc 1.1.2
 - Feature `disable_release` par défaut : `AllocDisabler` **n'existe pas en release**. Déclarer l'allocateur
