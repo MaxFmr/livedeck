@@ -7,7 +7,9 @@
 //! pattern A) and `target/renders/voicings.wav` (I–vi–IV–V: triads, inversions, 7ths, then in
 //! dorian and major) and `target/renders/arp.wav` (latched I–vi–IV–V arpeggiated up, up-down
 //! on 2 octaves, random in 1/16 triplets, then phrases 1–4 of the hybrid style, a variation and a
-//! transposition).
+//! transposition) and `target/renders/fx.wav` (dub style at 140: a phrase over latched chords,
+//! dry, then with delay, a long-feedback throw, the reverb added, each delay time, and the tails
+//! ringing out; prints the render load).
 //! Offline, so it may allocate and write files.
 //!
 //! cargo run -p engine --example render_kit --release
@@ -323,7 +325,57 @@ fn main() -> io::Result<()> {
         play_bar(&mut engine);
         play_bar(&mut engine);
     }
-    save(&dir.join("arp.wav"), &arp)
+    save(&dir.join("arp.wav"), &arp)?;
+
+    // Send effects on the dub style at 140 BPM.
+    let mut engine = Engine::new(SR, 512, 140.0);
+    engine.set_metronome(false);
+    engine.queue_style(1);
+    engine.set_density(0.4);
+    engine.set_latch(true);
+    engine.start();
+    let bar = (f64::from(SR) * 60.0 / 140.0 * 4.0) as usize;
+    let mut fx = Vec::new();
+    let mut busy = std::time::Duration::ZERO;
+    let mut play_bars = |engine: &mut Engine, bars: usize| {
+        let start = fx.len();
+        fx.resize(start + bar * bars * 2, 0.0);
+        let t = std::time::Instant::now();
+        for chunk in fx[start..].chunks_mut(256) {
+            engine.process(chunk, 2);
+        }
+        busy += t.elapsed();
+    };
+    engine.chord(0, true);
+    engine.chord(0, false);
+    engine.press_phrase(0, false);
+    play_bars(&mut engine, 2);
+    engine.set_param(Param::DelaySend, 0.8);
+    engine.set_param(Param::DelayFeedback, 0.5);
+    play_bars(&mut engine, 2);
+    engine.set_param(Param::DelayFeedback, 0.95);
+    play_bars(&mut engine, 2);
+    engine.set_param(Param::DelayFeedback, 0.5);
+    engine.set_param(Param::ReverbSend, 0.7);
+    engine.chord(3, true);
+    engine.chord(3, false);
+    play_bars(&mut engine, 2);
+    for _ in 0..4 {
+        engine.cycle_delay_time();
+        play_bars(&mut engine, 1);
+    }
+    // Phrase stopped and the sends closed: only the tails remain.
+    engine.press_phrase(0, false);
+    play_bars(&mut engine, 1);
+    engine.set_latch(false);
+    engine.set_param(Param::DelaySend, 0.0);
+    play_bars(&mut engine, 2);
+    let seconds = fx.len() as f64 / 2.0 / f64::from(SR);
+    println!(
+        "fx : rendu {:.1} % du temps réel",
+        busy.as_secs_f64() / seconds * 100.0
+    );
+    save(&dir.join("fx.wav"), &fx)
 }
 
 fn save(path: &Path, audio: &[f32]) -> io::Result<()> {

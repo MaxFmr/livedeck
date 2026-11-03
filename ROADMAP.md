@@ -64,7 +64,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 - [x] Poly synthé 16 voix (2 osc PolyBLEP, SVF, 2 ADSR), vol de voix. → [016](docs/iterations/016-poly-synth.md)
 - [x] Gammes, tonalité, accords par degrés, voicings, renversements. → [017](docs/iterations/017-scales-voicings.md)
 - [x] Arpégiateur, phrases, transposition dans la gamme au jog. → [018](docs/iterations/018-arp-phrases.md)
-- [ ] Delay synchronisé + réverb (pré-alloués), envois.
+- [x] Delay synchronisé + réverb (pré-alloués), envois. → [019](docs/iterations/019-delay-reverb.md)
 
 **Sortie** : morceau complet jouable (rythme + mélodie) ; charge < 30 % toutes voix actives.
 
@@ -107,6 +107,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 | Date | Évènement |
 |---|---|
+| 2026-11-03 | **Phase 4 terminée** (016–019) : poly synthé, accords et voicings, arpège et phrases, delay et réverb ; morceau complet joué au contrôleur, 0 xrun, charge max 12,6 %. Prochaine : D5 (système de design → `theme.rs`) puis phase 5. |
 | 2026-11-01 | **Phase 2 terminée** (007–009) : contrôleur à chaud, mapping configurable, LEDs d'état en rythme, latence geste → son mesurée (médiane ≈ 8 ms). Prochaine : piste D (D1) et phase 3, itération 010. |
 | 2026-10-31 | Harnais créé : base de connaissances, skills, roadmap. Phase 0 à démarrer. |
 | 2026-10-31 | Plan détaillé validé (itérations 001–019, validation par l'utilisateur à chaque itération, tous styles via presets, synthèse puis samples). Itération 001 terminée. |

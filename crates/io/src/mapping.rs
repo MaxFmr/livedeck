@@ -56,6 +56,9 @@ pub enum Target {
     DrumLevel,
     BassLevel,
     MelodyLevel,
+    DelaySend,
+    DelayFeedback,
+    ReverbSend,
 }
 
 /// Result of a mapped gesture, applied by the control thread.
@@ -125,6 +128,8 @@ pub enum Action {
     },
     /// Melody transposition, in scale degrees (one per `step` jog ticks).
     NudgeTranspose(i8),
+    /// Next delay time of the scroll.
+    CycleDelayTime,
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -171,6 +176,10 @@ pub enum ActionName {
     ArpRate,
     Phrase,
     Transpose,
+    DelaySend,
+    DelayFeedback,
+    ReverbSend,
+    DelayTime,
 }
 
 #[derive(Debug, Deserialize)]
@@ -543,6 +552,7 @@ impl Mapping {
             }
             (ActionName::BassMute, Input::Press(true)) => Some(Action::ToggleBassMute),
             (ActionName::SamplesToggle, Input::Press(true)) => Some(Action::ToggleSamples),
+            (ActionName::DelayTime, Input::Press(true)) => Some(Action::CycleDelayTime),
             (ActionName::Chord, Input::Press(held)) => Some(Action::Chord {
                 pad: binding.chord,
                 held,
@@ -612,7 +622,10 @@ impl Mapping {
                 | ActionName::MetronomeLevel
                 | ActionName::DrumLevel
                 | ActionName::BassLevel
-                | ActionName::MelodyLevel,
+                | ActionName::MelodyLevel
+                | ActionName::DelaySend
+                | ActionName::DelayFeedback
+                | ActionName::ReverbSend,
                 Input::Absolute(v),
             ) => {
                 let target = target_of(binding.action)?;
@@ -735,7 +748,10 @@ fn normalized(binding: &Binding, target: Target, value: f64) -> f32 {
         | Target::MetronomeLevel
         | Target::DrumLevel
         | Target::BassLevel
-        | Target::MelodyLevel => value.clamp(0.0, 1.0) as f32,
+        | Target::MelodyLevel
+        | Target::DelaySend
+        | Target::DelayFeedback
+        | Target::ReverbSend => value.clamp(0.0, 1.0) as f32,
     }
 }
 
@@ -754,6 +770,9 @@ fn target_of(action: ActionName) -> Option<Target> {
         ActionName::BassLevel => Some(Target::BassLevel),
         ActionName::MelodyLevel => Some(Target::MelodyLevel),
         ActionName::MetronomeLevel => Some(Target::MetronomeLevel),
+        ActionName::DelaySend => Some(Target::DelaySend),
+        ActionName::DelayFeedback => Some(Target::DelayFeedback),
+        ActionName::ReverbSend => Some(Target::ReverbSend),
         _ => None,
     }
 }
@@ -777,6 +796,7 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::BassLine
         | ActionName::BassMute
         | ActionName::SamplesToggle
+        | ActionName::DelayTime
         | ActionName::Chord
         | ActionName::LatchToggle
         | ActionName::Inversion
@@ -797,6 +817,9 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::DrumLevel
         | ActionName::BassLevel
         | ActionName::MelodyLevel
+        | ActionName::DelaySend
+        | ActionName::DelayFeedback
+        | ActionName::ReverbSend
         | ActionName::Brightness => {
             matches!(kind, Kind::Absolute)
         }
@@ -1207,6 +1230,43 @@ mod tests {
         };
         let scrolled: Vec<_> = (0..130).filter_map(|t| m.handle(100 + t, jog)).collect();
         assert_eq!(scrolled, vec![Action::NudgeScale(1)]);
+    }
+
+    #[test]
+    fn effects_on_bass_b_headphone_and_shift_pfl_b() {
+        let mut m = mapping();
+        let bass_b = |value| ControllerEvent::Knob {
+            deck: Deck::B,
+            knob: DeckKnob::Bass,
+            value,
+        };
+        m.software_changed(Target::DelaySend, 0.0);
+        assert!(matches!(
+            m.handle(1, bass_b(0)),
+            Some(Action::SetLevel(Target::DelaySend, _))
+        ));
+        assert_eq!(
+            m.handle(
+                2,
+                ControllerEvent::Mixer {
+                    control: MixerControl::Headphone,
+                    value: 16_383
+                }
+            ),
+            Some(Action::SetLevel(Target::ReverbSend, 1.0))
+        );
+        assert_eq!(
+            m.handle(
+                3,
+                ControllerEvent::Button {
+                    deck: Deck::B,
+                    button: Button::Pfl,
+                    shift: true,
+                    pressed: true,
+                }
+            ),
+            Some(Action::CycleDelayTime)
+        );
     }
 
     #[test]

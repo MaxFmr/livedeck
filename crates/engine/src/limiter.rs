@@ -31,22 +31,40 @@ impl Limiter {
     /// Processes a mono buffer in place.
     pub fn process(&mut self, buffer: &mut [f32]) {
         for sample in buffer.iter_mut() {
-            if !sample.is_finite() {
-                *sample = 0.0;
-                self.nan_count = self.nan_count.saturating_add(1);
-            }
-            let peak = sample.abs();
-            let target = if peak * self.gain > self.ceiling {
-                self.ceiling / peak
-            } else {
-                1.0
-            };
-            if target < self.gain {
-                self.gain = target;
-            } else {
-                self.gain += (target - self.gain) * self.release;
-            }
+            self.guard(sample);
+            self.follow(sample.abs());
             *sample = (*sample * self.gain).clamp(-self.ceiling, self.ceiling);
+        }
+    }
+
+    /// Processes a stereo pair in place, with one gain for both channels (the image stays put).
+    pub fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            self.guard(l);
+            self.guard(r);
+            self.follow(l.abs().max(r.abs()));
+            *l = (*l * self.gain).clamp(-self.ceiling, self.ceiling);
+            *r = (*r * self.gain).clamp(-self.ceiling, self.ceiling);
+        }
+    }
+
+    fn guard(&mut self, sample: &mut f32) {
+        if !sample.is_finite() {
+            *sample = 0.0;
+            self.nan_count = self.nan_count.saturating_add(1);
+        }
+    }
+
+    fn follow(&mut self, peak: f32) {
+        let target = if peak * self.gain > self.ceiling {
+            self.ceiling / peak
+        } else {
+            1.0
+        };
+        if target < self.gain {
+            self.gain = target;
+        } else {
+            self.gain += (target - self.gain) * self.release;
         }
     }
 }
@@ -62,6 +80,17 @@ mod tests {
         limiter.process(&mut buf);
         assert!(buf.iter().all(|s| s.is_finite() && s.abs() <= CEILING));
         assert_eq!(limiter.nan_count, 2);
+    }
+
+    #[test]
+    fn stereo_shares_one_gain() {
+        let mut limiter = Limiter::new(48_000);
+        let mut left = [2.0_f32; 8];
+        let mut right = [0.5_f32; 8];
+        limiter.process_stereo(&mut left, &mut right);
+        assert!(left.iter().all(|s| s.abs() <= CEILING));
+        // The quiet side is turned down as much as the loud one.
+        assert!((left[0] / right[0] - 4.0).abs() < 1e-4);
     }
 
     #[test]

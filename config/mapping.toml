@@ -5,7 +5,7 @@
 # Contrôles : a.<x> / b.<x> pour les decks (play, cue, sync, pfl, volume, filter, bass, tempo,
 #   jog.edge, jog.top, pad.<hotcue|sampler|fx|loop>.<1-4>), mixer.<crossfader|master|headphone>, vinyl.
 #   shift = true : la même touche avec Shift tenu.
-# Actions disponibles (itération 018 ; les actions musicales arrivent avec les decks, 010+) :
+# Actions disponibles (itération 019 ; les actions musicales arrivent avec les decks, 010+) :
 #   transport_toggle, transport_restart, tap_tempo, metronome_toggle   → boutons et pads
 #   pattern (pattern = 1–4), drum (voice = kick, snare, closed_hat, open_hat, clap, perc),
 #   mute (voices = [liste de voix]), fill (fill = 1–4)                → pads
@@ -27,6 +27,9 @@
 #   arp_mode (mode = off, up, updown, random), arp_octaves (octaves = 1–4) → pads
 #   arp_rate (step = crans de jog par vitesse), transpose (step = crans de jog par degré) → jogs
 #   phrase (pattern = 1–4, variation = true : seconde moitié une tierce plus haut), à la mesure → pads
+#   delay_send, delay_feedback (envoi et répétitions du delay de la mélodie),
+#   reverb_send (envoi de tout le mix à la réverb)                     → potards
+#   delay_time (1/8 pointé → 1/4 → 1/8 → 1/4 pointé → 1/16, le style remet le sien) → boutons et pads
 #   pickup = true : soft-takeover (le contrôle ne prend la main qu'en rejoignant la valeur actuelle).
 
 # --- Transport ---
@@ -479,3 +482,24 @@ control = "b.volume"
 shift = true
 action = "metronome_level"
 pickup = true
+
+# --- Effets (019) : delay de la mélodie au potard Bass B (Shift : répétitions), réverb au Headphone ---
+[[bind]]
+control = "b.bass"
+action = "delay_send"
+pickup = true
+
+[[bind]]
+control = "b.bass"
+shift = true
+action = "delay_feedback"
+pickup = true
+
+[[bind]]
+control = "mixer.headphone"
+action = "reverb_send"
+
+[[bind]]
+control = "b.pfl"
+shift = true
+action = "delay_time"

@@ -58,6 +58,8 @@ pub enum Command {
     },
     /// Melody transposition in scale degrees, right away.
     Transpose(i8),
+    /// Next delay time of the scroll (see `fx::DelayTime::ALL`).
+    CycleDelayTime,
     /// Bass line (0-based) alone for the next bar, or now if stopped.
     QueueBassLine(u8),
     /// Bass tonic (0 = C … 11 = B) for the next bar, or now if stopped.
@@ -165,6 +167,8 @@ pub struct EngineSnapshot {
     pub pending_phrase: Option<Option<(u8, bool)>>,
     /// Melody transposition, in scale degrees.
     pub transpose: i8,
+    /// Delay time (index of `fx::DelayTime::ALL`).
+    pub delay_time: u8,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -251,6 +255,7 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         phrase: engine.melody().phrase(),
         pending_phrase: engine.melody().pending_phrase(),
         transpose: engine.chords().transpose(),
+        delay_time: engine.delay_time().index(),
     }
 }
 
@@ -321,6 +326,7 @@ impl AudioEngine {
             }),
             Command::Phrase { index, variation } => self.engine.press_phrase(index, variation),
             Command::Transpose(degrees) => self.engine.set_transpose(degrees),
+            Command::CycleDelayTime => self.engine.cycle_delay_time(),
             Command::QueueBassLine(index) => self.engine.queue_bass_line(index),
             Command::SetTonic(tonic) => self.engine.queue_tonic(tonic),
             Command::BassMute(muted) => self.engine.set_bass_mute(muted),

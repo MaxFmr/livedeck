@@ -77,6 +77,9 @@ sur la fréquence) quand les notes se chevauchent, accent par pas.
 - **Delay** synchronisé au tempo : ring buffer de 2 s alloué à l'init, lecture interpolée (linéaire),
   feedback filtré (LP dans la boucle), changement de temps → fondu entre deux têtes pour éviter le glissement.
 - **Réverbération** : FDN 8 lignes ou Freeverb (Schroeder/Moorer) ; tailles max pré-allouées.
+  Implémenté en 019 (`engine::fx`) : delay 2 s, deux têtes en fondu de 40 ms, boucle LP 3,5 kHz + HP 150 Hz
+  + `soft_clip` (95 % max) ; réverb FDN 8 lignes 29,7–73,1 ms, Hadamard normalisée, 2 allpass de diffusion,
+  amortissement 5,5 kHz, gains `10^(-3·L/(RT60·sr))`, sorties G/D par signes distincts.
 - **Beat-repeat / stutter** : capture d'1/4…1/32 dans un buffer pré-alloué et relecture quantifiée.
 
 ## Sortie

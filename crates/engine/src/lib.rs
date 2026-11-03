@@ -16,6 +16,7 @@ pub mod chords;
 pub mod clock;
 pub mod drums;
 pub mod dsp;
+pub mod fx;
 pub mod limiter;
 pub mod link;
 pub mod melody;
@@ -30,6 +31,7 @@ pub mod style;
 use bass::BassVoice;
 use clock::Clock;
 use drums::{DrumKit, DrumVoice};
+use fx::{Delay, DelayTime, Reverb};
 use limiter::Limiter;
 use melody::Melody;
 use metronome::Click;
@@ -53,6 +55,12 @@ pub enum Param {
     Brightness,
     /// Base cutoff of the bass filter (linear knob, exponential in Hz).
     BassCutoff,
+    /// Melody sent to the delay.
+    DelaySend,
+    /// Delay feedback, 0 ..= `fx::MAX_FEEDBACK` over the travel.
+    DelayFeedback,
+    /// Whole mix sent to the reverb (drums half as much, bass barely).
+    ReverbSend,
 }
 
 /// Beats per bar (4/4 only for now).
@@ -88,12 +96,21 @@ pub struct Engine {
     bass_level: Smoothed,
     melody_level: Smoothed,
     repeat: BeatRepeat,
+    delay: Delay,
+    delay_time: DelayTime,
+    reverb: Reverb,
+    delay_send: Smoothed,
+    delay_feedback: Smoothed,
+    reverb_send: Smoothed,
     /// Clock position of the last drum hit (sequencer or pad) since the transport started.
     last_hit: Option<u64>,
     /// Length of a roll waiting for the next hit (no hit in the current division at the press).
     roll_pending: Option<usize>,
-    /// Mono mix bus, allocated once; blocks larger than this are processed in slices.
+    /// Mix bus (left once the effects return), allocated once; blocks larger than this are
+    /// processed in slices.
     mono: Vec<f32>,
+    /// Right channel: the dry mix is mono, only the reverb differs.
+    right: Vec<f32>,
     /// Drum bus (before the drum level), same size as `mono`.
     drum_bus: Vec<f32>,
     /// Bass bus (kept out of the beat-repeat), same size as `mono`.
@@ -127,9 +144,16 @@ impl Engine {
             repeat: BeatRepeat::new(
                 (f64::from(sample_rate) * 60.0 / clock::MIN_BPM).ceil() as usize
             ),
+            delay: Delay::new(sample_rate),
+            delay_time: DelayTime::default(),
+            reverb: Reverb::new(sample_rate),
+            delay_send: Smoothed::new(0.0, sample_rate, 0.01),
+            delay_feedback: Smoothed::new(0.5 * fx::MAX_FEEDBACK, sample_rate, 0.05),
+            reverb_send: Smoothed::new(0.0, sample_rate, 0.01),
             last_hit: None,
             roll_pending: None,
             mono: vec![0.0; max_block.max(64)],
+            right: vec![0.0; max_block.max(64)],
             drum_bus: vec![0.0; max_block.max(64)],
             bass_bus: vec![0.0; max_block.max(64)],
             synth_bus: vec![0.0; max_block.max(64)],
@@ -210,7 +234,28 @@ impl Engine {
             Param::MelodyLevel => self.melody_level.set(gain_curve(value)),
             Param::Brightness => self.synth.set_brightness(value),
             Param::BassCutoff => self.bass.set_cutoff(value),
+            Param::DelaySend => self.delay_send.set(gain_curve(value)),
+            Param::DelayFeedback => self
+                .delay_feedback
+                .set(value.clamp(0.0, 1.0) * fx::MAX_FEEDBACK),
+            Param::ReverbSend => self.reverb_send.set(gain_curve(value)),
         }
+    }
+
+    /// Next delay time of the scroll (1/8 dotted, 1/4, 1/8, 1/4 dotted, 1/16), crossfaded now;
+    /// a style change brings back the time of the style.
+    pub fn cycle_delay_time(&mut self) {
+        self.delay_time = self.delay_time.next();
+    }
+
+    #[must_use]
+    pub fn delay_time(&self) -> DelayTime {
+        self.delay_time
+    }
+
+    #[must_use]
+    pub fn reverb_decay(&self) -> f32 {
+        self.reverb.decay()
     }
 
     /// Plays a drum voice from the next rendered sample, playing or not.
@@ -406,7 +451,8 @@ impl Engine {
         self.limiter.nan_count
     }
 
-    /// Renders into an interleaved buffer: the mix goes to channels 0 and 1, the others get silence.
+    /// Renders into an interleaved buffer: the stereo mix goes to channels 0 and 1, the others get
+    /// silence.
     pub fn process(&mut self, out: &mut [f32], channels: usize) {
         let channels = channels.max(1);
         let mut frames_out = out.chunks_exact_mut(channels);
@@ -416,15 +462,19 @@ impl Engine {
                 break;
             }
             let n = remaining.min(self.mono.len());
-            // The style changed (at the bar, or now when stopped): its synth patch follows.
+            // The style changed (at the bar, or now when stopped): its synth patch and its
+            // effects follow.
             if self.sequencer.style() != self.synth_style {
                 self.synth_style = self.sequencer.style();
                 if let Some(style) = self.sequencer.style_preset() {
                     self.synth.set_patch(style.synth);
+                    self.delay_time = style.fx.delay;
+                    self.reverb.set_decay(style.fx.reverb_decay);
                 }
             }
-            let (Some(mono), Some(bus), Some(bass), Some(synth)) = (
+            let (Some(mono), Some(right), Some(bus), Some(bass), Some(synth)) = (
                 self.mono.get_mut(..n),
+                self.right.get_mut(..n),
                 self.drum_bus.get_mut(..n),
                 self.bass_bus.get_mut(..n),
                 self.synth_bus.get_mut(..n),
@@ -439,6 +489,11 @@ impl Engine {
             self.click.gain = self.metronome_level.skip(n);
             let drum_gain = self.drum_level.skip(n);
             let bass_gain = self.bass_level.skip(n);
+            let delay_send = self.delay_send.skip(n);
+            self.delay.set_feedback(self.delay_feedback.skip(n));
+            let reverb_send = self.reverb_send.skip(n);
+            self.delay
+                .set_length((self.delay_time.beats() * self.clock.samples_per_beat()) as f32);
             let start = self.clock.position();
             render_mono(
                 Voices {
@@ -463,21 +518,37 @@ impl Engine {
                 },
             );
             self.repeat.process(bus, start);
-            for (((sample, &drum), &bass), &synth) in mono
+            for ((((left, right), &drum), &bass), &synth) in mono
                 .iter_mut()
+                .zip(right.iter_mut())
                 .zip(bus.iter())
                 .zip(bass.iter())
                 .zip(synth.iter())
             {
-                *sample += drum * drum_gain + bass * bass_gain + synth * melody_gain;
+                let (drum, bass, synth) = (drum * drum_gain, bass * bass_gain, synth * melody_gain);
+                let echo = self.delay.tick(synth * delay_send);
+                let (wet_l, wet_r) = self
+                    .reverb
+                    .tick((synth + 0.5 * drum + 0.1 * bass + echo) * reverb_send);
+                let dry = *left + drum + bass + synth + echo;
+                let master = self.master_gain.tick();
+                *left = (dry + wet_l) * master;
+                *right = (dry + wet_r) * master;
             }
-            for sample in mono.iter_mut() {
-                *sample *= self.master_gain.tick();
-            }
-            self.limiter.process(mono);
-            for (frame, &sample) in frames_out.by_ref().take(n).zip(mono.iter()) {
+            self.limiter.process_stereo(mono, right);
+            for ((frame, &left), &right) in frames_out
+                .by_ref()
+                .take(n)
+                .zip(mono.iter())
+                .zip(right.iter())
+            {
                 for (ch, slot) in frame.iter_mut().enumerate() {
-                    *slot = if ch < 2 { sample } else { 0.0 };
+                    *slot = match ch {
+                        0 => left,
+                        // A mono output gets the left (the dry mix is centered anyway).
+                        1 => right,
+                        _ => 0.0,
+                    };
                 }
             }
         }
@@ -716,6 +787,54 @@ mod tests {
         engine.stop();
         // Stopped again: the held chord is released by the stop, nothing sounds new.
         assert_eq!(engine.chords().sounding(), 0);
+    }
+
+    /// Energy of the melody tail, `(left, left − right)`, one to two seconds after a short chord.
+    fn chord_tail(delay_send: f32, reverb_send: f32) -> (f32, f32) {
+        let mut engine = Engine::new(SR, 128, 120.0);
+        engine.set_metronome(false);
+        engine.set_bass_mute(true);
+        engine.set_param(Param::DelaySend, delay_send);
+        engine.set_param(Param::ReverbSend, reverb_send);
+        engine.chord(0, true);
+        render(&mut engine, 4_800, 2, 128);
+        engine.chord(0, false);
+        let out = render(&mut engine, SR as usize * 2, 2, 128);
+        let tail = &out.as_chunks::<2>().0[SR as usize..];
+        let energy = tail.iter().map(|[l, _]| l * l).sum();
+        let side = tail.iter().map(|[l, r]| (l - r) * (l - r)).sum();
+        (energy, side)
+    }
+
+    #[test]
+    fn sends_add_echoes_and_a_stereo_reverb_tail() {
+        let (dry, dry_side) = chord_tail(0.0, 0.0);
+        let (echo, echo_side) = chord_tail(1.0, 0.0);
+        let (wet, wet_side) = chord_tail(0.0, 1.0);
+        // Dry: the synth release is over and both channels are the same.
+        assert_eq!(dry_side, 0.0);
+        assert!(echo > dry * 10.0 + 1e-6, "{echo} {dry}");
+        // The delay stays in the center, the reverb is wide.
+        assert_eq!(echo_side, 0.0);
+        assert!(
+            wet > dry * 10.0 + 1e-6 && wet_side > 0.0,
+            "{wet} {wet_side}"
+        );
+    }
+
+    #[test]
+    fn delay_time_follows_the_style_until_scrolled() {
+        let mut engine = Engine::new(SR, 128, 120.0);
+        engine.cycle_delay_time();
+        assert_eq!(engine.delay_time(), fx::DelayTime::Quarter);
+        // Lo-fi brings its quarter-note delay and longer reverb (stopped: right away).
+        engine.queue_style(4);
+        render(&mut engine, 256, 2, 128);
+        let lofi = style::TEXTS[4].fx;
+        assert_eq!(engine.delay_time(), lofi.delay);
+        assert!((engine.reverb_decay() - lofi.reverb_decay).abs() < 1e-6);
+        engine.cycle_delay_time();
+        assert_eq!(engine.delay_time(), lofi.delay.next());
     }
 
     #[test]

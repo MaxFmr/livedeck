@@ -64,6 +64,8 @@ vii, I à l'octave ; pads Loop B = latch, renversement +/−, octave +/−, exte
 Shift + jog droit = gamme, à la mesure. Pads FX B = arpège off / montant / aller-retour / aléatoire
 (Shift : 1 à 4 octaves), bord du jog B = vitesse 1/4 … 1/32 ; pads Sampler B = phrases du style, à la
 mesure (Shift : variation) ; jog B par le dessus = transposition dans la gamme, un degré par quart de tour.
+Effets : potard Bass B = delay de la mélodie (Shift : répétitions), Headphone = réverb (stéréo),
+Shift + PFL B = temps du delay 1/8 pointé, 1/4, 1/8, 1/4 pointé, 1/16 (chaque style amène le sien).
 Chaque son joué au pad affiche sa latence geste → son.";
 
 // Debug builds abort on any allocation inside `assert_no_alloc` (the audio callback); release
@@ -83,6 +85,10 @@ struct Wanted {
     drum_level: f32,
     bass_level: f32,
     melody_level: f32,
+    /// Melody sent to the delay, delay feedback (knob 0..=1) and mix sent to the reverb.
+    delay_send: f32,
+    delay_feedback: f32,
+    reverb_send: f32,
     /// Melody synth brightness 0..=1 (0.5 = the patch).
     brightness: f32,
     /// Drum pattern asked for (0-based) and swing (0.5..=0.75).
@@ -115,7 +121,7 @@ struct Session {
     mapping: Mapping,
     /// Last values echoed to the console (continuous controls are echoed by steps only).
     shown_bpm: f64,
-    shown_levels: [f32; 5],
+    shown_levels: [f32; 8],
     shown_swing: f32,
     shown_density: f32,
     /// Beat-repeat pads held, last pressed last: releasing it falls back to the previous one.
@@ -365,6 +371,12 @@ fn open(
     handle.send(Command::SetParam(Param::BassLevel, wanted.bass_level));
     handle.send(Command::SetParam(Param::MelodyLevel, wanted.melody_level));
     handle.send(Command::SetParam(Param::Brightness, wanted.brightness));
+    handle.send(Command::SetParam(Param::DelaySend, wanted.delay_send));
+    handle.send(Command::SetParam(
+        Param::DelayFeedback,
+        wanted.delay_feedback,
+    ));
+    handle.send(Command::SetParam(Param::ReverbSend, wanted.reverb_send));
     // The style first: it sets the swing, which may have been nudged since.
     handle.send(Command::QueueStyle(wanted.style));
     handle.send(Command::SetScale(wanted.scale));
@@ -579,6 +591,9 @@ fn handle_controller(
                 echo_arp(s.wanted.arp);
             }
         }
+        Action::CycleDelayTime => {
+            handle.send(Command::CycleDelayTime);
+        }
         Action::Phrase { index, variation } => {
             handle.send(Command::Phrase { index, variation });
         }
@@ -703,6 +718,18 @@ fn handle_controller(
                 Target::MelodyLevel => {
                     s.wanted.melody_level = value;
                     (Param::MelodyLevel, 4, "mélodie")
+                }
+                Target::DelaySend => {
+                    s.wanted.delay_send = value;
+                    (Param::DelaySend, 5, "envoi delay")
+                }
+                Target::DelayFeedback => {
+                    s.wanted.delay_feedback = value;
+                    (Param::DelayFeedback, 6, "répétitions du delay")
+                }
+                Target::ReverbSend => {
+                    s.wanted.reverb_send = value;
+                    (Param::ReverbSend, 7, "envoi réverb")
                 }
                 Target::Tempo => return,
             };
@@ -1014,6 +1041,9 @@ fn run() -> Result<(), String> {
             drum_level: 0.8,
             bass_level: 0.8,
             melody_level: 0.8,
+            delay_send: 0.0,
+            delay_feedback: 0.5,
+            reverb_send: 0.0,
             brightness: 0.5,
             pattern: 0,
             swing: 0.54,
@@ -1034,7 +1064,7 @@ fn run() -> Result<(), String> {
         leds: LedRoles::of(&mapping),
         mapping,
         shown_bpm: 0.0,
-        shown_levels: [-1.0; 5],
+        shown_levels: [-1.0; 8],
         shown_swing: 0.54,
         shown_density: 1.0,
         repeats_held: Vec::new(),
@@ -1058,6 +1088,10 @@ fn run() -> Result<(), String> {
         .software_changed(Target::BassLevel, f64::from(s.wanted.bass_level));
     s.mapping
         .software_changed(Target::MelodyLevel, f64::from(s.wanted.melody_level));
+    s.mapping
+        .software_changed(Target::DelaySend, f64::from(s.wanted.delay_send));
+    s.mapping
+        .software_changed(Target::DelayFeedback, f64::from(s.wanted.delay_feedback));
     let mut recording = args.record.clone().map(|path| Recording {
         path,
         sample_rate: 48_000,
@@ -1090,6 +1124,7 @@ fn run() -> Result<(), String> {
     let mut shown_samples = (false, None);
     let mut shown_scale = (u8::MAX, None);
     let mut shown_phrase = (None, None);
+    let mut shown_delay = u8::MAX;
 
     let mut last_report = Instant::now();
     loop {
@@ -1164,6 +1199,16 @@ fn run() -> Result<(), String> {
                 (None, Some(now)) => println!("  ◆ {}", phrase_label(now)),
                 (None, None) => println!("  ◆ pas de phrase"),
             }
+        }
+        if snap.delay_time != shown_delay {
+            // Skip the first value: the starting delay time is not news.
+            if shown_delay != u8::MAX {
+                println!(
+                    "  ⌛ delay {}",
+                    engine::fx::DelayTime::from_index(snap.delay_time).name()
+                );
+            }
+            shown_delay = snap.delay_time;
         }
         if (snap.samples, snap.pending_samples) != shown_samples {
             shown_samples = (snap.samples, snap.pending_samples);

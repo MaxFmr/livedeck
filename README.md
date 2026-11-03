@@ -17,7 +17,7 @@ Everything stays in key: drum patterns, bass lines and chords are written in **s
 the tonic or the scale transposes everything without a wrong note. Musical changes (patterns, styles, key,
 scale) land **on the next bar**.
 
-> Status: phases 0–3 done, phase 4 (melody) in progress — iteration 017 of 019. No graphical interface
+> Status: phases 0–4 done (rhythm, melody, effects) — next: design system, then the egui interface. No graphical interface
 > yet: the app runs in the terminal. See [ROADMAP.md](ROADMAP.md) (in French).
 
 ### Targets
@@ -107,6 +107,8 @@ once it has come back to the setting's current value, so levels never jump.
 | Jog — top | transpose chords, arpeggio and phrases within the scale (a quarter turn per degree, ±7), right away | scale |
 | **Tempo** fader | synth brightness (filter ±2.5 octaves around the patch) | — |
 | **Volume** | melody level | metronome level |
+| **Bass** knob | melody sent to the tempo-synced delay (Filter/Bass switch on Bass) | delay feedback, 0–95 % |
+| **PFL** | — | delay time: 1/8 dotted → 1/4 → 1/8 → 1/4 dotted → 1/16 (each style brings its own) |
 | **Cue** | tonic −1 semitone, on the next bar | tonic +1 |
 | **Play** | play / stop | — |
 
@@ -118,8 +120,9 @@ its key.
 | Control | Function |
 |---|---|
 | **Master** | overall volume (before the safety limiter) |
+| **Headphone** | whole mix sent to the stereo reverb (drums half, bass barely); its length comes with the style |
 
-Crossfader, Filter, Headphone and Vinyl are not assigned yet (scene morphing comes in phase 6).
+Crossfader, Filter and Vinyl are not assigned yet (scene morphing comes in phase 6).
 
 #### Styles
 
@@ -227,7 +230,7 @@ Tout reste dans la tonalité : patterns, lignes de basse et accords sont écrits
 donc changer de tonique ou de gamme transpose tout sans fausse note. Les changements musicaux (patterns,
 styles, tonalité, gamme) tombent **à la mesure suivante**.
 
-> État : phases 0 à 3 terminées, phase 4 (mélodie) en cours — itération 017 sur 019. Pas encore d'interface
+> État : phases 0 à 4 terminées (rythme, mélodie, effets) — prochaine étape : système de design, puis l'interface egui. Pas encore d'interface
 > graphique : l'app tourne en console. Voir [ROADMAP.md](ROADMAP.md).
 
 ### Objectifs
@@ -317,6 +320,8 @@ le fader n'agit qu'une fois revenu à la valeur actuelle du réglage, pour évit
 | Jog — dessus | transposition des accords, de l'arpège et des phrases dans la gamme (un quart de tour par degré, ±7), tout de suite | gamme |
 | Fader **Tempo** | brillance du synthé (filtre ±2,5 octaves autour du patch) | — |
 | **Volume** | niveau de la mélodie | niveau du métronome |
+| Potard **Bass** | envoi de la mélodie au delay calé sur le tempo (bascule Filter/Bass sur Bass) | répétitions du delay, 0–95 % |
+| **PFL** | — | temps du delay : 1/8 pointé → 1/4 → 1/8 → 1/4 pointé → 1/16 (chaque style amène le sien) |
 | **Cue** | tonique −1 demi-ton, à la mesure | tonique +1 |
 | **Play** | lecture / arrêt | — |
 
@@ -328,8 +333,9 @@ au-dessus de la basse, dans sa tonalité.
 | Contrôle | Fonction |
 |---|---|
 | **Master** | volume général (avant le limiteur de sécurité) |
+| **Headphone** | envoi de tout le mix à la réverb stéréo (batterie ½, basse à peine) ; sa longueur vient du style |
 
-Crossfader, Filter, Headphone et Vinyl ne sont pas encore affectés (morph de scènes en phase 6).
+Crossfader, Filter et Vinyl ne sont pas encore affectés (morph de scènes en phase 6).
 
 #### Styles
 

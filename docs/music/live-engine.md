@@ -43,7 +43,7 @@ StylePreset
  ├─ kit : paramètres des voix synthétiques (ou kit de samples, phase 3b)
  ├─ drum_patterns[4] + fills, bass_patterns[4]
  ├─ key + scale par défaut, progression par défaut (degrés)
- └─ fx : envois delay/réverb par défaut, temps de delay (1/8 pointé, 1/4…)
+ └─ fx : temps de delay et longueur de réverb (RT60) du style (019)
 ```
 
 | Preset de départ | BPM | Swing | Caractère |
@@ -116,12 +116,12 @@ continus en 14 bits (filtres et volumes sans paliers).
 | Jog Shift + rotation | choix de la gamme, un demi-tour par gamme, à la mesure (017) |
 | Tempo | brillance (coupure du synthé, ±2,5 octaves autour du patch, 016) |
 | Filter | filtre DJ du bus mélodie |
-| Bass | envoi delay/réverb |
+| Bass | envoi de la mélodie au delay · Shift : répétitions 0–95 % (019) |
 | Volume | niveau mélodie · Shift : niveau du métronome (016) |
 | Play | deck mélodie on/off (quantifié) |
 | Cue | tonique −1 demi-ton · Shift : +1, à la mesure (013) |
 | Sync | progression suivante |
-| PFL | sortie MIDI vers un synthé externe (FM-1…) on/off — phase 7 |
+| PFL | Shift : temps du delay 1/8 pointé → 1/4 → 1/8 → 1/4 pointé → 1/16, en fondu (019) · seul : sortie MIDI vers un synthé externe (FM-1…) — phase 7 |
 
 ### Global
 
@@ -129,7 +129,7 @@ continus en 14 bits (filtres et volumes sans paliers).
 |---|---|
 | Crossfader | **morph de scène** : interpole les paramètres continus entre la scène A et la scène B (mode 2 : balance rythme/mélodie) |
 | Master | volume général (après limiteur) |
-| Headphone | réverbération globale |
+| Headphone | envoi de tout le mix à la réverb stéréo (batterie ½, basse 10 %) (019) |
 | Vinyl | bascule « jeu libre » (accords non quantifiés) |
 
 ## Fichier de mapping

@@ -1,5 +1,5 @@
 //! Style presets: everything a style brings — drum patterns and fills, bass lines, kit and bass
-//! sound, swing, synth patch and melody phrases. The tempo and the key stay the player's (choice of
+//! sound, swing, synth patch, melody phrases and send effects. The tempo and the key stay the player's (choice of
 //! 2026-11-02); `bpm` is only shown as a hint.
 //!
 //! Presets are written as text tables (`StyleText`) and built once, on the control thread, by
@@ -9,6 +9,7 @@
 
 use crate::bass::{BassParams, BassPattern, default_bass_patterns};
 use crate::drums::{DrumVoice, VoiceParams};
+use crate::fx::DelayTime;
 use crate::poly::{Adsr, SynthPatch, Wave};
 use crate::sequencer::{PATTERNS, Pattern, SwingGrid, default_fills, default_patterns};
 
@@ -30,6 +31,7 @@ pub struct StyleText {
     pub bass: BassParams,
     /// Patch of the melody synth.
     pub synth: SynthPatch,
+    pub fx: FxPreset,
     /// `None` = the patterns and fills of the hybrid kit.
     pub patterns: Option<[Rows; PATTERNS]>,
     pub fills: Option<[Rows; PATTERNS]>,
@@ -38,6 +40,14 @@ pub struct StyleText {
     /// Melody phrases of the Sampler pads B, in the notation of the bass lines; `None` = those of
     /// the hybrid kit.
     pub phrases: Option<[&'static str; PATTERNS]>,
+}
+
+/// Send effects of a style: delay time (until Shift + PFL B changes it) and reverb length.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FxPreset {
+    pub delay: DelayTime,
+    /// RT60 of the reverb, in seconds.
+    pub reverb_decay: f32,
 }
 
 /// A style ready to be switched to.
@@ -50,6 +60,7 @@ pub struct StylePreset {
     pub kit: [VoiceParams; 6],
     pub bass: BassParams,
     pub synth: SynthPatch,
+    pub fx: FxPreset,
     pub patterns: [Pattern; PATTERNS],
     pub fills: [Pattern; PATTERNS],
     pub bass_lines: [BassPattern; PATTERNS],
@@ -72,6 +83,7 @@ impl StylePreset {
                 .map(|(tune, decay, level)| VoiceParams { tune, decay, level }),
             bass: text.bass,
             synth: text.synth,
+            fx: text.fx,
             patterns: build(text.patterns, default_patterns()),
             fills: build(text.fills, default_fills()),
             bass_lines: text
@@ -153,6 +165,11 @@ pub const TEXTS: [StyleText; STYLES] = [
             },
             level: 0.5,
         },
+        fx: FxPreset {
+            // The engine starts with these (no style change to apply them).
+            delay: DelayTime::DottedEighth,
+            reverb_decay: 2.5,
+        },
         patterns: None,
         fills: None,
         bass_lines: None,
@@ -203,6 +220,10 @@ pub const TEXTS: [StyleText; STYLES] = [
                 release: 0.1,
             },
             level: 0.6,
+        },
+        fx: FxPreset {
+            delay: DelayTime::DottedEighth,
+            reverb_decay: 4.0,
         },
         patterns: Some([
             // One drop.
@@ -304,6 +325,10 @@ pub const TEXTS: [StyleText; STYLES] = [
             },
             level: 0.45,
         },
+        fx: FxPreset {
+            delay: DelayTime::Quarter,
+            reverb_decay: 2.2,
+        },
         patterns: Some([
             // Afrobeat.
             &[
@@ -404,6 +429,10 @@ pub const TEXTS: [StyleText; STYLES] = [
             },
             level: 0.55,
         },
+        fx: FxPreset {
+            delay: DelayTime::Eighth,
+            reverb_decay: 1.6,
+        },
         patterns: Some([
             // 2-step.
             &[
@@ -496,6 +525,10 @@ pub const TEXTS: [StyleText; STYLES] = [
             },
             level: 0.55,
         },
+        fx: FxPreset {
+            delay: DelayTime::Quarter,
+            reverb_decay: 2.6,
+        },
         patterns: Some([
             // Boom bap.
             &[
@@ -582,6 +615,10 @@ pub const TEXTS: [StyleText; STYLES] = [
                 release: 0.1,
             },
             level: 0.55,
+        },
+        fx: FxPreset {
+            delay: DelayTime::DottedEighth,
+            reverb_decay: 2.0,
         },
         patterns: Some([
             &[

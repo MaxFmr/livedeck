@@ -71,6 +71,10 @@ fn ten_seconds_of_audio_without_allocation() {
                     variation: i / 400 % 2 == 0,
                 });
                 handle.send(Command::Transpose((i / 100 % 15) as i8 - 7));
+                handle.send(Command::CycleDelayTime);
+                for param in [Param::DelaySend, Param::DelayFeedback, Param::ReverbSend] {
+                    handle.send(Command::SetParam(param, (i % 7) as f32 / 6.0));
+                }
                 for pad in 0..8 {
                     handle.send(Command::Chord {
                         pad,
