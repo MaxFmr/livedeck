@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LiveDeck — D5 système de design</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0A0B}
+a{color:#2BC8FF}a:hover{color:#BBEDFF}
+:root{
+--bg:#0A0A0B;
+--surface:#121214;
+--cell:#1A1A1D;
+--line:#2A2A2E;
+--mark:#3A3A40;
+--text:#E8E8EA;
+--text-dim:#8A8A90;
+--ink:#0A0A0B;
+--ok:#5BD18B;
+--warm:#FF6A2B;
+--warm-bright:#FFCFBB;
+--warm-muted:#4F2514;
+--warm-wait:#311D17;
+--warm-dim:#944221;
+--amber:#E8A33D;
+--amber-bright:#F8E2C1;
+--amber-muted:#483519;
+--amber-wait:#2E2519;
+--amber-dim:#88622B;
+--cold:#2BC8FF;
+--cold-bright:#BBEDFF;
+--cold-muted:#133F4F;
+--cold-wait:#152A33;
+--cold-dim:#207695;
+--alert:#FF3DA8;
+--alert-bright:#FFC1E3;
+--alert-muted:#4F1837;
+--alert-wait:#311827;
+--alert-dim:#942A65;
+--font-display:36px;
+--font-title:22px;
+--font-body:14px;
+--font-label:12px;
+--space-1:4px;
+--space-2:8px;
+--space-3:12px;
+--space-4:16px;
+--space-5:20px;
+--space-6:24px;
+--space-8:32px;
+--radius-cell:2px;
+--radius-pad:4px;
+--radius-panel:6px;
+--stroke-hair:1px;
+--stroke-state:2px;
+--stroke-deck:3px;
+--size-header:64px;
+--size-footer:56px;
+--size-pad:80px;
+--size-mini-pad:24px;
+--size-badge:56px;
+--size-bar:6px;
+}
+</style>
+</helmet>
+<div style="width: 1280px; height: 1240px; box-sizing: border-box; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums;">
+  <div style="display: flex; align-items: baseline; gap: var(--space-4);">
+    <span style="font-size: var(--font-display); font-weight: 700; letter-spacing: -0.02em;">D5 · Système de design</span>
+    <span style="font-size: var(--font-body); color: var(--text-dim);">mêmes noms que crates/app/src/theme.rs · contrastes WCAG sur --surface</span>
+  </div>
+
+  <section style="display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); background: var(--surface); border-radius: var(--radius-panel);">
+    <span style="font-size: var(--font-label); font-weight: 700; letter-spacing: 0.12em; color: var(--text-dim);">GRIS · CINQ MARCHES, UN RÔLE CHACUNE</span>
+    <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-3);">
+      <sc-for list="{{greys}}" as="g" hint-placeholder-count="7">
+        <div style="display: flex; flex-direction: column; gap: var(--space-1);">
+          <div style="{{g.sw}}"></div>
+          <span style="font-size: var(--font-body); font-weight: 700;">{{g.name}}</span>
+          <span style="font-size: var(--font-label); color: var(--text-dim);">{{g.hex}} · {{g.role}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); background: var(--surface); border-radius: var(--radius-panel);">
+    <span style="font-size: var(--font-label); font-weight: 700; letter-spacing: 0.12em; color: var(--text-dim);">COULEURS · UNE FAMILLE PAR ZONE, CINQ ÉTATS DÉRIVÉS</span>
+    <sc-for list="{{accents}}" as="a" hint-placeholder-count="4">
+      <div style="display: grid; grid-template-columns: 200px repeat(5, minmax(0, 1fr)); gap: var(--space-3); align-items: center;">
+        <div style="display: flex; flex-direction: column; gap: var(--space-1);">
+          <span style="font-size: var(--font-body); font-weight: 700; {{a.color}}">{{a.title}}</span>
+          <span style="font-size: var(--font-label); color: var(--text-dim);">{{a.info}}</span>
+        </div>
+        <sc-for list="{{a.chips}}" as="c" hint-placeholder-count="5">
+          <div style="display: flex; flex-direction: column; gap: var(--space-1);">
+            <div style="{{c.sw}}">{{c.txt}}</div>
+            <span style="font-size: var(--font-label); color: var(--text-dim);">{{c.name}} {{c.hex}} · {{c.role}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+    <span style="font-size: var(--font-label); color: var(--text-dim);">--ok #5BD18B : point de santé seulement. Dérivés : bright = 68 % vers le blanc · muted = 72 % vers --bg · wait = 87 % vers --surface · dim = 45 % vers --surface.</span>
+  </section>
+
+  <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4);">
+    <section style="display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); background: var(--surface); border-radius: var(--radius-panel);">
+      <span style="font-size: var(--font-label); font-weight: 700; letter-spacing: 0.12em; color: var(--text-dim);">TYPO · INTER, CHIFFRES TABULAIRES, QUATRE TAILLES</span>
+      <sc-for list="{{types}}" as="t" hint-placeholder-count="4">
+        <div style="display: flex; align-items: baseline; gap: var(--space-4);">
+          <span style="{{t.style}} width: 300px;">{{t.txt}}</span>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: var(--font-body);">{{t.spec}}</span>
+            <span style="font-size: var(--font-label); color: var(--text-dim);">{{t.use}}</span>
+          </div>
+        </div>
+      </sc-for>
+    </section>
+    <section style="display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); background: var(--surface); border-radius: var(--radius-panel);">
+      <span style="font-size: var(--font-label); font-weight: 700; letter-spacing: 0.12em; color: var(--text-dim);">ESPACE (GRILLE DE 4 PX) · RAYONS · TRAITS</span>
+      <div style="display: flex; gap: var(--space-6);">
+        <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+          <sc-for list="{{spaces}}" as="s" hint-placeholder-count="7">
+            <div style="display: flex; align-items: center; gap: var(--space-2);">
+              <span style="font-size: var(--font-label); color: var(--text-dim); width: 64px;">{{s.name}}</span>
+              <div style="{{s.bar}}"></div>
+              <span style="font-size: var(--font-label);">{{s.px}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <div style="display: flex; gap: var(--space-3);">
+            <sc-for list="{{radii}}" as="r" hint-placeholder-count="3">
+              <div style="display: flex; flex-direction: column; gap: var(--space-1); width: 96px;">
+                <div style="{{r.box}}"></div>
+                <span style="font-size: var(--font-label); color: var(--text-dim);">{{r.name}} {{r.px}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <sc-for list="{{strokes}}" as="k" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: var(--space-3);">
+              <div style="{{k.line}}"></div>
+              <span style="font-size: var(--font-label); color: var(--text-dim);">{{k.name}} {{k.px}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section style="display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); background: var(--surface); border-radius: var(--radius-panel);">
+    <span style="font-size: var(--font-label); font-weight: 700; letter-spacing: 0.12em; color: var(--text-dim);">ÉTATS · JAMAIS LA COULEUR SEULE (POINTILLÉ, BARRÉ, CONTOUR)</span>
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--space-3);">
+      <sc-for list="{{pads}}" as="p" hint-placeholder-count="6">
+        <div style="display: flex; flex-direction: column; gap: var(--space-1);">
+          <div style="{{p.style}}">{{p.txt}}</div>
+          <span style="font-size: var(--font-label); color: var(--text-dim);">{{p.lab}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: flex; gap: var(--space-6); align-items: flex-start;">
+      <div style="display: flex; gap: var(--space-3);">
+        <sc-for list="{{cells}}" as="c" hint-placeholder-count="6">
+          <div style="display: flex; flex-direction: column; gap: var(--space-1); width: 72px;">
+            <div style="{{c.style}}"></div>
+            <span style="font-size: var(--font-label); color: var(--text-dim);">{{c.lab}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding: 10px 16px; background: var(--text); color: var(--ink); border-radius: var(--radius-pad); display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: var(--font-label); font-weight: 700; letter-spacing: 0.12em;">SWING</span>
+        <span style="font-size: var(--font-title); font-weight: 700;">58 %</span>
+        <span style="font-size: var(--font-label); font-weight: 600;">HUD · 1 s</span>
+      </div>
+      <div style="padding: 10px 16px; background: var(--bg); color: var(--text); border: var(--stroke-state) solid var(--text); border-radius: var(--radius-pad); display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: var(--font-label); font-weight: 700; letter-spacing: 0.12em;">TEMPO · PICKUP</span>
+        <span style="font-size: var(--font-title); font-weight: 700;">98 → 124</span>
+        <span style="font-size: var(--font-label); font-weight: 600;">↑ monter pour reprendre</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+        <div style="padding: 8px 14px; border-radius: var(--radius-pad); background: var(--alert); color: var(--ink); font-size: var(--font-body); font-weight: 700;">CONTRÔLEUR ABSENT</div>
+        <div style="display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-label); color: var(--text-dim);">
+          <div style="width: 8px; height: 8px; border-radius: 4px; background: var(--ok);"></div>
+          DJControl Mix · charge 4 %
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); background: var(--surface); border-radius: var(--radius-panel);">
+    <span style="font-size: var(--font-label); font-weight: 700; letter-spacing: 0.12em; color: var(--text-dim);">DURÉES</span>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4);">
+      <sc-for list="{{times}}" as="t" hint-placeholder-count="4">
+        <div style="display: flex; flex-direction: column; gap: var(--space-1);">
+          <span style="font-size: var(--font-body); font-weight: 700;">{{t.t}}</span>
+          <span style="font-size: var(--font-label); color: var(--text-dim);">{{t.d}}</span>
+          <span style="font-size: var(--font-label); color: var(--text);">{{t.k}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview": {"width": 1280, "height": 1240}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+ "greys": [
+  {
+   "name": "--bg",
+   "hex": "#0A0A0B",
+   "role": "fond de la fenêtre",
+   "sw": "width: 100%; height: 64px; border-radius: var(--radius-pad); background: var(--bg); box-sizing: border-box; border: var(--stroke-hair) solid var(--line);"
+  },
+  {
+   "name": "--surface",
+   "hex": "#121214",
+   "role": "panneaux",
+   "sw": "width: 100%; height: 64px; border-radius: var(--radius-pad); background: var(--surface); box-sizing: border-box; border: var(--stroke-hair) solid var(--line);"
+  },
+  {
+   "name": "--cell",
+   "hex": "#1A1A1D",
+   "role": "case éteinte",
+   "sw": "width: 100%; height: 64px; border-radius: var(--radius-pad); background: var(--cell); box-sizing: border-box; border: var(--stroke-hair) solid var(--line);"
+  },
+  {
+   "name": "--line",
+   "hex": "#2A2A2E",
+   "role": "trait éteint",
+   "sw": "width: 100%; height: 64px; border-radius: var(--radius-pad); background: var(--line); box-sizing: border-box; border: var(--stroke-hair) solid var(--line);"
+  },
+  {
+   "name": "--mark",
+   "hex": "#3A3A40",
+   "role": "repère : temps 1, tous les 4 pas",
+   "sw": "width: 100%; height: 64px; border-radius: var(--radius-pad); background: var(--mark); box-sizing: border-box; border: var(--stroke-hair) solid var(--line);"
+  },
+  {
+   "name": "--text-dim",
+   "hex": "#8A8A90",
+   "role": "texte secondaire · 5,5:1",
+   "sw": "width: 100%; height: 64px; border-radius: var(--radius-pad); background: var(--text-dim); box-sizing: border-box; border: var(--stroke-hair) solid var(--line);"
+  },
+  {
+   "name": "--text",
+   "hex": "#E8E8EA",
+   "role": "texte, « maintenant » · 15,3:1",
+   "sw": "width: 100%; height: 64px; border-radius: var(--radius-pad); background: var(--text); box-sizing: border-box; border: var(--stroke-hair) solid var(--line);"
+  }
+ ],
+ "accents": [
+  {
+   "title": "Deck A · rythme",
+   "name": "--warm",
+   "color": "color: var(--warm);",
+   "info": "texte sur panneau 6,5:1 · encre sur couleur 6,9:1",
+   "chips": [
+    {
+     "name": "--warm",
+     "hex": "#FF6A2B",
+     "role": "allumé",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--warm); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--ink);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--warm-bright",
+     "hex": "#FFCFBB",
+     "role": "frappe sous la tête",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--warm-bright); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--ink);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--warm-muted",
+     "hex": "#4F2514",
+     "role": "muté",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--warm-muted); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--warm);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--warm-wait",
+     "hex": "#311D17",
+     "role": "attente, phase allumée",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--warm-wait); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--warm);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--warm-dim",
+     "hex": "#944221",
+     "role": "attente, phase éteinte",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--warm-dim); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--warm);",
+     "txt": "Aa"
+    }
+   ]
+  },
+  {
+   "title": "Basse",
+   "name": "--amber",
+   "color": "color: var(--amber);",
+   "info": "texte sur panneau 8,7:1 · encre sur couleur 9,2:1",
+   "chips": [
+    {
+     "name": "--amber",
+     "hex": "#E8A33D",
+     "role": "allumé",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--amber); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--ink);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--amber-bright",
+     "hex": "#F8E2C1",
+     "role": "frappe sous la tête",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--amber-bright); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--ink);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--amber-muted",
+     "hex": "#483519",
+     "role": "muté",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--amber-muted); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--amber);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--amber-wait",
+     "hex": "#2E2519",
+     "role": "attente, phase allumée",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--amber-wait); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--amber);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--amber-dim",
+     "hex": "#88622B",
+     "role": "attente, phase éteinte",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--amber-dim); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--amber);",
+     "txt": "Aa"
+    }
+   ]
+  },
+  {
+   "title": "Deck B · mélodie",
+   "name": "--cold",
+   "color": "color: var(--cold);",
+   "info": "texte sur panneau 9,6:1 · encre sur couleur 10,2:1",
+   "chips": [
+    {
+     "name": "--cold",
+     "hex": "#2BC8FF",
+     "role": "allumé",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--cold); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--ink);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--cold-bright",
+     "hex": "#BBEDFF",
+     "role": "frappe sous la tête",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--cold-bright); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--ink);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--cold-muted",
+     "hex": "#133F4F",
+     "role": "muté",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--cold-muted); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--cold);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--cold-wait",
+     "hex": "#152A33",
+     "role": "attente, phase allumée",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--cold-wait); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--cold);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--cold-dim",
+     "hex": "#207695",
+     "role": "attente, phase éteinte",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--cold-dim); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--cold);",
+     "txt": "Aa"
+    }
+   ]
+  },
+  {
+   "title": "Alerte (seule)",
+   "name": "--alert",
+   "color": "color: var(--alert);",
+   "info": "texte sur panneau 5,8:1 · encre sur couleur 6,1:1",
+   "chips": [
+    {
+     "name": "--alert",
+     "hex": "#FF3DA8",
+     "role": "allumé",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--alert); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--ink);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--alert-bright",
+     "hex": "#FFC1E3",
+     "role": "frappe sous la tête",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--alert-bright); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--ink);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--alert-muted",
+     "hex": "#4F1837",
+     "role": "muté",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--alert-muted); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--alert);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--alert-wait",
+     "hex": "#311827",
+     "role": "attente, phase allumée",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--alert-wait); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--alert);",
+     "txt": "Aa"
+    },
+    {
+     "name": "--alert-dim",
+     "hex": "#942A65",
+     "role": "attente, phase éteinte",
+     "sw": "height: 56px; border-radius: var(--radius-pad); background: var(--alert-dim); display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 700; color: var(--alert);",
+     "txt": "Aa"
+    }
+   ]
+  }
+ ],
+ "types": [
+  {
+   "spec": "display · 36 · 700 · −0,02 em",
+   "style": "font-size: var(--font-display); font-weight: 700; letter-spacing: -0.02em;",
+   "txt": "124 BPM",
+   "use": "BPM, pattern actif, accord"
+  },
+  {
+   "spec": "title · 22 · 700",
+   "style": "font-size: var(--font-title); font-weight: 700;",
+   "txt": "La mineur",
+   "use": "pads, tonalité, élément en attente"
+  },
+  {
+   "spec": "body · 14 · 500",
+   "style": "font-size: var(--font-body); font-weight: 500;",
+   "txt": "Densité 80 % · swing 58 %",
+   "use": "valeurs P2, aide du HUD"
+  },
+  {
+   "spec": "label · 12 · 700 · capitales +0,12 em",
+   "style": "font-size: var(--font-label); font-weight: 700; letter-spacing: 0.12em;",
+   "txt": "A · RYTHME",
+   "use": "zones, modes, lignes de pas"
+  }
+ ],
+ "spaces": [
+  {
+   "name": "--space-1",
+   "px": "4 px",
+   "bar": "width: 16px; height: 12px; background: var(--text-dim); border-radius: 1px;"
+  },
+  {
+   "name": "--space-2",
+   "px": "8 px",
+   "bar": "width: 32px; height: 12px; background: var(--text-dim); border-radius: 1px;"
+  },
+  {
+   "name": "--space-3",
+   "px": "12 px",
+   "bar": "width: 48px; height: 12px; background: var(--text-dim); border-radius: 1px;"
+  },
+  {
+   "name": "--space-4",
+   "px": "16 px",
+   "bar": "width: 64px; height: 12px; background: var(--text-dim); border-radius: 1px;"
+  },
+  {
+   "name": "--space-5",
+   "px": "20 px",
+   "bar": "width: 80px; height: 12px; background: var(--text-dim); border-radius: 1px;"
+  },
+  {
+   "name": "--space-6",
+   "px": "24 px",
+   "bar": "width: 96px; height: 12px; background: var(--text-dim); border-radius: 1px;"
+  },
+  {
+   "name": "--space-8",
+   "px": "32 px",
+   "bar": "width: 128px; height: 12px; background: var(--text-dim); border-radius: 1px;"
+  }
+ ],
+ "radii": [
+  {
+   "name": "--radius-cell",
+   "px": "2 px · pas",
+   "box": "width: 56px; height: 56px; border-radius: var(--radius-cell); background: var(--cell); border: var(--stroke-hair) solid var(--mark); box-sizing: border-box;"
+  },
+  {
+   "name": "--radius-pad",
+   "px": "4 px · pads, HUD",
+   "box": "width: 56px; height: 56px; border-radius: var(--radius-pad); background: var(--cell); border: var(--stroke-hair) solid var(--mark); box-sizing: border-box;"
+  },
+  {
+   "name": "--radius-panel",
+   "px": "6 px · panneaux",
+   "box": "width: 56px; height: 56px; border-radius: var(--radius-panel); background: var(--cell); border: var(--stroke-hair) solid var(--mark); box-sizing: border-box;"
+  }
+ ],
+ "strokes": [
+  {
+   "name": "--stroke-hair",
+   "px": "1 px · bords éteints",
+   "line": "width: 96px; height: 0; border-top: var(--stroke-hair) solid var(--mark);"
+  },
+  {
+   "name": "--stroke-state",
+   "px": "2 px · attente (pointillé 4/3), pickup",
+   "line": "width: 96px; height: 0; border-top: var(--stroke-state) dashed var(--warm);"
+  },
+  {
+   "name": "--stroke-deck",
+   "px": "3 px · bandeau du deck",
+   "line": "width: 96px; height: 0; border-top: var(--stroke-deck) solid var(--cold);"
+  }
+ ],
+ "pads": [
+  {
+   "lab": "éteint",
+   "style": "height: var(--size-pad); border-radius: var(--radius-pad); display: flex; align-items: center; justify-content: center; font-size: var(--font-title); font-weight: 700; box-sizing: border-box; background: var(--cell); border: var(--stroke-hair) solid var(--line); color: var(--text-dim);",
+   "txt": "C"
+  },
+  {
+   "lab": "actif",
+   "style": "height: var(--size-pad); border-radius: var(--radius-pad); display: flex; align-items: center; justify-content: center; font-size: var(--font-title); font-weight: 700; box-sizing: border-box; background: var(--warm); color: var(--ink);",
+   "txt": "B"
+  },
+  {
+   "lab": "attente · croche allumée",
+   "style": "height: var(--size-pad); border-radius: var(--radius-pad); display: flex; align-items: center; justify-content: center; font-size: var(--font-title); font-weight: 700; box-sizing: border-box; background: var(--warm-wait); border: var(--stroke-state) dashed var(--warm); color: var(--warm);",
+   "txt": "D"
+  },
+  {
+   "lab": "attente · croche éteinte",
+   "style": "height: var(--size-pad); border-radius: var(--radius-pad); display: flex; align-items: center; justify-content: center; font-size: var(--font-title); font-weight: 700; box-sizing: border-box; background: var(--surface); border: var(--stroke-state) dashed var(--warm-dim); color: var(--warm);",
+   "txt": "D"
+  },
+  {
+   "lab": "muté (barré)",
+   "style": "height: var(--size-pad); border-radius: var(--radius-pad); display: flex; align-items: center; justify-content: center; font-size: var(--font-title); font-weight: 700; box-sizing: border-box; background: var(--warm-muted); color: var(--text-dim); text-decoration: line-through;",
+   "txt": "Hats"
+  },
+  {
+   "lab": "accord actif",
+   "style": "height: var(--size-pad); border-radius: var(--radius-pad); display: flex; align-items: center; justify-content: center; font-size: var(--font-title); font-weight: 700; box-sizing: border-box; background: var(--cold); color: var(--ink);",
+   "txt": "vi"
+  }
+ ],
+ "cells": [
+  {
+   "lab": "vide",
+   "style": "width: 40px; height: 24px; border-radius: var(--radius-cell); box-sizing: border-box; background: var(--cell);"
+  },
+  {
+   "lab": "repère (pas 1, 5…)",
+   "style": "width: 40px; height: 24px; border-radius: var(--radius-cell); box-sizing: border-box; background: var(--line);"
+  },
+  {
+   "lab": "pas joué",
+   "style": "width: 40px; height: 24px; border-radius: var(--radius-cell); box-sizing: border-box; background: var(--warm);"
+  },
+  {
+   "lab": "sous la tête",
+   "style": "width: 40px; height: 24px; border-radius: var(--radius-cell); box-sizing: border-box; background: var(--warm-bright);"
+  },
+  {
+   "lab": "pas muté",
+   "style": "width: 40px; height: 24px; border-radius: var(--radius-cell); box-sizing: border-box; background: var(--warm-muted);"
+  },
+  {
+   "lab": "basse · degré",
+   "style": "width: 40px; height: 24px; border-radius: var(--radius-cell); box-sizing: border-box; background: var(--amber);"
+  }
+ ],
+ "times": [
+  {
+   "t": "HUD du geste",
+   "d": "1 s après le dernier mouvement",
+   "k": "HUD_MS = 1000"
+  },
+  {
+   "t": "HUD en pickup",
+   "d": "jusqu'à la reprise, ou 2,5 s sans mouvement",
+   "k": "PICKUP_HUD_MS = 2500"
+  },
+  {
+   "t": "Attente",
+   "d": "clignote au tempo : une croche allumée, une éteinte ; texte toujours lisible",
+   "k": "BLINK_BEATS = 0,5"
+  },
+  {
+   "t": "À l'arrêt",
+   "d": "rien ne bouge, rien ne clignote ; repaint seulement sur événement",
+   "k": "CPU ≈ 0"
+  }
+ ]
+};
+}
+}
+</script>
+</body>
+</html>

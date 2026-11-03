@@ -4,6 +4,9 @@
 //! through `config/mapping.toml`, reads keyboard commands, shows the engine state and rebuilds the
 //! audio stream if the device goes away.
 
+// Design tokens of the egui interface (phase 5); only their tests use them for now.
+#[allow(dead_code)]
+mod theme;
 use std::io::BufRead;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;

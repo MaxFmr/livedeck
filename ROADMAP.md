@@ -74,7 +74,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 - [x] D2 Architecture d'information (inventaire de l'état à afficher). → [D2](docs/design/D2-information.md)
 - [x] D3 2–3 maquettes basse fidélité (artifacts HTML). → sources `design/mockups/`, [canvas](https://claude.ai/artifact/SEij2MqjacTXCRc8kuJKU6) : rangée de pas, afficheur, formes colorées — **retenue : 1 · rangée de pas** (2026-11-01).
 - [x] D4 Maquette haute fidélité interactive, validée par l'utilisateur (2026-11-01). → `design/mockups/project/D4.dc.html`, [canvas](https://claude.ai/artifact/SEij2MqjacTXCRc8kuJKU6)
-- [ ] D5 Système de design → `theme.rs`.
+- [x] D5 Système de design → `theme.rs`. → [D5](docs/design/D5-system.md), planche D5 dans le [canvas](https://claude.ai/artifact/SEij2MqjacTXCRc8kuJKU6) (validé le 2026-11-03).
 
 ## Phase 5 — Interface egui
 
@@ -107,6 +107,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 | Date | Évènement |
 |---|---|
+| 2026-11-03 | D5 validé : jetons dans `crates/app/src/theme.rs` (4 tailles de police, 5 gris, 4 familles de couleur à 5 états, contrastes testés). Prochaine : phase 5, coquille eframe. |
 | 2026-11-03 | **Phase 4 terminée** (016–019) : poly synthé, accords et voicings, arpège et phrases, delay et réverb ; morceau complet joué au contrôleur, 0 xrun, charge max 12,6 %. Prochaine : D5 (système de design → `theme.rs`) puis phase 5. |
 | 2026-11-01 | **Phase 2 terminée** (007–009) : contrôleur à chaud, mapping configurable, LEDs d'état en rythme, latence geste → son mesurée (médiane ≈ 8 ms). Prochaine : piste D (D1) et phase 3, itération 010. |
 | 2026-10-31 | Harnais créé : base de connaissances, skills, roadmap. Phase 0 à démarrer. |

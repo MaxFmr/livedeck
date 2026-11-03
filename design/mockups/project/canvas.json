@@ -38,13 +38,21 @@
       "h": 960,
       "title": "D4 · Rangée de pas (interactive)",
       "is_interactive": true
+    },
+    "D5.dc.html": {
+      "x": 1360,
+      "y": 1220,
+      "w": 1280,
+      "h": 1240,
+      "title": "D5 · Système de design (jetons de theme.rs)"
     }
   },
   "order": [
     "Main.dc.html",
     "Afficheur.dc.html",
     "Formes.dc.html",
-    "D4.dc.html"
+    "D4.dc.html",
+    "D5.dc.html"
   ],
   "notes": {
     "titre": {
