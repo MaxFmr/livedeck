@@ -106,6 +106,9 @@ pub struct Engine {
     last_hit: Option<u64>,
     /// Length of a roll waiting for the next hit (no hit in the current division at the press).
     roll_pending: Option<usize>,
+    /// Peaks of the last `process` call: drums, bass, melody (with its echoes), master (after the
+    /// limiter), for the meters.
+    peaks: [f32; 4],
     /// Mix bus (left once the effects return), allocated once; blocks larger than this are
     /// processed in slices.
     mono: Vec<f32>,
@@ -152,6 +155,7 @@ impl Engine {
             reverb_send: Smoothed::new(0.0, sample_rate, 0.01),
             last_hit: None,
             roll_pending: None,
+            peaks: [0.0; 4],
             mono: vec![0.0; max_block.max(64)],
             right: vec![0.0; max_block.max(64)],
             drum_bus: vec![0.0; max_block.max(64)],
@@ -251,6 +255,19 @@ impl Engine {
     #[must_use]
     pub fn delay_time(&self) -> DelayTime {
         self.delay_time
+    }
+
+    /// Peaks of the last rendered block: drums, bass, melody, master (0..=1, master after the
+    /// limiter).
+    #[must_use]
+    pub fn peaks(&self) -> [f32; 4] {
+        self.peaks
+    }
+
+    /// Lowest limiter gain of the last block (1 = not limiting).
+    #[must_use]
+    pub fn limiter_gain(&self) -> f32 {
+        self.limiter.lowest
     }
 
     #[must_use]
@@ -455,6 +472,8 @@ impl Engine {
     /// silence.
     pub fn process(&mut self, out: &mut [f32], channels: usize) {
         let channels = channels.max(1);
+        self.peaks = [0.0; 4];
+        self.limiter.begin_block();
         let mut frames_out = out.chunks_exact_mut(channels);
         loop {
             let remaining = frames_out.len();
@@ -530,12 +549,21 @@ impl Engine {
                 let (wet_l, wet_r) = self
                     .reverb
                     .tick((synth + 0.5 * drum + 0.1 * bass + echo) * reverb_send);
+                let [p_drum, p_bass, p_melody, _] = &mut self.peaks;
+                *p_drum = p_drum.max(drum.abs());
+                *p_bass = p_bass.max(bass.abs());
+                *p_melody = p_melody.max((synth + echo).abs());
                 let dry = *left + drum + bass + synth + echo;
                 let master = self.master_gain.tick();
                 *left = (dry + wet_l) * master;
                 *right = (dry + wet_r) * master;
             }
             self.limiter.process_stereo(mono, right);
+            if let Some(master) = self.peaks.get_mut(3) {
+                for (&l, &r) in mono.iter().zip(right.iter()) {
+                    *master = master.max(l.abs()).max(r.abs());
+                }
+            }
             for ((frame, &left), &right) in frames_out
                 .by_ref()
                 .take(n)
@@ -804,6 +832,24 @@ mod tests {
         let energy = tail.iter().map(|[l, _]| l * l).sum();
         let side = tail.iter().map(|[l, r]| (l - r) * (l - r)).sum();
         (energy, side)
+    }
+
+    #[test]
+    fn meters_follow_each_bus() {
+        let mut engine = Engine::new(SR, 128, 120.0);
+        engine.set_metronome(false);
+        engine.set_sequencer(false);
+        engine.set_bass_mute(true);
+        engine.chord(0, true);
+        render(&mut engine, 4_800, 2, 128);
+        let [drums, bass, melody, master] = engine.peaks();
+        assert_eq!((drums, bass), (0.0, 0.0));
+        assert!(melody > 0.01 && master > 0.01, "{melody} {master}");
+        assert!(master <= limiter::CEILING);
+        assert!(
+            (engine.limiter_gain() - 1.0).abs() < 1e-6,
+            "a chord alone is not limited"
+        );
     }
 
     #[test]

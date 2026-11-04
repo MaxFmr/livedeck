@@ -169,6 +169,9 @@ pub struct EngineSnapshot {
     pub transpose: i8,
     /// Delay time (index of `fx::DelayTime::ALL`).
     pub delay_time: u8,
+    /// Peaks of the block: drums, bass, melody, master; lowest limiter gain (1 = not limiting).
+    pub peaks: [f32; 4],
+    pub limiter_gain: f32,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -256,6 +259,8 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         pending_phrase: engine.melody().pending_phrase(),
         transpose: engine.chords().transpose(),
         delay_time: engine.delay_time().index(),
+        peaks: engine.peaks(),
+        limiter_gain: engine.limiter_gain(),
     }
 }
 

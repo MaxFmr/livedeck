@@ -79,10 +79,10 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 ## Phase 5 — Interface egui
 
 - [x] Coquille eframe, thème, police embarquée ; glow retenu (wgpu non mesuré). → [020](docs/iterations/020-egui-shell.md)
-- [ ] Widgets : barre de temps, pads, grille de pas, accords/gamme, HUD de paramètres, vumètres.
-- [ ] États : en attente, actif, muté, pickup, contrôleur absent, surcharge CPU.
-- [ ] Repaint cadencé ; CPU UI à l'arrêt ≈ 0.
-- [ ] D7 Revue sur scène (`/design-review`).
+- [x] Widgets : barre de temps, pads, grille de pas, accords/gamme, HUD de paramètres, vumètres. → [021](docs/iterations/021-deck-a-widgets.md), [022](docs/iterations/022-deck-b-hud.md), [023](docs/iterations/023-meters-cadence.md)
+- [x] États : en attente, actif, muté, pickup, contrôleur absent, surcharge CPU. → 021–023
+- [x] Repaint cadencé ; CPU UI à l'arrêt ≈ 0 (+0,4 point, 0,2 image/s). → [023](docs/iterations/023-meters-cadence.md)
+- [ ] D7 Revue sur scène (`/design-review`) — essai groupé prêt : `tools/try-phase5.sh`.
 
 **Sortie** : UI conforme à la maquette D4 ; RSS total < 120 Mo ; checklist design verte.
 

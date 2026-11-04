@@ -1174,7 +1174,9 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
     let mut last_xrun: Option<Instant> = None;
     // The window draws the patterns and bass lines of the style heard.
     let presets = engine::style::presets();
+    let mut meters = view::Meters::new();
     let mut shown_load = 0.0;
+    let mut frames_seen = 0;
     loop {
         if window.is_some_and(|w| w.shared.quit_requested()) {
             finish(&s, recording.as_mut());
@@ -1377,6 +1379,14 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
                 );
             }
             shown_load = output.stats.take_max_load(output.info.sample_rate);
+            if let Some(w) = window {
+                let frames = w.shared.frames();
+                println!(
+                    "  🖥 fenêtre : {:.1} images/s",
+                    (frames - frames_seen) as f64 / 5.0
+                );
+                frames_seen = frames;
+            }
             println!(
                 "  [{:.0} BPM │ charge max {:.1} % │ xruns {} │ NaN {} │ commandes {} │ contrôleur {}]",
                 snap.bpm,
@@ -1448,10 +1458,14 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
                 pending_phrase: snap.pending_phrase,
                 delay_time: snap.delay_time,
                 hud: shown_hud(&s),
+                meters: meters.update(snap.peaks),
+                limiting: snap.limiter_gain < 0.98,
+                overload: shown_load > 0.7,
             };
-            // Playing, the window repaints at its own pace; otherwise only on a change.
+            // Playing, the window repaints at its own pace; otherwise on a change, at most at its
+            // playing rate (a falling meter changes on every turn of this loop).
             if w.shared.publish(view) {
-                w.ctx.request_repaint();
+                w.ctx.request_repaint_after(ui::FRAME);
             }
         }
         // Woken at once by controller messages (and keyboard lines); otherwise one turn per 2 ms

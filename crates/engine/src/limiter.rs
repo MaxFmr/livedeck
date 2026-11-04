@@ -8,6 +8,8 @@ pub struct Limiter {
     ceiling: f32,
     gain: f32,
     release: f32,
+    /// Lowest gain applied since `begin_block` (1 = not limiting).
+    pub lowest: f32,
     /// Non-finite samples replaced by silence since start.
     pub nan_count: u32,
 }
@@ -24,6 +26,7 @@ impl Limiter {
             ceiling: CEILING,
             gain: 1.0,
             release: 1.0 - (-1.0 / (RELEASE_SECONDS * sr)).exp(),
+            lowest: 1.0,
             nan_count: 0,
         }
     }
@@ -55,6 +58,11 @@ impl Limiter {
         }
     }
 
+    /// Starts a new block for `lowest`.
+    pub fn begin_block(&mut self) {
+        self.lowest = 1.0;
+    }
+
     fn follow(&mut self, peak: f32) {
         let target = if peak * self.gain > self.ceiling {
             self.ceiling / peak
@@ -66,6 +74,7 @@ impl Limiter {
         } else {
             self.gain += (target - self.gain) * self.release;
         }
+        self.lowest = self.lowest.min(self.gain);
     }
 }
 

@@ -4,7 +4,7 @@
 //! Runs on: main thread (the macOS event loop). Reads only `View`, which the control thread
 //! publishes; writes nothing back except the quit request when the window closes.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -120,6 +120,11 @@ pub struct View {
     pub delay_time: u8,
     /// The HUD of the last gesture, while it is shown.
     pub hud: Option<Hud>,
+    /// Meters 0..=1 (dB scale): drums, bass, melody, master; the limiter working.
+    pub meters: [f32; 4],
+    pub limiting: bool,
+    /// Callback load over 70 % at the last report.
+    pub overload: bool,
 }
 
 /// The control thread → window link.
@@ -127,6 +132,8 @@ pub struct View {
 pub struct Shared {
     view: Mutex<View>,
     quit: AtomicBool,
+    /// Frames painted since start (the control thread reports the rate).
+    frames: AtomicU64,
 }
 
 impl Shared {
@@ -148,14 +155,19 @@ impl Shared {
         self.quit.store(true, Ordering::Relaxed);
     }
 
+    pub fn frames(&self) -> u64 {
+        self.frames.load(Ordering::Relaxed)
+    }
+
     pub fn quit_requested(&self) -> bool {
         self.quit.load(Ordering::Relaxed)
     }
 }
 
-/// While playing the window follows the beat at 60 fps; stopped, it repaints only when the control
+/// While playing the window follows the beat at 30 fps (023: half the CPU of 60 fps, a 1/16 at
+/// 200 BPM still lasts two frames); stopped, it repaints only when the control
 /// thread publishes a change.
-const FRAME: Duration = Duration::from_millis(16);
+pub const FRAME: Duration = Duration::from_millis(33);
 
 pub struct Window {
     shared: Arc<Shared>,
@@ -368,6 +380,66 @@ fn panel(p: &Painter, rect: Rect, accent: Option<Accent>) {
     }
 }
 
+/// Footer: the meters (drums, bass, melody, master) and the limiter; scenes come in phase 6.
+fn footer_bar(p: &Painter, rect: Rect, v: &View) {
+    panel(p, rect, None);
+    let mid = rect.center().y;
+    text(
+        p,
+        Pos2::new(rect.left() + theme::SPACE_5, mid),
+        Align2::LEFT_CENTER,
+        "F : plein écran",
+        theme::BODY,
+        theme::TEXT_DIM,
+    );
+    let meters = [
+        ("Batterie", theme::ACCENT_WARM.base),
+        ("Basse", theme::ACCENT_AMBER.base),
+        ("Mélodie", theme::ACCENT_COLD.base),
+        ("Master", theme::TEXT),
+    ];
+    let mut x = rect.right() - theme::SPACE_5;
+    // The limiter, rightmost: lit while it reduces the gain.
+    let lim = text(
+        p,
+        Pos2::new(x, mid),
+        Align2::RIGHT_CENTER,
+        "Limiteur",
+        theme::LABEL,
+        if v.limiting { theme::TEXT } else { theme::MARK },
+    );
+    let dot = Rect::from_center_size(
+        Pos2::new(lim.left() - theme::SPACE_2 - 4.0, mid),
+        Vec2::splat(8.0),
+    );
+    p.rect_filled(
+        dot,
+        radius(theme::RADIUS_CELL),
+        color(if v.limiting { theme::TEXT } else { theme::LINE }),
+    );
+    x = dot.left() - theme::SPACE_6;
+    for ((name, c), &level) in meters.iter().zip(v.meters.iter()).rev() {
+        let track = Rect::from_min_size(
+            Pos2::new(x - 96.0, mid - theme::SIZE_BAR / 2.0),
+            Vec2::new(96.0, theme::SIZE_BAR),
+        );
+        let pill = radius(theme::SIZE_BAR / 2.0);
+        p.rect_filled(track, pill, color(theme::LINE));
+        let filled =
+            Rect::from_min_size(track.min, Vec2::new(track.width() * level, track.height()));
+        p.rect_filled(filled, pill, color(*c));
+        let label = text(
+            p,
+            Pos2::new(track.left() - theme::SPACE_2, mid),
+            Align2::RIGHT_CENTER,
+            name,
+            theme::BODY,
+            theme::TEXT_DIM,
+        );
+        x = label.left() - theme::SPACE_5;
+    }
+}
+
 fn time_bar(p: &Painter, rect: Rect, v: &View) {
     panel(p, rect, None);
     let mid = rect.center().y;
@@ -488,6 +560,8 @@ fn time_bar(p: &Painter, rect: Rect, v: &View) {
         Some("Contrôleur absent")
     } else if v.xrun_recent {
         Some("Xrun")
+    } else if v.overload {
+        Some("Surcharge CPU")
     } else {
         None
     };
@@ -543,6 +617,7 @@ impl eframe::App for Window {
             let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
             ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));
         }
+        self.shared.frames.fetch_add(1, Ordering::Relaxed);
         let v = self.shared.view();
         let p = ui.painter();
         let full = ui.max_rect();
@@ -574,15 +649,7 @@ impl eframe::App for Window {
         rhythm::bass_column(p, bass, &v);
         panel(p, deck_b, Some(theme::ACCENT_COLD));
         melody::deck_b(p, deck_b, &v);
-        panel(p, footer, None);
-        text(
-            p,
-            Pos2::new(footer.left() + theme::SPACE_5, footer.center().y),
-            Align2::LEFT_CENTER,
-            "F : plein écran",
-            theme::BODY,
-            theme::TEXT_DIM,
-        );
+        footer_bar(p, footer, &v);
         if let Some(h) = &v.hud {
             melody::hud(
                 p,

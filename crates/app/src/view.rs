@@ -6,7 +6,50 @@ use engine::sequencer::Pattern;
 use io::controller::{Deck, Led, PadMode};
 use io::leds::{LedBank, LedState};
 
+use std::time::Instant;
+
 use crate::ui::{BassCell, Light};
+
+/// Meter ballistics: instant rise, fall back ~20 dB per second (the peak of each block is kept
+/// long enough to be seen).
+pub struct Meters {
+    levels: [f32; 4],
+    at: Instant,
+}
+
+/// Bottom of the meter scale, in dB.
+const FLOOR_DB: f32 = -48.0;
+const FALL_DB_PER_S: f32 = 20.0;
+
+impl Meters {
+    pub fn new() -> Self {
+        Self {
+            levels: [0.0; 4],
+            at: Instant::now(),
+        }
+    }
+
+    /// Takes the block peaks (linear) and returns the meter positions 0..=1 (dB scale, rounded to
+    /// 1 % so a silent meter stops changing).
+    pub fn update(&mut self, peaks: [f32; 4]) -> [f32; 4] {
+        let elapsed = self.at.elapsed().as_secs_f32();
+        self.at = Instant::now();
+        let fall = 10f32.powf(-FALL_DB_PER_S * elapsed / 20.0);
+        for (level, peak) in self.levels.iter_mut().zip(peaks) {
+            *level = (*level * fall).max(if peak.is_finite() { peak } else { 0.0 });
+        }
+        self.levels.map(position)
+    }
+}
+
+/// A linear peak on the meter: -48 dB → 0, 0 dB → 1, in 1 % steps.
+pub fn position(peak: f32) -> f32 {
+    if peak <= 0.0 {
+        return 0.0;
+    }
+    let db = 20.0 * peak.log10();
+    (((db - FLOOR_DB) / -FLOOR_DB).clamp(0.0, 1.0) * 100.0).round() / 100.0
+}
 
 /// The pattern as drawn: per voice × step, 0 none, 1 ghost, 2 hit, 3 accent.
 pub fn drum_grid(pattern: &Pattern) -> [[u8; 16]; 6] {
@@ -66,6 +109,15 @@ pub fn shown_modes(leds: &LedBank) -> [u8; 2] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn meter_scale_is_in_db() {
+        assert_eq!(position(1.0), 1.0);
+        assert_eq!(position(0.0), 0.0);
+        // -24 dB: half way.
+        assert!((position(0.063) - 0.5).abs() < 0.01);
+        assert_eq!(position(0.001), 0.0);
+    }
 
     #[test]
     fn held_bass_notes_cover_their_length() {
