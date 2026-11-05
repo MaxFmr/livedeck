@@ -98,6 +98,8 @@ struct Wanted {
     delay_send: f32,
     delay_feedback: f32,
     reverb_send: f32,
+    /// Crossfader 0..=1 (0.5 = both decks full).
+    crossfade: f32,
     /// Melody synth brightness 0..=1 (0.5 = the patch).
     brightness: f32,
     /// Drum pattern asked for (0-based) and swing (0.5..=0.75).
@@ -130,7 +132,7 @@ struct Session {
     mapping: Mapping,
     /// Last values echoed to the console (continuous controls are echoed by steps only).
     shown_bpm: f64,
-    shown_levels: [f32; 8],
+    shown_levels: [f32; 9],
     shown_swing: f32,
     shown_density: f32,
     /// Beat-repeat pads held, last pressed last: releasing it falls back to the previous one.
@@ -391,6 +393,7 @@ fn open(
         wanted.delay_feedback,
     ));
     handle.send(Command::SetParam(Param::ReverbSend, wanted.reverb_send));
+    handle.send(Command::SetParam(Param::Crossfade, wanted.crossfade));
     // The style first: it sets the swing, which may have been nudged since.
     handle.send(Command::QueueStyle(wanted.style));
     handle.send(Command::SetScale(wanted.scale));
@@ -758,6 +761,10 @@ fn handle_controller(
                     s.wanted.reverb_send = value;
                     (Param::ReverbSend, 7, "envoi réverb")
                 }
+                Target::Crossfade => {
+                    s.wanted.crossfade = value;
+                    (Param::Crossfade, 8, "crossfader")
+                }
                 Target::Tempo => return,
             };
             if let Some(shown) = s.shown_levels.get_mut(slot)
@@ -1086,6 +1093,7 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
             delay_send: 0.0,
             delay_feedback: 0.5,
             reverb_send: 0.0,
+            crossfade: 0.5,
             brightness: 0.5,
             pattern: 0,
             swing: 0.54,
@@ -1106,7 +1114,7 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
         leds: LedRoles::of(&mapping),
         mapping,
         shown_bpm: 0.0,
-        shown_levels: [-1.0; 8],
+        shown_levels: [-1.0; 9],
         shown_swing: 0.54,
         shown_density: 1.0,
         repeats_held: Vec::new(),
@@ -1489,6 +1497,7 @@ fn hud_of(action: Action, s: &Session) -> Option<ui::Hud> {
                 Target::DelaySend => (Zone::B, "Envoi delay"),
                 Target::DelayFeedback => (Zone::B, "Répétitions"),
                 Target::ReverbSend => (Zone::Center, "Réverb"),
+                Target::Crossfade => (Zone::Center, "Crossfader"),
                 Target::Tempo => return None,
             };
             (zone, label, Percent(v))

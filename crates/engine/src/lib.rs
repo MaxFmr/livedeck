@@ -61,6 +61,8 @@ pub enum Param {
     DelayFeedback,
     /// Whole mix sent to the reverb (drums half as much, bass barely).
     ReverbSend,
+    /// Crossfader between the decks: 0 = rhythm only, 0.5 = both full, 1 = melody only.
+    Crossfade,
 }
 
 /// Beats per bar (4/4 only for now).
@@ -102,6 +104,7 @@ pub struct Engine {
     delay_send: Smoothed,
     delay_feedback: Smoothed,
     reverb_send: Smoothed,
+    crossfade: Smoothed,
     /// Clock position of the last drum hit (sequencer or pad) since the transport started.
     last_hit: Option<u64>,
     /// Length of a roll waiting for the next hit (no hit in the current division at the press).
@@ -153,6 +156,7 @@ impl Engine {
             delay_send: Smoothed::new(0.0, sample_rate, 0.01),
             delay_feedback: Smoothed::new(0.5 * fx::MAX_FEEDBACK, sample_rate, 0.05),
             reverb_send: Smoothed::new(0.0, sample_rate, 0.01),
+            crossfade: Smoothed::new(0.5, sample_rate, 0.01),
             last_hit: None,
             roll_pending: None,
             peaks: [0.0; 4],
@@ -243,6 +247,11 @@ impl Engine {
                 .delay_feedback
                 .set(value.clamp(0.0, 1.0) * fx::MAX_FEEDBACK),
             Param::ReverbSend => self.reverb_send.set(gain_curve(value)),
+            Param::Crossfade => self.crossfade.set(if value.is_finite() {
+                value.clamp(0.0, 1.0)
+            } else {
+                0.5
+            }),
         }
     }
 
@@ -511,6 +520,9 @@ impl Engine {
             let delay_send = self.delay_send.skip(n);
             self.delay.set_feedback(self.delay_feedback.skip(n));
             let reverb_send = self.reverb_send.skip(n);
+            let (rhythm_fade, melody_fade) = crossfade_gains(self.crossfade.skip(n));
+            let (drum_gain, bass_gain) = (drum_gain * rhythm_fade, bass_gain * rhythm_fade);
+            let melody_gain = melody_gain * melody_fade;
             self.delay
                 .set_length((self.delay_time.beats() * self.clock.samples_per_beat()) as f32);
             let start = self.clock.position();
@@ -581,6 +593,17 @@ impl Engine {
             }
         }
     }
+}
+
+/// Crossfader law (rhythm, melody): both full in the middle, each deck fades out over the far half
+/// of the travel (x² so the fade sounds even). Applied before the sends: echoes and reverb tails
+/// of a deck faded out ring on.
+fn crossfade_gains(x: f32) -> (f32, f32) {
+    let side = |d: f32| {
+        let g = (2.0 * d).clamp(0.0, 1.0);
+        g * g
+    };
+    (side(1.0 - x), side(x))
 }
 
 /// Perceptual fader law: 0..=1 → amplitude (x², so the middle of the travel is about -12 dB).
@@ -893,5 +916,14 @@ mod tests {
             assert_eq!(frame[2], 0.0);
             assert_eq!(frame[3], 0.0);
         }
+    }
+
+    #[test]
+    fn crossfader_fades_one_deck_at_each_end() {
+        assert_eq!(crossfade_gains(0.5), (1.0, 1.0));
+        assert_eq!(crossfade_gains(0.0), (1.0, 0.0));
+        assert_eq!(crossfade_gains(1.0), (0.0, 1.0));
+        let (rhythm, melody) = crossfade_gains(0.75);
+        assert!((rhythm - 0.25).abs() < 1e-6 && melody == 1.0);
     }
 }

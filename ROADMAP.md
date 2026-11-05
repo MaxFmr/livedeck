@@ -88,7 +88,8 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 ## Phase 6 — Prêt pour la scène
 
-- [ ] Scènes (8), presets de session (save/load TOML), morph au crossfader.
+- [x] Crossfader : fondu rythme ↔ mélodie (choix de l'utilisateur, à la place du morph). → [024](docs/iterations/024-crossfader.md)
+- [ ] Scènes (8), presets de session (save/load TOML), rappel à la mesure.
 - [ ] Robustesse : débranchement contrôleur/casque en jeu, relance du stream, aucune perte de session.
 - [ ] Endurance : 1 h, 0 xrun, RSS stable.
 - [ ] Paquet `LiveDeck.app` (icône, signature ad hoc), démarrage < 1 s.

@@ -59,6 +59,7 @@ pub enum Target {
     DelaySend,
     DelayFeedback,
     ReverbSend,
+    Crossfade,
 }
 
 /// Result of a mapped gesture, applied by the control thread.
@@ -179,6 +180,7 @@ pub enum ActionName {
     DelaySend,
     DelayFeedback,
     ReverbSend,
+    Crossfade,
     DelayTime,
 }
 
@@ -625,7 +627,8 @@ impl Mapping {
                 | ActionName::MelodyLevel
                 | ActionName::DelaySend
                 | ActionName::DelayFeedback
-                | ActionName::ReverbSend,
+                | ActionName::ReverbSend
+                | ActionName::Crossfade,
                 Input::Absolute(v),
             ) => {
                 let target = target_of(binding.action)?;
@@ -751,7 +754,8 @@ fn normalized(binding: &Binding, target: Target, value: f64) -> f32 {
         | Target::MelodyLevel
         | Target::DelaySend
         | Target::DelayFeedback
-        | Target::ReverbSend => value.clamp(0.0, 1.0) as f32,
+        | Target::ReverbSend
+        | Target::Crossfade => value.clamp(0.0, 1.0) as f32,
     }
 }
 
@@ -773,6 +777,7 @@ fn target_of(action: ActionName) -> Option<Target> {
         ActionName::DelaySend => Some(Target::DelaySend),
         ActionName::DelayFeedback => Some(Target::DelayFeedback),
         ActionName::ReverbSend => Some(Target::ReverbSend),
+        ActionName::Crossfade => Some(Target::Crossfade),
         _ => None,
     }
 }
@@ -820,6 +825,7 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::DelaySend
         | ActionName::DelayFeedback
         | ActionName::ReverbSend
+        | ActionName::Crossfade
         | ActionName::Brightness => {
             matches!(kind, Kind::Absolute)
         }
@@ -1254,6 +1260,16 @@ mod tests {
                 }
             ),
             Some(Action::SetLevel(Target::ReverbSend, 1.0))
+        );
+        assert_eq!(
+            m.handle(
+                9,
+                ControllerEvent::Mixer {
+                    control: MixerControl::Crossfader,
+                    value: 0
+                }
+            ),
+            Some(Action::SetLevel(Target::Crossfade, 0.0))
         );
         assert_eq!(
             m.handle(

@@ -27,6 +27,7 @@
 #   arp_mode (mode = off, up, updown, random), arp_octaves (octaves = 1–4) → pads
 #   arp_rate (step = crans de jog par vitesse), transpose (step = crans de jog par degré) → jogs
 #   phrase (pattern = 1–4, variation = true : seconde moitié une tierce plus haut), à la mesure → pads
+#   crossfade (fondu rythme ↔ mélodie, centre = les deux)               → crossfader
 #   delay_send, delay_feedback (envoi et répétitions du delay de la mélodie),
 #   reverb_send (envoi de tout le mix à la réverb)                     → potards
 #   delay_time (1/8 pointé → 1/4 → 1/8 → 1/4 pointé → 1/16, le style remet le sien) → boutons et pads
@@ -498,6 +499,12 @@ pickup = true
 [[bind]]
 control = "mixer.headphone"
 action = "reverb_send"
+
+# Crossfader (024) : fondu entre les decks. Au centre les deux sonnent ; à gauche le rythme seul,
+# à droite la mélodie seule. Les échos et la réverb du deck qui part continuent de résonner.
+[[bind]]
+control = "mixer.crossfader"
+action = "crossfade"
 
 [[bind]]
 control = "b.pfl"
