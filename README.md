@@ -17,8 +17,8 @@ Everything stays in key: drum patterns, bass lines and chords are written in **s
 the tonic or the scale transposes everything without a wrong note. Musical changes (patterns, styles, key,
 scale) land **on the next bar**.
 
-> Status: phases 0–4 done (rhythm, melody, effects), design system done; phase 5 (egui interface) in progress:
-> the window shows the time bar, the deck widgets come next. The terminal keeps its messages (`--headless`: no window). See [ROADMAP.md](ROADMAP.md) (in French).
+> Status: phases 0–5 done (rhythm, melody, effects, egui interface): the window shows both decks, the gesture HUD
+> and the meters; phase 6 (scenes, stage readiness) is next. The terminal keeps its messages (`--headless`: no window). See [ROADMAP.md](ROADMAP.md) (in French).
 
 ### Targets
 
@@ -153,7 +153,7 @@ the faulty control.
 ```
 crates/engine/   DSP, sequencers, clock. Pure Rust, no I/O: testable offline.
 crates/io/       audio output (cpal), MIDI (midir), controller decoding, mapping, LEDs.
-crates/app/      thread wiring, terminal front end (egui UI in phase 5).
+crates/app/      thread wiring, egui window and terminal front end.
 tools/midi-sniff prints the controller's messages (hardware truth).
 config/          controller mapping.
 docs/            reference knowledge and iteration log (in French).
@@ -230,8 +230,8 @@ Tout reste dans la tonalité : patterns, lignes de basse et accords sont écrits
 donc changer de tonique ou de gamme transpose tout sans fausse note. Les changements musicaux (patterns,
 styles, tonalité, gamme) tombent **à la mesure suivante**.
 
-> État : phases 0 à 4 terminées (rythme, mélodie, effets), système de design fait ; phase 5 (interface egui) en cours :
-> la fenêtre montre la barre du temps, les widgets des decks arrivent ensuite. La console garde ses messages (`--headless` : sans fenêtre). Voir [ROADMAP.md](ROADMAP.md).
+> État : phases 0 à 5 terminées (rythme, mélodie, effets, interface egui) : la fenêtre montre les deux decks, l'écho
+> des gestes et les vumètres ; prochaine étape, la phase 6 (scènes, prêt pour la scène). La console garde ses messages (`--headless` : sans fenêtre). Voir [ROADMAP.md](ROADMAP.md).
 
 ### Objectifs
 
@@ -366,7 +366,7 @@ de mapping est signalée avec le contrôle fautif.
 ```
 crates/engine/   DSP, séquenceurs, horloge. Pur Rust, aucune E/S : testable hors ligne.
 crates/io/       sortie audio (cpal), MIDI (midir), décodage du contrôleur, mapping, LEDs.
-crates/app/      câblage des threads, console (UI egui en phase 5).
+crates/app/      câblage des threads, fenêtre egui et console.
 tools/midi-sniff affiche les messages du contrôleur (vérité matérielle).
 config/          mapping du contrôleur.
 docs/            connaissances de référence et journal des itérations.

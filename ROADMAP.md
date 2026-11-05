@@ -82,7 +82,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 - [x] Widgets : barre de temps, pads, grille de pas, accords/gamme, HUD de paramètres, vumètres. → [021](docs/iterations/021-deck-a-widgets.md), [022](docs/iterations/022-deck-b-hud.md), [023](docs/iterations/023-meters-cadence.md)
 - [x] États : en attente, actif, muté, pickup, contrôleur absent, surcharge CPU. → 021–023
 - [x] Repaint cadencé ; CPU UI à l'arrêt ≈ 0 (+0,4 point, 0,2 image/s). → [023](docs/iterations/023-meters-cadence.md)
-- [ ] D7 Revue sur scène (`/design-review`) — essai groupé prêt : `tools/try-phase5.sh`.
+- [x] D7 Revue sur scène (`/design-review`) : essai groupé `tools/try-phase5.sh` validé au contrôleur (2026-11-05), choix par défaut 021–023 conservés.
 
 **Sortie** : UI conforme à la maquette D4 ; RSS total < 120 Mo ; checklist design verte.
 
@@ -107,6 +107,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 | Date | Évènement |
 |---|---|
+| 2026-11-05 | **Phase 5 terminée** (020–023) : fenêtre egui conforme à D4, essai groupé et revue sur scène D7 validés ; 0 xrun, charge max 3,5 %, fenêtre 8,4 % CPU en lecture, 0,2 image/s à l'arrêt, 59 Mo. Prochaine : phase 6 (scènes, morph au crossfader). |
 | 2026-11-03 | D5 validé : jetons dans `crates/app/src/theme.rs` (4 tailles de police, 5 gris, 4 familles de couleur à 5 états, contrastes testés). Prochaine : phase 5, coquille eframe. |
 | 2026-11-03 | **Phase 4 terminée** (016–019) : poly synthé, accords et voicings, arpège et phrases, delay et réverb ; morceau complet joué au contrôleur, 0 xrun, charge max 12,6 %. Prochaine : D5 (système de design → `theme.rs`) puis phase 5. |
 | 2026-11-01 | **Phase 2 terminée** (007–009) : contrôleur à chaud, mapping configurable, LEDs d'état en rythme, latence geste → son mesurée (médiane ≈ 8 ms). Prochaine : piste D (D1) et phase 3, itération 010. |

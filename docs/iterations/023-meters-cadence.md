@@ -47,3 +47,10 @@ pour que la fenêtre coûte peu en lecture et rien à l'arrêt.
 ## Questions ouvertes
 - ≈ 6,5 points de CPU pour peindre à 30 i/s : surtout la mise en page du texte à chaque image ;
   piste si besoin : ne repeindre la grille qu'au changement de pas.
+
+## Essai groupé de fin de phase 5 (2026-11-05)
+`tools/try-phase5.sh` : 8 étapes guidées puis revue sur scène D7 (écran à 30 %, à 1 m, jeu libre).
+Verdict de l'utilisateur : tout est bon. Mesures du journal : 0 xrun, 0 NaN, charge max 3,5 %,
+contrôleur sans perte ; fenêtre ≈ 28,7 images/s en lecture, 0,2 à l'arrêt.
+Choix par défaut confirmés : pads de mute = miroir des LEDs (allumé = joue), rangée des 8 degrés à la
+place de la progression de D4, HUD du centre par-dessus la colonne basse, 30 i/s en lecture.
