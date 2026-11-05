@@ -2,7 +2,7 @@
 
 - Date de début : 2026-11-05
 - Phase : 6
-- Statut : terminée — essai au contrôleur à faire avec l'essai groupé de la phase 6
+- Statut : terminée — validée au contrôleur par l'utilisateur (2026-11-05)
 
 ## Objectif
 Donner un rôle au crossfader, resté muet jusqu'ici. Décision de l'utilisateur (2026-11-05) : un **fondu
