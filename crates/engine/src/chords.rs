@@ -172,6 +172,21 @@ impl ChordPads {
         }
     }
 
+    /// Chords sounding set at once (scene recall): the pads of `mask` sound, the others stop
+    /// unless held.
+    pub fn set_sounding(&mut self, synth: &mut PolySynth, key: Key, mask: u8) {
+        for pad in 0..PADS {
+            let wanted = mask & (1 << pad) != 0;
+            let sounding = self.sounding.get(pad).copied().unwrap_or(false);
+            let held = self.held.get(pad).copied().unwrap_or(false);
+            if wanted && !sounding {
+                self.play(synth, key, pad as u8);
+            } else if !wanted && sounding && !held {
+                self.stop(synth, pad);
+            }
+        }
+    }
+
     /// Latch on: released chords keep sounding; off: those no longer held stop.
     pub fn set_latch(&mut self, synth: &mut PolySynth, on: bool) {
         self.latch = on;
@@ -381,5 +396,18 @@ mod tests {
         assert_eq!(pads.sounding(), 0b111);
         // The 6 chord voices are releasing, none was started for pad 2.
         assert_eq!(synth.active_voices(), 6);
+    }
+
+    #[test]
+    fn a_scene_sets_the_chords_sounding() {
+        let mut pads = ChordPads::default();
+        let mut synth = PolySynth::new(48_000);
+        let key = A_MINOR;
+        pads.pad(&mut synth, key, 0, true);
+        pads.pad(&mut synth, key, 0, false);
+        pads.set_sounding(&mut synth, key, 0b0110);
+        assert_eq!(pads.sounding(), 0b0110);
+        pads.set_sounding(&mut synth, key, 0);
+        assert_eq!(pads.sounding(), 0);
     }
 }

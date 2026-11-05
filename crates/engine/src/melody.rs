@@ -268,6 +268,19 @@ impl Melody {
         }
     }
 
+    /// Phrase `next` (or none) at the next bar, now if stopped (scene recall).
+    pub fn queue_phrase(&mut self, next: Option<PhraseChoice>, playing: bool) {
+        if next.is_some_and(|(index, _)| usize::from(index) >= PATTERNS) {
+            return;
+        }
+        if playing {
+            self.pending_phrase = (next != self.phrase).then_some(next);
+        } else {
+            self.phrase = next;
+            self.pending_phrase = None;
+        }
+    }
+
     #[must_use]
     pub fn phrase(&self) -> Option<PhraseChoice> {
         self.phrase

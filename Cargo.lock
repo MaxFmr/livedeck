@@ -140,6 +140,8 @@ dependencies = [
  "engine",
  "io",
  "rtrb",
+ "serde",
+ "toml",
 ]
 
 [[package]]

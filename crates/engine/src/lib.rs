@@ -213,6 +213,30 @@ impl Engine {
             .press_phrase(index, variation, self.clock.is_playing());
     }
 
+    /// Phrase to play from the next bar (none: stop), now if stopped.
+    pub fn queue_phrase(&mut self, phrase: Option<melody::PhraseChoice>) {
+        self.melody.queue_phrase(phrase, self.clock.is_playing());
+    }
+
+    /// Chords sounding (bit `i` = pad `i`), as latched ones; held pads keep sounding.
+    pub fn set_chords(&mut self, mask: u8) {
+        let key = self.sequencer.bass().key();
+        self.chords.set_sounding(&mut self.synth, key, mask);
+    }
+
+    /// True when the next bar starts within the next `frames` samples (or at once when stopped).
+    #[must_use]
+    pub fn bar_within(&self, frames: usize) -> bool {
+        let clock = &self.clock;
+        if !clock.is_playing() {
+            return true;
+        }
+        let bar = BEATS_PER_BAR as f64;
+        let beats = clock.beats();
+        let next = (beats / bar).ceil() * bar;
+        (next - beats) * clock.samples_per_beat() < frames as f64
+    }
+
     /// Melody transposition in scale degrees (chords, arpeggio, phrases), right away.
     pub fn set_transpose(&mut self, degrees: i8) {
         let key = self.sequencer.bass().key();
@@ -362,6 +386,15 @@ impl Engine {
         self.sequencer.queue_style(index);
         if !self.clock.is_playing() {
             self.sequencer.apply_style(&mut self.drums, &mut self.bass);
+        }
+    }
+
+    /// Swing for the next bar, set after the style that may be queued with it (now if stopped).
+    pub fn queue_swing(&mut self, swing: f32) {
+        if self.clock.is_playing() {
+            self.sequencer.queue_swing(swing);
+        } else {
+            self.sequencer.set_swing(swing);
         }
     }
 

@@ -28,6 +28,8 @@
 #   arp_rate (step = crans de jog par vitesse), transpose (step = crans de jog par degré) → jogs
 #   phrase (pattern = 1–4, variation = true : seconde moitié une tierce plus haut), à la mesure → pads
 #   crossfade (fondu rythme ↔ mélodie, centre = les deux)               → crossfader
+#   scene (scene = 1–8 : enregistre si vide, rappelle à la mesure sinon), scene_store (la
+#   prochaine scène touchée est réenregistrée)                           → boutons et pads
 #   delay_send, delay_feedback (envoi et répétitions du delay de la mélodie),
 #   reverb_send (envoi de tout le mix à la réverb)                     → potards
 #   delay_time (1/8 pointé → 1/4 → 1/8 → 1/4 pointé → 1/16, le style remet le sien) → boutons et pads
@@ -510,3 +512,59 @@ action = "crossfade"
 control = "b.pfl"
 shift = true
 action = "delay_time"
+
+# Scènes (025) : Shift + pads FX A = scènes 1–4, Shift + pads Loop A = scènes 5–8.
+# Emplacement vide : enregistre le jeu en cours. Plein : le rappelle à la mesure suivante.
+# Sync B arme l'enregistrement : la prochaine scène touchée est remplacée (rappuyer pour annuler).
+
+[[bind]]
+control = "a.pad.fx.1"
+shift = true
+action = "scene"
+scene = 1
+
+[[bind]]
+control = "a.pad.fx.2"
+shift = true
+action = "scene"
+scene = 2
+
+[[bind]]
+control = "a.pad.fx.3"
+shift = true
+action = "scene"
+scene = 3
+
+[[bind]]
+control = "a.pad.fx.4"
+shift = true
+action = "scene"
+scene = 4
+
+[[bind]]
+control = "a.pad.loop.1"
+shift = true
+action = "scene"
+scene = 5
+
+[[bind]]
+control = "a.pad.loop.2"
+shift = true
+action = "scene"
+scene = 6
+
+[[bind]]
+control = "a.pad.loop.3"
+shift = true
+action = "scene"
+scene = 7
+
+[[bind]]
+control = "a.pad.loop.4"
+shift = true
+action = "scene"
+scene = 8
+
+[[bind]]
+control = "b.sync"
+action = "scene_store"
