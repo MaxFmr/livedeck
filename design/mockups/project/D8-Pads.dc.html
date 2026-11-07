@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LiveDeck D8 — pads et anneaux</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0A0B}
+a{color:#2BC8FF}a:hover{color:#BBEDFF}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; padding: 32px; background: #0A0A0B; color: #E8E8EA; font-family: Inter, sans-serif; font-weight: 500; display: grid; grid-template-columns: 1fr 260px 1fr; gap: 32px">
+
+  <div style="display: flex; flex-direction: column; gap: 24px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline">
+      <span style="font-size: 22px; font-weight: 700; color: #FF6A2B">Rythme</span>
+      <span style="font-size: 14px; color: #8A8A90">kit Dub · pattern 2</span>
+    </div>
+    <div style="display: flex; justify-content: space-between">
+      <sc-for list="{{leftRings}}" as="k" hint-placeholder-count="4">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+          <svg width="88" height="88" viewBox="0 0 56 56" aria-hidden="true">
+            <circle cx="28" cy="28" r="22" fill="none" stroke="#1A1A1D" stroke-width="7"></circle>
+            <circle cx="28" cy="28" r="22" fill="none" stroke="{{k.color}}" stroke-width="7" stroke-linecap="round" stroke-dasharray="{{k.dash}}" transform="rotate(-90 28 28)"></circle>
+            <text x="28" y="32" text-anchor="middle" font-size="11" font-family="Inter" font-weight="700" fill="#E8E8EA">{{k.value}}</text>
+          </svg>
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">{{k.name}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; flex-grow: 1">
+      <sc-for list="{{leftPads}}" as="p" hint-placeholder-count="8">
+        <div style="{{p.style}}">
+          <span style="font-size: 22px; font-weight: 700">{{p.name}}</span>
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; opacity: 0.7">{{p.sub}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: flex; gap: 6px">
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="16"><div style="{{s}}"></div></sc-for>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 24px; padding-top: 8px">
+    <svg width="200" height="200" viewBox="0 0 200 200" role="img" aria-label="Mesure 3, temps 2 sur 4, 124 BPM">
+      <circle cx="100" cy="100" r="86" fill="none" stroke="#1A1A1D" stroke-width="14"></circle>
+      <path d="M100 14 A86 86 0 0 1 186 100" fill="none" stroke="#3A3A40" stroke-width="14"></path>
+      <path d="M186 100 A86 86 0 0 1 100 186" fill="none" stroke="#E8E8EA" stroke-width="14"></path>
+      <text x="100" y="104" text-anchor="middle" font-size="48" font-family="Inter" font-weight="700" fill="#E8E8EA">124</text>
+      <text x="100" y="132" text-anchor="middle" font-size="12" font-family="Inter" font-weight="700" letter-spacing="1.5" fill="#8A8A90">MESURE 3</text>
+    </svg>
+    <span style="font-size: 22px; font-weight: 700">La mineur</span>
+    <div style="height: 1px; width: 100%; background: #2A2A2E"></div>
+    <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">DUB</span>
+    <div style="display: flex; gap: 20px">
+      <sc-for list="{{fx}}" as="k" hint-placeholder-count="2">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+          <svg width="72" height="72" viewBox="0 0 56 56" aria-hidden="true">
+            <circle cx="28" cy="28" r="22" fill="none" stroke="#1A1A1D" stroke-width="7"></circle>
+            <circle cx="28" cy="28" r="22" fill="none" stroke="#E8E8EA" stroke-width="7" stroke-linecap="round" stroke-dasharray="{{k.dash}}" transform="rotate(-90 28 28)"></circle>
+          </svg>
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">{{k.name}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="width: 100%; padding: 14px 0; border-radius: 4px; background: #E8E8EA; color: #0A0A0B; text-align: center; font-size: 14px; font-weight: 700">THROW · écho tenu</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 24px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline">
+      <span style="font-size: 22px; font-weight: 700; color: #2BC8FF">Accords · phrase</span>
+      <span style="font-size: 14px; color: #8A8A90">figée · densité 60 %</span>
+    </div>
+    <div style="display: flex; justify-content: space-between">
+      <sc-for list="{{rightRings}}" as="k" hint-placeholder-count="4">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+          <svg width="88" height="88" viewBox="0 0 56 56" aria-hidden="true">
+            <circle cx="28" cy="28" r="22" fill="none" stroke="#1A1A1D" stroke-width="7"></circle>
+            <circle cx="28" cy="28" r="22" fill="none" stroke="#2BC8FF" stroke-width="7" stroke-linecap="round" stroke-dasharray="{{k.dash}}" transform="rotate(-90 28 28)"></circle>
+            <text x="28" y="32" text-anchor="middle" font-size="11" font-family="Inter" font-weight="700" fill="#E8E8EA">{{k.value}}</text>
+          </svg>
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">{{k.name}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; flex-grow: 1">
+      <sc-for list="{{rightPads}}" as="p" hint-placeholder-count="8">
+        <div style="{{p.style}}">
+          <span style="font-size: 22px; font-weight: 700">{{p.name}}</span>
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; opacity: 0.7">{{p.sub}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: flex; gap: 6px">
+      <sc-for list="{{phraseSteps}}" as="s" hint-placeholder-count="16"><div style="{{s}}"></div></sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const C = 138.2;
+    const ring = (f) => (C * f).toFixed(1) + ' 200';
+    const leftRings = [
+      { name: 'COUPURE', value: '35', f: 0.35, color: '#E8A33D' },
+      { name: 'RÉSO', value: '60', f: 0.6, color: '#E8A33D' },
+      { name: 'DECAY', value: '220', f: 0.3, color: '#E8A33D' },
+      { name: 'RYTHME', value: '80', f: 0.8, color: '#FF6A2B' }
+    ].map((k) => ({ ...k, dash: ring(k.f) }));
+    const rightRings = [
+      { name: 'DENSITÉ', value: '60', f: 0.6 },
+      { name: 'BRILL.', value: '50', f: 0.5 },
+      { name: 'DELAY', value: '55', f: 0.55 },
+      { name: 'MÉLODIE', value: '75', f: 0.75 }
+    ].map((k) => ({ ...k, dash: ring(k.f) }));
+    const fx = [{ name: 'DELAY', f: 0.55 }, { name: 'RÉVERB', f: 0.4 }].map((k) => ({ ...k, dash: ring(k.f) }));
+    const padStyle = (state, c, muted) => 'border-radius: 6px; display: flex; flex-direction: column; justify-content: space-between; padding: 14px; box-sizing: border-box;' +
+      (state === 'on' ? 'background: ' + c + '; color: #0A0A0B;' :
+        state === 'wait' ? 'background: ' + muted + '; color: #E8E8EA; outline: 2px dashed ' + c + '; outline-offset: -2px;' :
+          'background: #1A1A1D; color: #E8E8EA;');
+    const leftPads = [
+      ['1', 'PATTERN', 'off'], ['2', 'PATTERN', 'on'], ['3', 'PATTERN', 'wait'], ['4', 'PATTERN', 'off'],
+      ['K', 'MUTE', 'on'], ['R', 'MUTE', 'on'], ['H', 'MUTE', 'on'], ['P', 'MUTE', 'off']
+    ].map(([n, s, st]) => ({ name: n, sub: s, style: padStyle(st, '#FF6A2B', '#4F2514') }));
+    const rightPads = [
+      ['i7', 'ACCORD', 'on'], ['iv7', 'ACCORD', 'off'], ['v9', 'ACCORD', 'off'], ['VI7', 'ACCORD', 'off'],
+      ['Gén.', 'PHRASE', 'off'], ['Muter', 'PHRASE', 'wait'], ['Figer', 'PHRASE', 'on'], ['Eff.', 'PHRASE', 'off']
+    ].map(([n, s, st]) => ({ name: n, sub: s, style: padStyle(st, '#2BC8FF', '#133F4F') }));
+    const step = 6;
+    const dot = (on, now, c) => 'flex: 1; height: 10px; border-radius: 2px; background: ' + (now ? '#E8E8EA' : on ? c : '#1A1A1D') + ';';
+    const steps = Array.from({ length: 16 }, (_, i) => dot([0, 4, 8, 12].includes(i), i === step, '#944221'));
+    const phraseSteps = Array.from({ length: 16 }, (_, i) => dot([0, 3, 6, 8, 10, 12, 14].includes(i), i === step, '#207695'));
+    return { leftRings, rightRings, fx, leftPads, rightPads, steps, phraseSteps };
+  }
+}
+</script>
+</body>
+</html>

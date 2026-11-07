@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LiveDeck D8 — écran central</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0A0B}
+a{color:#2BC8FF}a:hover{color:#BBEDFF}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; padding: 24px; background: #0A0A0B; color: #E8E8EA; font-family: Inter, sans-serif; font-weight: 500; display: grid; grid-template-columns: 220px 1fr 220px; gap: 24px">
+
+  <div style="display: flex; flex-direction: column; gap: 16px">
+    <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #FF6A2B">A · RYTHME + BASSE</span>
+    <sc-for list="{{leftKnobs}}" as="k" hint-placeholder-count="4">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <svg width="48" height="48" viewBox="0 0 56 56" aria-hidden="true">
+          <circle cx="28" cy="28" r="22" fill="none" stroke="#2A2A2E" stroke-width="6" stroke-dasharray="103.7 200" transform="rotate(135 28 28)"></circle>
+          <circle cx="28" cy="28" r="22" fill="none" stroke="{{k.color}}" stroke-width="6" stroke-dasharray="{{k.dash}}" transform="rotate(135 28 28)"></circle>
+        </svg>
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 14px">{{k.name}} <span style="color: #8A8A90">{{k.value}}</span></span>
+          <span style="font-size: 12px; color: #8A8A90">{{k.ctl}}</span>
+        </div>
+      </div>
+    </sc-for>
+    <div style="flex-grow: 1"></div>
+    <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">PADS · HOT CUE</span>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+      <sc-for list="{{leftPads}}" as="p" hint-placeholder-count="4"><div style="{{p.style}}">{{p.name}}</div></sc-for>
+    </div>
+  </div>
+
+  <div style="background: #121214; border-radius: 6px; border: 1px solid #2A2A2E; padding: 24px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: baseline; gap: 20px">
+      <span style="font-size: 36px; font-weight: 700">124</span>
+      <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">BPM</span>
+      <span style="font-size: 22px; font-weight: 700">3.2</span>
+      <div style="flex-grow: 1"></div>
+      <span style="font-size: 22px; font-weight: 700">La mineur</span>
+      <span style="font-size: 14px; color: #8A8A90">kit Dub</span>
+    </div>
+    <div style="height: 1px; background: #2A2A2E"></div>
+
+    <sc-for list="{{tracks}}" as="t" hint-placeholder-count="3">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline">
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: {{t.color}}">{{t.name}}</span>
+          <span style="font-size: 14px; color: #8A8A90">{{t.info}}</span>
+        </div>
+        <div style="position: relative; height: {{t.height}}; background: #0A0A0B; border-radius: 4px">
+          <sc-for list="{{t.marks}}" as="m" hint-placeholder-count="6"><div style="{{m}}"></div></sc-for>
+          <div style="{{playhead}}"></div>
+        </div>
+      </div>
+    </sc-for>
+
+    <div style="flex-grow: 1"></div>
+    <div style="display: flex; gap: 12px; align-items: center">
+      <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">À LA MESURE</span>
+      <div style="padding: 6px 12px; border-radius: 4px; border: 2px dashed #FF6A2B; color: #FF6A2B; font-size: 14px">pattern 3</div>
+      <div style="padding: 6px 12px; border-radius: 4px; border: 2px dashed #2BC8FF; color: #2BC8FF; font-size: 14px">phrase mutée</div>
+      <div style="flex-grow: 1"></div>
+      <span style="font-size: 14px; color: #8A8A90">dans 2 temps</span>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 16px">
+    <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #2BC8FF">B · ACCORDS + PHRASE</span>
+    <sc-for list="{{rightKnobs}}" as="k" hint-placeholder-count="4">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <svg width="48" height="48" viewBox="0 0 56 56" aria-hidden="true">
+          <circle cx="28" cy="28" r="22" fill="none" stroke="#2A2A2E" stroke-width="6" stroke-dasharray="103.7 200" transform="rotate(135 28 28)"></circle>
+          <circle cx="28" cy="28" r="22" fill="none" stroke="#2BC8FF" stroke-width="6" stroke-dasharray="{{k.dash}}" transform="rotate(135 28 28)"></circle>
+        </svg>
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 14px">{{k.name}} <span style="color: #8A8A90">{{k.value}}</span></span>
+          <span style="font-size: 12px; color: #8A8A90">{{k.ctl}}</span>
+        </div>
+      </div>
+    </sc-for>
+    <div style="flex-grow: 1"></div>
+    <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">PADS · SAMPLER</span>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+      <sc-for list="{{rightPads}}" as="p" hint-placeholder-count="4"><div style="{{p.style}}">{{p.name}}</div></sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const arc = (f) => (103.7 * f).toFixed(1) + ' 200';
+    const W = 728; // inner width of a track lane
+    const x = (s) => (s * W / 16);
+    const leftKnobs = [
+      { name: 'Coupure', value: '35 %', f: 0.35, ctl: 'Filter A', color: '#E8A33D' },
+      { name: 'Réso', value: '60 %', f: 0.6, ctl: 'Bass A', color: '#E8A33D' },
+      { name: 'Decay env.', value: '220 ms', f: 0.3, ctl: 'Tempo A', color: '#E8A33D' },
+      { name: 'Rythme', value: '80 %', f: 0.8, ctl: 'Volume A', color: '#FF6A2B' }
+    ].map((k) => ({ ...k, dash: arc(k.f) }));
+    const rightKnobs = [
+      { name: 'Densité', value: '60 %', f: 0.6, ctl: 'Tempo B' },
+      { name: 'Brillance', value: '50 %', f: 0.5, ctl: 'Filter B' },
+      { name: 'Delay', value: '55 %', f: 0.55, ctl: 'Bass B' },
+      { name: 'Mélodie', value: '75 %', f: 0.75, ctl: 'Volume B' }
+    ].map((k) => ({ ...k, dash: arc(k.f) }));
+    const pad = (on, c) => 'height: 56px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;' +
+      (on ? 'background: ' + c + '; color: #0A0A0B;' : 'background: #1A1A1D; color: #E8E8EA;');
+    const leftPads = [['1', false], ['2', true], ['3', false], ['4', false]].map(([n, on]) => ({ name: 'Pattern ' + n, style: pad(on, '#FF6A2B') }));
+    const rightPads = [['Générer', false], ['Muter', false], ['Figer', true], ['Effacer', false]].map(([n, on]) => ({ name: n, style: pad(on, '#2BC8FF') }));
+    const hit = (s, row, h, c, len) => 'position: absolute; left: ' + (x(s) + 2) + 'px; top: ' + row + 'px; width: ' + (x(len || 1) - 4) + 'px; height: ' + h + 'px; border-radius: 2px; background: ' + c + ';';
+    const drums = [];
+    [0, 4, 8, 12].forEach((s) => drums.push(hit(s, 8, 14, '#FF6A2B')));
+    [4, 12].forEach((s) => drums.push(hit(s, 26, 8, '#944221')));
+    [2, 6, 10, 14].forEach((s) => drums.push(hit(s, 38, 8, '#944221')));
+    const bass = [[2, 1, 2], [3, 1, 2], [7, 2, 1], [10, 1, 3], [14, 2, 2]].map(([s, l, r]) => hit(s, 6 + (3 - r) * 12, 10, '#E8A33D', l));
+    const mel = [[0, 2, 5], [3, 1, 4], [6, 2, 3], [8, 3, 2], [10, 1, 5], [12, 2, 4], [14, 2, 2]].map(([s, l, r]) => hit(s, 6 + (6 - r) * 14, 10, '#2BC8FF', l));
+    const tracks = [
+      { name: 'RYTHME', info: 'pattern 2 · densité 70 %', color: '#FF6A2B', height: '54px', marks: drums },
+      { name: 'BASSE', info: 'ligne 2 · contretemps', color: '#E8A33D', height: '54px', marks: bass },
+      { name: 'PHRASE', info: 'figée · i7 tenu', color: '#2BC8FF', height: '104px', marks: mel }
+    ];
+    const playhead = 'position: absolute; top: 0; bottom: 0; left: ' + x(6.5) + 'px; width: 2px; background: #E8E8EA;';
+    return { leftKnobs, rightKnobs, leftPads, rightPads, tracks, playhead };
+  }
+}
+</script>
+</body>
+</html>

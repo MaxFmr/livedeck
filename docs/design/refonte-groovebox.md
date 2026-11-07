@@ -167,6 +167,10 @@ Une ligne par contrôle ; « Shift » seulement pour les réglages rares. Tout c
 
 ## 10. Suite
 
+- 2026-11-07 : D8 basse fidélité publiée dans le [canvas](https://claude.ai/artifact/SEij2MqjacTXCRc8kuJKU6),
+  rangée « D8 » : 1 · séquenceur 16 pas (esprit TR), 2 · écran central (esprit Elektron), 3 · pads et
+  anneaux (esprit Circuit). Sources dans `design/mockups/project/D8-*.dc.html`. Choix en attente.
+
 1. **D8** : maquettes de l'interface groovebox (2–3 pistes basse fidélité, puis une haute fidélité),
    avec cette carte affichée sur la maquette pour la valider en même temps.
 2. Puis R1 → R6 dans l'ordre du § 7, chaque itération jouable et essayée au contrôleur.

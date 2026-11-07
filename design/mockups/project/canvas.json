@@ -45,6 +45,27 @@
       "w": 1280,
       "h": 1240,
       "title": "D5 · Système de design (jetons de theme.rs)"
+    },
+    "D8-Pas.dc.html": {
+      "x": 0,
+      "y": 2900,
+      "w": 1280,
+      "h": 800,
+      "title": "D8 · 1 · Séquenceur 16 pas (esprit TR)"
+    },
+    "D8-Ecran.dc.html": {
+      "x": 1360,
+      "y": 2900,
+      "w": 1280,
+      "h": 800,
+      "title": "D8 · 2 · Écran central (esprit Elektron)"
+    },
+    "D8-Pads.dc.html": {
+      "x": 2720,
+      "y": 2900,
+      "w": 1280,
+      "h": 800,
+      "title": "D8 · 3 · Pads et anneaux (esprit Circuit)"
     }
   },
   "order": [
@@ -52,7 +73,10 @@
     "Afficheur.dc.html",
     "Formes.dc.html",
     "D4.dc.html",
-    "D5.dc.html"
+    "D5.dc.html",
+    "D8-Pas.dc.html",
+    "D8-Ecran.dc.html",
+    "D8-Pads.dc.html"
   ],
   "notes": {
     "titre": {
@@ -68,6 +92,13 @@
       "text": "D4 · haute fidélité — piste 1 retenue, états simulés",
       "kind": "title1",
       "maxW": 1280
+    },
+    "d8": {
+      "x": 0,
+      "y": 2600,
+      "text": "D8 · groovebox dub techno — trois pistes, mêmes données (124 BPM, mesure 3, La mineur, kit Dub)",
+      "kind": "title1",
+      "maxW": 4000
     }
   },
   "designSystems": []
