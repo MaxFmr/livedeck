@@ -1,79 +1,127 @@
 {
   "v": 3,
-  "createdOnFiles": {
-    "v": 1,
-    "at": "2026-11-01T12:00:00Z"
-  },
-  "title": "LiveDeck — maquettes D3",
-  "launch": {
-    "view": "canvas"
-  },
-  "pages": [],
+  "attachments": {},
   "boards": {
-    "Main.dc.html": {
-      "x": 0,
-      "y": 0,
-      "w": 1280,
-      "h": 800,
-      "title": "1 · Rangée de pas"
-    },
     "Afficheur.dc.html": {
+      "h": 800,
+      "title": "2 · Afficheur",
+      "w": 1280,
       "x": 1360,
-      "y": 0,
-      "w": 1280,
-      "h": 800,
-      "title": "2 · Afficheur"
-    },
-    "Formes.dc.html": {
-      "x": 2720,
-      "y": 0,
-      "w": 1280,
-      "h": 800,
-      "title": "3 · Formes colorées"
+      "y": 0
     },
     "D4.dc.html": {
-      "x": 0,
-      "y": 1220,
-      "w": 1280,
       "h": 960,
+      "is_interactive": true,
       "title": "D4 · Rangée de pas (interactive)",
-      "is_interactive": true
+      "w": 1280,
+      "x": 0,
+      "y": 1220
     },
     "D5.dc.html": {
-      "x": 1360,
-      "y": 1220,
-      "w": 1280,
       "h": 1240,
-      "title": "D5 · Système de design (jetons de theme.rs)"
-    },
-    "D8-Pas.dc.html": {
-      "x": 0,
-      "y": 2900,
+      "title": "D5 · Système de design (jetons de theme.rs)",
       "w": 1280,
-      "h": 800,
-      "title": "D8 · 1 · Séquenceur 16 pas (esprit TR)"
+      "x": 1360,
+      "y": 1220
     },
     "D8-Ecran.dc.html": {
-      "x": 1360,
-      "y": 2900,
-      "w": 1280,
       "h": 800,
-      "title": "D8 · 2 · Écran central (esprit Elektron)"
-    },
-    "D8-Pads.dc.html": {
-      "x": 2720,
-      "y": 2900,
+      "title": "D8 · 2 · Écran central (esprit Elektron)",
       "w": 1280,
-      "h": 800,
-      "title": "D8 · 3 · Pads et anneaux (esprit Circuit)"
+      "x": 1331,
+      "y": 3115
     },
     "D8-HF.dc.html": {
+      "h": 960,
+      "is_interactive": true,
+      "title": "D8 · haute fidélité — pads et anneaux, carte du contrôleur (interactive)",
+      "w": 1280,
       "x": 0,
+      "y": 4120
+    },
+    "D8-Pads.dc.html": {
+      "h": 800,
+      "title": "D8 · 3 · Pads et anneaux (esprit Circuit)",
+      "w": 1280,
+      "x": 2720,
+      "y": 2900
+    },
+    "D8-Pas.dc.html": {
+      "h": 800,
+      "title": "D8 · 1 · Séquenceur 16 pas (esprit TR)",
+      "w": 1280,
+      "x": 0,
+      "y": 2900
+    },
+    "Formes.dc.html": {
+      "h": 800,
+      "title": "3 · Formes colorées",
+      "w": 1280,
+      "x": 2720,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 800,
+      "title": "1 · Rangée de pas",
+      "w": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "D8-HF-Ecran.dc.html": {
+      "x": 1360,
       "y": 4120,
       "w": 1280,
       "h": 960,
-      "title": "D8 · haute fidélité — pads et anneaux, carte du contrôleur (interactive)",
+      "title": "D8 · haute fidélité — écran central (piste 2 retenue), carte du contrôleur (interactive)",
       "is_interactive": true
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-11-01T12:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "noteOrder": [
+    "titre",
+    "d4",
+    "d8",
+    "d8hf"
+  ],
+  "notes": {
+    "d4": {
+      "kind": "title1",
+      "maxW": 1280,
+      "text": "D4 · haute fidélité — piste 1 retenue, états simulés",
+      "w": 240,
+      "x": 0,
+      "y": 920
+    },
+    "d8": {
+      "kind": "title1",
+      "maxW": 4000,
+      "text": "D8 · groovebox dub techno — trois pistes, mêmes données (124 BPM, mesure 3, La mineur, kit Dub)",
+      "w": 240,
+      "x": 0,
+      "y": 2600
+    },
+    "d8hf": {
+      "kind": "title1",
+      "maxW": 2640,
+      "text": "D8 · haute fidélité — à gauche pads et anneaux (piste 3), à droite écran central (piste 2, retenue)",
+      "w": 240,
+      "x": 0,
+      "y": 3820
+    },
+    "titre": {
+      "kind": "title1",
+      "maxW": 4000,
+      "text": "LiveDeck · D3 — trois pistes, mêmes données (124 BPM, mesure 3, La mineur)",
+      "w": 240,
+      "x": 0,
+      "y": -300
     }
   },
   "order": [
@@ -85,37 +133,9 @@
     "D8-Pas.dc.html",
     "D8-Ecran.dc.html",
     "D8-Pads.dc.html",
-    "D8-HF.dc.html"
+    "D8-HF.dc.html",
+    "D8-HF-Ecran.dc.html"
   ],
-  "notes": {
-    "titre": {
-      "x": 0,
-      "y": -300,
-      "text": "LiveDeck · D3 — trois pistes, mêmes données (124 BPM, mesure 3, La mineur)",
-      "kind": "title1",
-      "maxW": 4000
-    },
-    "d4": {
-      "x": 0,
-      "y": 920,
-      "text": "D4 · haute fidélité — piste 1 retenue, états simulés",
-      "kind": "title1",
-      "maxW": 1280
-    },
-    "d8": {
-      "x": 0,
-      "y": 2600,
-      "text": "D8 · groovebox dub techno — trois pistes, mêmes données (124 BPM, mesure 3, La mineur, kit Dub)",
-      "kind": "title1",
-      "maxW": 4000
-    },
-    "d8hf": {
-      "x": 0,
-      "y": 3820,
-      "text": "D8 · haute fidélité — piste 3 retenue : modes, Shift, carte du contrôleur",
-      "kind": "title1",
-      "maxW": 1280
-    }
-  },
-  "designSystems": []
+  "pages": [],
+  "title": "LiveDeck — maquettes D3"
 }

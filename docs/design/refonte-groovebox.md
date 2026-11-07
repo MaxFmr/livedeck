@@ -173,7 +173,10 @@ Une ligne par contrôle ; « Shift » seulement pour les réglages rares. Tout c
 - 2026-11-07 : D8 haute fidélité interactive (`D8-HF.dc.html`) : onglets de mode par deck (Hot Cue,
   Sampler, FX, Loop) et Shift montrent la carte du § 9 pad par pad ; potards nommés par leur commande
   du contrôleur ; temps qui avance à 124 BPM, changements à la mesure (file « À la mesure »).
-  Validation en attente.
+  Validée le 2026-11-07, puis l'utilisateur préfère **l'écran central (piste 2)** : nouvelle haute
+  fidélité `D8-HF-Ecran.dc.html` — l'écran montre rythme (4 voix), basse et phrase sous une même tête
+  de lecture, « À la mesure », crossfader, master et réverb ; les côtés gardent les anneaux nommés par
+  leur commande, les onglets de mode, Shift et les 4 pads du mode. **C'est la référence pour R5.**
 
 1. **D8** : maquettes de l'interface groovebox (2–3 pistes basse fidélité, puis une haute fidélité),
    avec cette carte affichée sur la maquette pour la valider en même temps.
