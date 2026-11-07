@@ -81,6 +81,12 @@ pub struct Voicing {
     pub extension: Extension,
 }
 
+/// Scale degree (1-based) of chord pad `pad` (0..8).
+#[must_use]
+pub fn pad_degree(pad: u8) -> Option<u8> {
+    DEGREES.get(usize::from(pad)).copied()
+}
+
 /// MIDI notes of `degree` moved by `transpose` degrees in `key` with `voicing`, lowest first;
 /// returns how many are used.
 #[must_use]

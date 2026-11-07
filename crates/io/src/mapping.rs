@@ -137,6 +137,8 @@ pub enum Action {
     Loop(u8),
     /// Erases a loop (0-based).
     ClearLoop(u8),
+    /// REC: the first empty loop records from the next bar.
+    RecLoop,
     /// Length of the next loop recorded, in steps of 1, 2, 4 bars.
     NudgeLoopBars(i8),
     SetTempo(f64),
@@ -193,6 +195,7 @@ pub enum ActionName {
     NoteMode,
     Loop,
     LoopClear,
+    LoopRec,
     LoopBars,
 }
 
@@ -589,6 +592,7 @@ impl Mapping {
             (ActionName::ArpMode, Input::Press(true)) => Some(Action::ArpMode(binding.value)),
             (ActionName::ArpOctaves, Input::Press(true)) => Some(Action::ArpOctaves(binding.value)),
             (ActionName::NoteMode, Input::Press(true)) => Some(Action::ToggleNoteMode),
+            (ActionName::LoopRec, Input::Press(true)) => Some(Action::RecLoop),
             (ActionName::Loop, Input::Press(true)) => Some(Action::Loop(binding.pattern)),
             (ActionName::LoopClear, Input::Press(true)) => Some(Action::ClearLoop(binding.pattern)),
             (ActionName::Phrase, Input::Press(true)) => Some(Action::Phrase {
@@ -825,6 +829,7 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::NoteMode
         | ActionName::Loop
         | ActionName::LoopClear
+        | ActionName::LoopRec
         | ActionName::Chord
         | ActionName::LatchToggle
         | ActionName::Inversion
@@ -1346,6 +1351,13 @@ mod tests {
             pressed: true,
         };
         assert_eq!(m.handle(5, sync_b), Some(Action::ToggleNoteMode));
+        let pfl_b = ControllerEvent::Button {
+            deck: Deck::B,
+            button: Button::Pfl,
+            shift: false,
+            pressed: true,
+        };
+        assert_eq!(m.handle(6, pfl_b), Some(Action::RecLoop));
         let top = |delta| ControllerEvent::Jog {
             deck: Deck::B,
             surface: JogSurface::Top,

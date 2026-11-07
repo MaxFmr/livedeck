@@ -73,8 +73,9 @@ vii, I à l'octave ; pads Loop B = latch, renversement +/−, octave +/−, exte
 Shift + jog droit = gamme, à la mesure. Pads FX B = arpège off / montant / aller-retour / aléatoire
 (Shift : 1 à 4 octaves), bord du jog B = vitesse 1/4 … 1/32 ; jog B par le dessus = transposition dans
 la gamme, un degré par quart de tour. Sync B = pads Hot Cue B en notes (degrés 1 à 8) ↔ accords.
-Pads Sampler B = boucles de mélodie : vide = enregistre dès la mesure, pleine = lance / arrête à la
-mesure, Shift = efface ; Shift + jog B par le dessus = longueur 1, 2 ou 4 mesures.
+PFL B = REC : la prochaine boucle vide enregistre accords et notes dès la mesure (rappuyer : annule).
+Pads Sampler B = boucles : lance / arrête à la mesure (vide : enregistre aussi), Shift = efface ;
+Shift + jog B par le dessus = longueur 1, 2 ou 4 mesures.
 Effets : potard Bass B = delay de la mélodie (Shift : répétitions), Headphone = réverb (stéréo),
 Shift + PFL B = temps du delay 1/8 pointé, 1/4, 1/8, 1/4 pointé, 1/16 (chaque style amène le sien).
 Chaque son joué au pad affiche sa latence geste → son.";
@@ -178,6 +179,8 @@ struct LedRoles {
     /// Loop pads with their slot; the chords ↔ notes switch (lit in notes).
     loops: Vec<(Led, u8)>,
     note_mode: Vec<Led>,
+    /// REC: blinks while armed, blinks fast while recording.
+    rec: Vec<Led>,
 }
 
 impl LedRoles {
@@ -202,6 +205,7 @@ impl LedRoles {
             phrases: indexed(ActionName::Phrase),
             loops: indexed(ActionName::Loop),
             note_mode: leds(ActionName::NoteMode),
+            rec: leds(ActionName::LoopRec),
         }
     }
 }
@@ -602,6 +606,9 @@ fn handle_controller(
         Action::Loop(slot) => {
             handle.send(Command::Loop(slot));
         }
+        Action::RecLoop => {
+            handle.send(Command::RecLoop);
+        }
         Action::ClearLoop(slot) => {
             handle.send(Command::ClearLoop(slot));
             println!("  ✕ boucle {} effacée", slot + 1);
@@ -995,6 +1002,20 @@ fn update_leds(leds: &mut LedBank, s: &Session, snap: &EngineSnapshot, beats: f6
             LoopState::Empty | LoopState::Stopped => LedState::Off,
         };
         leds.set_state(led, led_state);
+    }
+    let rec = {
+        use engine::looper::LoopState;
+        let states = snap.loops.map(LoopState::from_index);
+        if states.contains(&LoopState::Recording) {
+            LedState::BlinkFast
+        } else if states.contains(&LoopState::Armed) {
+            LedState::Blink
+        } else {
+            LedState::Off
+        }
+    };
+    for &led in &s.leds.rec {
+        leds.set_state(led, rec);
     }
     if s.wanted.note_mode {
         for &led in &s.leds.note_mode {

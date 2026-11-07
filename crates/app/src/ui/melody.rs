@@ -248,6 +248,14 @@ fn loops(p: &Painter, inner: Rect, top: f32, v: &View) {
         theme::LABEL,
         theme::TEXT_DIM,
     );
+    text(
+        p,
+        Pos2::new(inner.right(), top),
+        Align2::RIGHT_TOP,
+        "PFL B = rec · Shift + pad = efface",
+        theme::BODY,
+        theme::TEXT_DIM,
+    );
     let cells_top = top + 20.0;
     let gap = theme::SPACE_2;
     let w = (inner.width() - 3.0 * gap) / 4.0;

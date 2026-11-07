@@ -2,7 +2,7 @@
 
 - Date de début : 2026-11-07
 - Phase : 6
-- Statut : terminée — essai au contrôleur à faire (`tools/try-026.sh`)
+- Statut : en cours — premier essai au contrôleur (2026-11-07) : retours traités, second essai à faire
 
 ## Objectif
 Changement de cap de l'utilisateur (2026-11-07) : les scènes (025) compliquaient le jeu ; on mise sur
@@ -51,3 +51,18 @@ l'impro à la volée. Jouer une mélodie note par note et l'enregistrer en boucl
 - Revue temps réel : aucun `Vec`, boucles bornées (64 notes, 8 voix, 4 emplacements), pas d'index
   direct ; `no_alloc` vert.
 - Rejoué sans contrôleur (`midi` + `shot`) : mode notes, B1 armée → enregistre → tourne.
+
+## Premier essai au contrôleur (2026-11-07) et corrections
+Retour de l'utilisateur : « en mode rec je ne peux pas jouer et ça n'enregistre pas ». Le journal montre
+deux causes :
+- Sync B pressé deux fois : retour aux accords, qui n'étaient pas enregistrés.
+- Armer demandait le mode Sampler et jouer le mode Hot Cue : il fallait changer de mode entre les deux,
+  et rappuyer sur le pad Sampler annulait l'enregistrement (« boucle 1 : vide » à répétition).
+Corrections (**choix par défaut, à revoir**) :
+- **PFL B = REC** : arme la première boucle vide (dès la mesure suivante), sans quitter le mode Hot
+  Cue ; rappuyer annule. LED : clignote en attente, vite pendant l'enregistrement. Les pads Sampler B
+  restent pour lancer / arrêter (et un pad vide enregistre toujours).
+- **Les accords s'enregistrent aussi** (rejoués avec le voicing du moment ; la durée est celle de
+  l'appui, même en latch).
+- Rappel « PFL B = rec · Shift + pad = efface » au-dessus de la bande Boucles.
+Vérifié sans contrôleur : PFL B → B1 armée → enregistre I, IV, vi → tourne (3 notes). 165 tests.

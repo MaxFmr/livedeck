@@ -10,11 +10,11 @@ STEP=${STEP:-30}
 log=target/026-test.txt
 
 steps=(
-  "Appuie sur Sync du deck droit : sa LED reste allumée et les pads Hot Cue du deck droit jouent des notes. Les pads un à quatre, puis avec Shift cinq à huit. Tout est dans la gamme"
-  "Pad Sampler 1 du deck droit : la case B1 attend la mesure, puis passe en rose. Joue une petite mélodie pendant deux mesures. Ensuite elle tourne toute seule"
+  "Deck droit en mode Hot Cue, accords. Appuie sur PFL du deck droit : c'est REC. Il clignote, puis vite à la mesure, et la case B1 passe en rose. Joue des accords pendant deux mesures. Ensuite la boucle tourne toute seule"
+  "Appuie sur Sync du deck droit : sa LED reste allumée et les pads Hot Cue jouent des notes, un à quatre, et cinq à huit avec Shift. Puis PFL B et joue une mélodie : elle s'enregistre dans B2"
   "Joue par-dessus ta boucle. Puis tourne le jog droit par le dessus : la boucle se transpose dans la gamme"
-  "Tiens Shift et tourne le jog droit par le dessus : choisis une mesure. Puis pad Sampler 2 : enregistre une boucle courte"
-  "Alterne les pads Sampler 1 et 2 : on passe d'une boucle à l'autre à la mesure. Rappuie sur celle qui tourne pour l'arrêter"
+  "Tiens Shift et tourne le jog droit par le dessus : choisis une mesure. Puis PFL B : enregistre une boucle courte dans B3"
+  "Passe en mode Sampler sur le deck droit et alterne les pads 1 et 2 : on passe d'une boucle à l'autre à la mesure. Rappuie sur celle qui tourne pour l'arrêter"
   "Shift et pad Sampler 2 : la boucle 2 est effacée. Puis Sync B : retour aux accords"
   "Jeu libre : improvise avec accords, notes et boucles. Note ce qui gêne"
 )

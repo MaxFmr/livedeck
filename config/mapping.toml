@@ -27,7 +27,7 @@
 #   arp_mode (mode = off, up, updown, random), arp_octaves (octaves = 1–4) → pads
 #   arp_rate (step = crans de jog par vitesse), transpose (step = crans de jog par degré) → jogs
 #   phrase (pattern = 1–4, variation = true : seconde moitié une tierce plus haut), à la mesure → pads
-#   note_mode (accords ↔ notes sur les pads chord), loop / loop_clear (pattern = 1–4),
+#   note_mode (accords ↔ notes sur les pads chord), loop / loop_clear (pattern = 1–4), loop_rec,
 #   loop_bars (step = crans de jog par longueur)                        → boutons, pads, jogs
 #   crossfade (fondu rythme ↔ mélodie, centre = les deux)               → crossfader
 #   delay_send, delay_feedback (envoi et répétitions du delay de la mélodie),
@@ -512,6 +512,12 @@ action = "crossfade"
 control = "b.pfl"
 shift = true
 action = "delay_time"
+
+# PFL B (026) : REC. La première boucle vide enregistre ce qui se joue au deck B (accords et notes)
+# dès la mesure suivante ; rappuyer annule. On reste en mode Hot Cue pour jouer.
+[[bind]]
+control = "b.pfl"
+action = "loop_rec"
 
 # Sync B (026) : les pads Hot Cue B jouent des accords ou des notes (degrés 1 à 8 de la gamme).
 [[bind]]

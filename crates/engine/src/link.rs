@@ -97,6 +97,8 @@ pub enum Command {
     /// Loop pad (0..4): record, start or stop at the bar.
     Loop(u8),
     ClearLoop(u8),
+    /// REC: the first empty loop records from the next bar (again: dropped).
+    RecLoop,
     /// Length of the next loop recorded, in steps of `looper::LENGTHS`.
     NudgeLoopBars(i8),
 }
@@ -373,6 +375,7 @@ impl AudioEngine {
             Command::Note { pad, on } => self.engine.note(pad, on),
             Command::Loop(slot) => self.engine.press_loop(slot),
             Command::ClearLoop(slot) => self.engine.clear_loop(slot),
+            Command::RecLoop => self.engine.rec_loop(),
             Command::NudgeLoopBars(delta) => self.engine.nudge_loop_bars(delta),
             Command::Drum {
                 voice,

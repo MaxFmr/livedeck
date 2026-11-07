@@ -1,13 +1,15 @@
 //! Melody loops recorded on the fly (runs on: audio thread).
 //!
-//! The note pads of deck B play scale degrees; a loop slot pressed while empty records them from
-//! the next bar, quantized to the sixteenth, for `bars` bars, then plays them in a loop. One loop
-//! plays at a time; starting, switching and stopping happen at the bar. Notes are stored as scale
-//! degrees, so a loop follows the key, the scale and the transposition.
+//! The note pads of deck B play scale degrees, its chord pads chords; REC (or a loop slot pressed
+//! while empty) records both from the next bar, quantized to the sixteenth, for `bars` bars, then
+//! plays them in a loop. One loop plays at a time; starting, switching and stopping happen at the
+//! bar. Notes and chords are stored as scale degrees, so a loop follows the key, the scale, the
+//! transposition (and the voicing, for chords).
 //!
 //! Everything is fixed-size: no allocation, no locking.
 
 use crate::bass::Key;
+use crate::chords::{Voicing, chord_notes, pad_degree};
 use crate::poly::PolySynth;
 use crate::sequencer::STEPS;
 
@@ -29,12 +31,14 @@ const LOOP_VOICES: usize = 8;
 const NOTE_OCTAVE: i8 = 2;
 const NOTE_VELOCITY: f32 = 0.8;
 
-/// A recorded note: start step in the loop, scale degree (0-based), length in steps.
+/// A recorded note: start step in the loop, scale degree (0-based) or chord pad, length in steps.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LoopNote {
     pub start: u16,
     pub degree: i8,
     pub len: u16,
+    /// `degree` is a chord pad (0..8), played with the voicing of the moment.
+    pub chord: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -118,7 +122,8 @@ pub struct Looper {
     /// Slot playing (or stopping) and its position, in steps.
     playing: Option<usize>,
     pos: u16,
-    open: [Option<Open>; NOTE_PADS],
+    /// Pads held while recording: note pads, then chord pads.
+    open: [Option<Open>; 2 * NOTE_PADS],
     /// Loop notes sounding: steps left per voice.
     voices: [u16; LOOP_VOICES],
 }
@@ -139,7 +144,7 @@ impl Looper {
             recording: None,
             playing: None,
             pos: 0,
-            open: [None; NOTE_PADS],
+            open: [None; 2 * NOTE_PADS],
             voices: [0; LOOP_VOICES],
         }
     }
@@ -252,6 +257,26 @@ impl Looper {
         }
     }
 
+    /// REC: arms the first empty slot (from the next bar); while a recording is armed or runs,
+    /// drops it. Returns the slot armed.
+    pub fn rec(&mut self, beats: f64, playing: bool) -> Option<usize> {
+        if self.recording.is_some() {
+            self.cancel_recording();
+            return None;
+        }
+        let slot = (0..SLOTS).find(|&s| self.states.get(s) == Some(&LoopState::Empty))?;
+        self.press(slot, beats, playing);
+        Some(slot)
+    }
+
+    /// Chord pad `pad` pressed or released (it sounds through the chord pads): recorded when a
+    /// recording runs.
+    pub fn chord(&mut self, pad: u8, on: bool, beats: f64) {
+        if usize::from(pad) < NOTE_PADS {
+            self.record(usize::from(pad), true, on, beats);
+        }
+    }
+
     /// Erases slot `slot` (stops it first).
     pub fn clear(&mut self, slot: usize, synth: &mut PolySynth) {
         if self.recording.is_some_and(|(s, _)| s == slot) {
@@ -271,7 +296,7 @@ impl Looper {
         if let Some((slot, _)) = self.recording.take() {
             self.set_state(slot, LoopState::Empty);
         }
-        self.open = [None; NOTE_PADS];
+        self.open = [None; 2 * NOTE_PADS];
     }
 
     fn set_state(&mut self, slot: usize, state: LoopState) {
@@ -306,10 +331,11 @@ impl Looper {
             let midi = key.note_at(i32::from(pad) + i32::from(transpose), NOTE_OCTAVE);
             synth.note_on(midi, NOTE_VELOCITY, owner);
         }
-        self.record(p, on, beats);
+        self.record(p, false, on, beats);
     }
 
-    fn record(&mut self, pad: usize, on: bool, beats: f64) {
+    fn record(&mut self, pad: usize, chord: bool, on: bool, beats: f64) {
+        let key = pad + if chord { NOTE_PADS } else { 0 };
         let Some((slot, start)) = self.recording else {
             return;
         };
@@ -332,17 +358,18 @@ impl Looper {
                     start: u16::try_from(at).unwrap_or(0),
                     degree: pad as i8,
                     len: 1,
+                    chord,
                 };
             }
             s.count += 1;
-            if let Some(o) = self.open.get_mut(pad) {
+            if let Some(o) = self.open.get_mut(key) {
                 *o = Some(Open {
                     pad: pad as u8,
                     from: at,
                     note,
                 });
             }
-        } else if let Some(open) = self.open.get_mut(pad).and_then(Option::take)
+        } else if let Some(open) = self.open.get_mut(key).and_then(Option::take)
             && let Some(n) = s.notes.get_mut(open.note)
             && usize::from(open.pad) == pad
         {
@@ -357,7 +384,7 @@ impl Looper {
         step: usize,
         beats: f64,
         synth: &mut PolySynth,
-        (key, transpose): (Key, i8),
+        (key, transpose, voicing): (Key, i8, Voicing),
     ) {
         // Loop notes end on the step their length reaches.
         for (voice, left) in self.voices.iter_mut().enumerate() {
@@ -388,8 +415,16 @@ impl Looper {
                 .unwrap_or(0);
             let owner = LOOP_OWNER + voice as u8;
             synth.release(owner);
-            let midi = key.note_at(i32::from(n.degree) + i32::from(transpose), NOTE_OCTAVE);
-            synth.note_on(midi, NOTE_VELOCITY, owner);
+            if n.chord {
+                let degree = pad_degree(n.degree as u8).unwrap_or(1);
+                let (notes, count) = chord_notes(key, degree, voicing, transpose);
+                for &note in notes.iter().take(count) {
+                    synth.note_on(note, NOTE_VELOCITY, owner);
+                }
+            } else {
+                let midi = key.note_at(i32::from(n.degree) + i32::from(transpose), NOTE_OCTAVE);
+                synth.note_on(midi, NOTE_VELOCITY, owner);
+            }
             if let Some(left) = self.voices.get_mut(voice) {
                 *left = n.len.clamp(1, MAX_STEPS);
             }
@@ -487,11 +522,20 @@ mod tests {
         },
         0,
     );
+    const PLAY: (Key, i8, Voicing) = (
+        KEY.0,
+        0,
+        Voicing {
+            inversion: 0,
+            octave: 0,
+            extension: crate::chords::Extension::Triad,
+        },
+    );
 
     /// Fires every step from `from` to `to` (in steps, straight sixteenths).
     fn run(l: &mut Looper, synth: &mut PolySynth, from: u32, to: u32) {
         for s in from..to {
-            l.fire_step(s as usize % STEPS, f64::from(s) / 4.0, synth, KEY);
+            l.fire_step(s as usize % STEPS, f64::from(s) / 4.0, synth, PLAY);
         }
     }
 
@@ -519,7 +563,8 @@ mod tests {
             LoopNote {
                 start: 0,
                 degree: 2,
-                len: 2
+                len: 2,
+                chord: false
             }
         );
         assert_eq!(
@@ -527,7 +572,8 @@ mod tests {
             LoopNote {
                 start: 8,
                 degree: 4,
-                len: 1
+                len: 1,
+                chord: false
             }
         );
         // Step 32 played the loop's step 0: its note sounds.
@@ -557,6 +603,37 @@ mod tests {
         assert_eq!(l.states()[1], LoopState::Stopped);
         l.clear(1, &mut synth);
         assert_eq!(l.states()[1], LoopState::Empty);
+    }
+
+    #[test]
+    fn rec_arms_the_first_empty_slot_and_records_chords() {
+        let mut l = Looper::new();
+        let mut synth = PolySynth::new(48_000);
+        l.states[0] = LoopState::Stopped;
+        assert_eq!(l.rec(0.0, false), Some(1));
+        l.reset();
+        run(&mut l, &mut synth, 0, 1);
+        assert_eq!(l.states()[1], LoopState::Recording);
+        l.chord(3, true, 0.25);
+        l.chord(3, false, 2.0);
+        run(&mut l, &mut synth, 1, 33);
+        assert_eq!(l.states()[1], LoopState::Playing);
+        assert_eq!(
+            l.slots[1].notes[0],
+            LoopNote {
+                start: 1,
+                degree: 3,
+                len: 7,
+                chord: true
+            }
+        );
+        // A chord sounds several voices.
+        run(&mut l, &mut synth, 33, 34);
+        assert!(synth.active_voices() >= 3);
+        // REC again while nothing records: the next empty slot.
+        assert_eq!(l.rec(9.0, true), Some(2));
+        assert_eq!(l.rec(9.5, true), None, "pressed again: dropped");
+        assert_eq!(l.states()[2], LoopState::Empty);
     }
 
     #[test]

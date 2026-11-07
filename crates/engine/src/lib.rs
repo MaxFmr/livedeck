@@ -236,6 +236,12 @@ impl Engine {
         self.looper.press(usize::from(slot), beats, playing);
     }
 
+    /// REC: records the first empty loop from the next bar; pressed while recording, drops it.
+    pub fn rec_loop(&mut self) {
+        let (beats, playing) = (self.clock.beats(), self.clock.is_playing());
+        self.looper.rec(beats, playing);
+    }
+
     /// Erases loop `slot`.
     pub fn clear_loop(&mut self, slot: u8) {
         self.looper.clear(usize::from(slot), &mut self.synth);
@@ -348,6 +354,7 @@ impl Engine {
     pub fn chord(&mut self, pad: u8, on: bool) {
         let key = self.sequencer.bass().key();
         self.chords.pad(&mut self.synth, key, pad, on);
+        self.looper.chord(pad, on, self.clock.beats());
     }
 
     /// Latch of the chord pads.
@@ -739,7 +746,11 @@ fn render_mono(v: Voices<'_>, buses: Buses<'_>) {
                 bar_step,
                 v.clock.beats(),
                 v.synth,
-                (sequencer.bass().key(), v.chords.transpose()),
+                (
+                    sequencer.bass().key(),
+                    v.chords.transpose(),
+                    v.chords.voicing(),
+                ),
             );
         }
         if melody_at == segment_len && melody.is_some() {

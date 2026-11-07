@@ -116,6 +116,7 @@ continus en 14 bits (filtres et volumes sans paliers).
 | Jog Shift + rotation (tranche) | choix de la gamme, un demi-tour par gamme, à la mesure (017) |
 | Jog Shift + dessus | longueur de la prochaine boucle : 1, 2 ou 4 mesures, un quart de tour par cran (026) |
 | Sync | pads Hot Cue : accords ↔ notes, LED allumée en notes (026) |
+| PFL | REC : la première boucle vide enregistre accords et notes dès la mesure, rappuyer annule (026) · Shift : temps du delay (019) |
 | Tempo | brillance (coupure du synthé, ±2,5 octaves autour du patch, 016) |
 | Filter | filtre DJ du bus mélodie |
 | Bass | envoi de la mélodie au delay · Shift : répétitions 0–95 % (019) |
