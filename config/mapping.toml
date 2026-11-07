@@ -365,21 +365,22 @@ shift = true
 action = "chord"
 chord = 8
 
-# --- Deck B : voicings (017) aux pads Loop — latch, renversement, octave, extension ---
+# --- Deck B (R3/R4, carte D8) ---------------------------------------------------------------
+# Pads Loop B : 1 REC tenu (les accords joués s'ajoutent à la phrase) · 2 latch (Shift : renversement)
+#               3 octave + (Shift −) · 4 extension (Shift : triade)
 [[bind]]
 control = "b.pad.loop.1"
-action = "latch_toggle"
+action = "phrase_rec"
 
 [[bind]]
 control = "b.pad.loop.2"
-action = "inversion"
-step = 1
+action = "latch_toggle"
 
 [[bind]]
 control = "b.pad.loop.2"
 shift = true
 action = "inversion"
-step = -1
+step = 1
 
 [[bind]]
 control = "b.pad.loop.3"
@@ -403,26 +404,39 @@ shift = true
 action = "extension"
 step = 0
 
-# --- Gamme (017) : Shift + jog droit, un demi-tour par gamme, à la mesure ---
+# Pads Sampler B : la phrase générative — générer · muter · figer · effacer (à la mesure, sauf figer).
 [[bind]]
-control = "b.jog.edge"
-shift = true
-action = "scale"
-step = 124
+control = "b.pad.sampler.1"
+action = "phrase_generate"
 
-# Shift + jog B par le dessus : longueur de la prochaine boucle (1, 2, 4 mesures), un cran par
-# quart de tour (026). La gamme reste sur Shift + jog B par la tranche.
 [[bind]]
-control = "b.jog.top"
-shift = true
-action = "loop_bars"
-step = 62
+control = "b.pad.sampler.2"
+action = "phrase_mutate"
 
-# --- Arpège (018) : pads FX B = mode, Shift = octaves ; bord du jog B = vitesse ---
+[[bind]]
+control = "b.pad.sampler.3"
+action = "phrase_freeze"
+
+[[bind]]
+control = "b.pad.sampler.4"
+action = "phrase_clear"
+
+# Pads FX B : throws dub tenus (delay, réverb) · temps du delay · arpège on/off (Shift : octaves).
 [[bind]]
 control = "b.pad.fx.1"
-action = "arp_mode"
-mode = "off"
+action = "throw_delay"
+
+[[bind]]
+control = "b.pad.fx.2"
+action = "throw_reverb"
+
+[[bind]]
+control = "b.pad.fx.3"
+action = "delay_time"
+
+[[bind]]
+control = "b.pad.fx.4"
+action = "arp_toggle"
 
 [[bind]]
 control = "b.pad.fx.1"
@@ -432,19 +446,9 @@ octaves = 1
 
 [[bind]]
 control = "b.pad.fx.2"
-action = "arp_mode"
-mode = "up"
-
-[[bind]]
-control = "b.pad.fx.2"
 shift = true
 action = "arp_octaves"
 octaves = 2
-
-[[bind]]
-control = "b.pad.fx.3"
-action = "arp_mode"
-mode = "updown"
 
 [[bind]]
 control = "b.pad.fx.3"
@@ -454,76 +458,41 @@ octaves = 3
 
 [[bind]]
 control = "b.pad.fx.4"
-action = "arp_mode"
-mode = "random"
-
-[[bind]]
-control = "b.pad.fx.4"
 shift = true
 action = "arp_octaves"
 octaves = 4
 
-# Crans de jog par vitesse (1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32) : un quart de tour
+# Jog B (tranche ou dessus) : transposition dans la gamme, un degré par quart de tour.
+# Shift + jog B : la gamme, un demi-tour par gamme, à la mesure.
 [[bind]]
 control = "b.jog.edge"
-action = "arp_rate"
+action = "transpose"
 step = 62
 
-# --- Boucles de mélodie (026) : pads Sampler B ---
-# Vide : enregistre les notes jouées dès la mesure suivante, pendant la longueur choisie, puis la
-# boucle tourne. Enregistrée : lance ou arrête à la mesure. Shift : efface la boucle.
-[[bind]]
-control = "b.pad.sampler.1"
-action = "loop"
-pattern = 1
-
-[[bind]]
-control = "b.pad.sampler.1"
-shift = true
-action = "loop_clear"
-pattern = 1
-
-[[bind]]
-control = "b.pad.sampler.2"
-action = "loop"
-pattern = 2
-
-[[bind]]
-control = "b.pad.sampler.2"
-shift = true
-action = "loop_clear"
-pattern = 2
-
-[[bind]]
-control = "b.pad.sampler.3"
-action = "loop"
-pattern = 3
-
-[[bind]]
-control = "b.pad.sampler.3"
-shift = true
-action = "loop_clear"
-pattern = 3
-
-[[bind]]
-control = "b.pad.sampler.4"
-action = "loop"
-pattern = 4
-
-[[bind]]
-control = "b.pad.sampler.4"
-shift = true
-action = "loop_clear"
-pattern = 4
-
-# --- Transposition (018) : jog B par le dessus, un degré par quart de tour, tout de suite ---
 [[bind]]
 control = "b.jog.top"
 action = "transpose"
 step = 62
 
 [[bind]]
+control = "b.jog.edge"
+shift = true
+action = "scale"
+step = 124
+
+[[bind]]
+control = "b.jog.top"
+shift = true
+action = "scale"
+step = 124
+
+# Fader Tempo B : densité de la phrase générée · Filter B : brillance du synthé.
+[[bind]]
 control = "b.tempo"
+action = "phrase_density"
+
+[[bind]]
+control = "b.filter"
 action = "brightness"
 
 [[bind]]
@@ -563,14 +532,3 @@ action = "crossfade"
 control = "b.pfl"
 shift = true
 action = "delay_time"
-
-# PFL B (026) : REC. La première boucle vide enregistre ce qui se joue au deck B (accords et notes)
-# dès la mesure suivante ; rappuyer annule. On reste en mode Hot Cue pour jouer.
-[[bind]]
-control = "b.pfl"
-action = "loop_rec"
-
-# Sync B (026) : les pads Hot Cue B jouent des accords ou des notes (degrés 1 à 8 de la gamme).
-[[bind]]
-control = "b.sync"
-action = "note_mode"

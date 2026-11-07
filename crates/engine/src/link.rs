@@ -89,20 +89,19 @@ pub enum Command {
         velocity: f32,
         gesture_us: u64,
     },
-    /// Note pad (0..8, degrees 1 to 8) pressed or released.
-    Note {
-        pad: u8,
+    /// The generative phrase (R3): generate, mutate, clear at the next bar; freeze; REC held.
+    PhraseGenerate,
+    PhraseMutate,
+    PhraseClear,
+    PhraseFreeze(bool),
+    PhraseRec(bool),
+    /// Dub throw (R4): `delay` (else reverb), held while `on`.
+    Throw {
+        delay: bool,
         on: bool,
     },
-    /// Loop pad (0..4): record, start or stop at the bar.
-    Loop(u8),
-    ClearLoop(u8),
-    /// REC: the first empty loop records from the next bar (again: dropped).
-    RecLoop,
     /// A bass line drawn at random replaces the current one at the next bar.
     RandomBassLine,
-    /// Length of the next loop recorded, in steps of `looper::LENGTHS`.
-    NudgeLoopBars(i8),
 }
 
 const _: () = assert!(core::mem::size_of::<Command>() <= 32);
@@ -188,13 +187,14 @@ pub struct EngineSnapshot {
     /// Peaks of the block: drums, bass, melody, master; lowest limiter gain (1 = not limiting).
     pub peaks: [f32; 4],
     pub limiter_gain: f32,
-    /// Loop slots (`looper::LoopState::index`), their lengths in bars, the length of the next
-    /// recording, and the progress (step, steps) of the loop playing or being recorded.
-    pub loops: [u8; crate::looper::SLOTS],
-    pub loop_bars: [u8; crate::looper::SLOTS],
-    pub loop_notes: [u8; crate::looper::SLOTS],
-    pub next_loop_bars: u8,
-    pub loop_progress: Option<(u16, u16)>,
+    /// The phrase (R3): its events, what waits for the bar (`phrase::Pending::index`), frozen,
+    /// REC held, density; the throws held (delay, reverb).
+    pub phrase_events: crate::phrase::Notes,
+    pub phrase_pending: u8,
+    pub phrase_frozen: bool,
+    pub phrase_rec: bool,
+    pub phrase_density: f32,
+    pub throws: (bool, bool),
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -285,14 +285,12 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         delay_time: engine.delay_time().index(),
         peaks: engine.peaks(),
         limiter_gain: engine.limiter_gain(),
-        loops: engine
-            .looper()
-            .states()
-            .map(crate::looper::LoopState::index),
-        loop_bars: engine.looper().slot_bars(),
-        loop_notes: engine.looper().note_counts(),
-        next_loop_bars: engine.looper().bars(),
-        loop_progress: engine.looper().progress(engine.clock().beats()),
+        phrase_events: *engine.phrase().notes(),
+        phrase_pending: engine.phrase().pending().index(),
+        phrase_frozen: engine.phrase().frozen(),
+        phrase_rec: engine.phrase().recording(),
+        phrase_density: engine.phrase().density(),
+        throws: engine.throws(),
     }
 }
 
@@ -377,12 +375,13 @@ impl AudioEngine {
                 self.engine.beat_repeat_back(released, back);
             }
             Command::SetParam(param, value) => self.engine.set_param(param, value),
-            Command::Note { pad, on } => self.engine.note(pad, on),
-            Command::Loop(slot) => self.engine.press_loop(slot),
-            Command::ClearLoop(slot) => self.engine.clear_loop(slot),
-            Command::RecLoop => self.engine.rec_loop(),
             Command::RandomBassLine => self.engine.queue_random_bass_line(),
-            Command::NudgeLoopBars(delta) => self.engine.nudge_loop_bars(delta),
+            Command::PhraseGenerate => self.engine.phrase_generate(),
+            Command::PhraseMutate => self.engine.phrase_mutate(),
+            Command::PhraseClear => self.engine.phrase_clear(),
+            Command::PhraseFreeze(frozen) => self.engine.phrase_freeze(frozen),
+            Command::PhraseRec(on) => self.engine.phrase_rec(on),
+            Command::Throw { delay, on } => self.engine.throw(delay, on),
             Command::Drum {
                 voice,
                 velocity,

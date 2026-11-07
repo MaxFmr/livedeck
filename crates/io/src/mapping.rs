@@ -64,6 +64,7 @@ pub enum Target {
     BassEnv,
     BassDecay,
     BassAmpDecay,
+    PhraseDensity,
 }
 
 /// Result of a mapped gesture, applied by the control thread.
@@ -135,14 +136,19 @@ pub enum Action {
     NudgeTranspose(i8),
     /// Next delay time of the scroll.
     CycleDelayTime,
-    /// Chord pads of deck B: chords ↔ single notes (degrees 1 to 8).
-    ToggleNoteMode,
-    /// Loop pad (0-based): record an empty slot, start or stop a recorded one, at the bar.
-    Loop(u8),
-    /// Erases a loop (0-based).
-    ClearLoop(u8),
-    /// REC: the first empty loop records from the next bar.
-    RecLoop,
+    /// The generative phrase (R3): generate, mutate, clear at the bar; freeze on / off; REC held.
+    PhraseGenerate,
+    PhraseMutate,
+    PhraseClear,
+    TogglePhraseFreeze,
+    PhraseRec(bool),
+    /// Dub throw (R4) held or released: `delay`, else the reverb.
+    Throw {
+        delay: bool,
+        held: bool,
+    },
+    /// Arpeggio on (up) / off.
+    ToggleArp,
     /// Kit (style, 0-based), at the next bar.
     Kit(u8),
     /// Drum density change, as a fraction (0.01 = 1 %).
@@ -151,8 +157,6 @@ pub enum Action {
     RandomBassLine,
     /// Swing set to a value (0.5..=0.75).
     SetSwing(f32),
-    /// Length of the next loop recorded, in steps of 1, 2, 4 bars.
-    NudgeLoopBars(i8),
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -204,11 +208,15 @@ pub enum ActionName {
     ReverbSend,
     Crossfade,
     DelayTime,
-    NoteMode,
-    Loop,
-    LoopClear,
-    LoopRec,
-    LoopBars,
+    PhraseGenerate,
+    PhraseMutate,
+    PhraseFreeze,
+    PhraseClear,
+    PhraseRec,
+    ThrowDelay,
+    ThrowReverb,
+    ArpToggle,
+    PhraseDensity,
     Kit,
     DensityNudge,
     BassResonance,
@@ -492,6 +500,12 @@ impl Mapping {
             })
     }
 
+    /// Shift is held (the window shows the Shift layer).
+    #[must_use]
+    pub fn shift_held(&self) -> bool {
+        self.shift_held
+    }
+
     /// Controls bound to `action` without Shift (the layer their LED shows).
     pub fn bound(&self, action: ActionName) -> impl Iterator<Item = Control> + '_ {
         self.bindings
@@ -611,8 +625,18 @@ impl Mapping {
             (ActionName::BassCutoff, Input::Absolute(v)) => Some(Action::SetBassCutoff(v)),
             (ActionName::ArpMode, Input::Press(true)) => Some(Action::ArpMode(binding.value)),
             (ActionName::ArpOctaves, Input::Press(true)) => Some(Action::ArpOctaves(binding.value)),
-            (ActionName::NoteMode, Input::Press(true)) => Some(Action::ToggleNoteMode),
-            (ActionName::LoopRec, Input::Press(true)) => Some(Action::RecLoop),
+            (ActionName::PhraseGenerate, Input::Press(true)) => Some(Action::PhraseGenerate),
+            (ActionName::PhraseMutate, Input::Press(true)) => Some(Action::PhraseMutate),
+            (ActionName::PhraseClear, Input::Press(true)) => Some(Action::PhraseClear),
+            (ActionName::PhraseFreeze, Input::Press(true)) => Some(Action::TogglePhraseFreeze),
+            (ActionName::PhraseRec, Input::Press(held)) => Some(Action::PhraseRec(held)),
+            (ActionName::ThrowDelay, Input::Press(held)) => {
+                Some(Action::Throw { delay: true, held })
+            }
+            (ActionName::ThrowReverb, Input::Press(held)) => {
+                Some(Action::Throw { delay: false, held })
+            }
+            (ActionName::ArpToggle, Input::Press(true)) => Some(Action::ToggleArp),
             (ActionName::Kit, Input::Press(true)) => Some(Action::Kit(binding.pattern)),
             (ActionName::RandomBassLine, Input::Press(true)) => Some(Action::RandomBassLine),
             (ActionName::SwingSet, Input::Press(true)) => {
@@ -621,18 +645,12 @@ impl Mapping {
             (ActionName::DensityNudge, Input::Relative(ticks)) => Some(Action::NudgeDensity(
                 ticks as f32 * binding.step as f32 / 100.0,
             )),
-            (ActionName::Loop, Input::Press(true)) => Some(Action::Loop(binding.pattern)),
-            (ActionName::LoopClear, Input::Press(true)) => Some(Action::ClearLoop(binding.pattern)),
             (ActionName::Phrase, Input::Press(true)) => Some(Action::Phrase {
                 index: binding.pattern,
                 variation: binding.variation,
             }),
             (
-                ActionName::Style
-                | ActionName::Scale
-                | ActionName::ArpRate
-                | ActionName::Transpose
-                | ActionName::LoopBars,
+                ActionName::Style | ActionName::Scale | ActionName::ArpRate | ActionName::Transpose,
                 Input::Relative(ticks),
             ) => {
                 let Control::Jog(deck, _) = id.control else {
@@ -651,7 +669,6 @@ impl Mapping {
                     ActionName::Scale => Action::NudgeScale(steps),
                     ActionName::ArpRate => Action::NudgeArpRate(steps),
                     ActionName::Transpose => Action::NudgeTranspose(steps),
-                    ActionName::LoopBars => Action::NudgeLoopBars(steps),
                     _ => Action::NudgeStyle(steps),
                 })
             }
@@ -684,7 +701,8 @@ impl Mapping {
                 | ActionName::BassResonance
                 | ActionName::BassEnv
                 | ActionName::BassDecay
-                | ActionName::BassAmpDecay,
+                | ActionName::BassAmpDecay
+                | ActionName::PhraseDensity,
                 Input::Absolute(v),
             ) => {
                 let target = target_of(binding.action)?;
@@ -815,7 +833,8 @@ fn normalized(binding: &Binding, target: Target, value: f64) -> f32 {
         | Target::BassResonance
         | Target::BassEnv
         | Target::BassDecay
-        | Target::BassAmpDecay => value.clamp(0.0, 1.0) as f32,
+        | Target::BassAmpDecay
+        | Target::PhraseDensity => value.clamp(0.0, 1.0) as f32,
     }
 }
 
@@ -842,6 +861,7 @@ fn target_of(action: ActionName) -> Option<Target> {
         ActionName::BassEnv => Some(Target::BassEnv),
         ActionName::BassDecay => Some(Target::BassDecay),
         ActionName::BassAmpDecay => Some(Target::BassAmpDecay),
+        ActionName::PhraseDensity => Some(Target::PhraseDensity),
         _ => None,
     }
 }
@@ -866,10 +886,14 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::BassMute
         | ActionName::SamplesToggle
         | ActionName::DelayTime
-        | ActionName::NoteMode
-        | ActionName::Loop
-        | ActionName::LoopClear
-        | ActionName::LoopRec
+        | ActionName::PhraseGenerate
+        | ActionName::PhraseMutate
+        | ActionName::PhraseFreeze
+        | ActionName::PhraseClear
+        | ActionName::PhraseRec
+        | ActionName::ThrowDelay
+        | ActionName::ThrowReverb
+        | ActionName::ArpToggle
         | ActionName::Kit
         | ActionName::RandomBassLine
         | ActionName::SwingSet
@@ -901,6 +925,7 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::BassEnv
         | ActionName::BassDecay
         | ActionName::BassAmpDecay
+        | ActionName::PhraseDensity
         | ActionName::Brightness => {
             matches!(kind, Kind::Absolute)
         }
@@ -910,7 +935,6 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::Scale
         | ActionName::ArpRate
         | ActionName::Transpose
-        | ActionName::LoopBars
         | ActionName::DensityNudge => matches!(kind, Kind::Relative),
     }
 }
@@ -921,7 +945,6 @@ fn jog_slot(action: ActionName) -> usize {
     match action {
         ActionName::ArpRate => 1,
         ActionName::Transpose => 2,
-        ActionName::LoopBars => 3,
         _ => 0,
     }
 }
@@ -1243,11 +1266,13 @@ mod tests {
                 held: false
             })
         );
+        // Brightness on Filter B (R3; Tempo B is the phrase density).
         assert!(matches!(
             m.handle(
                 3,
-                ControllerEvent::Tempo {
+                ControllerEvent::Knob {
                     deck: Deck::B,
+                    knob: DeckKnob::Filter,
                     value: 0
                 }
             ),
@@ -1283,17 +1308,14 @@ mod tests {
             Some(Action::Chord { pad: 6, held: true }),
             "Shift + pad 3 = vii"
         );
+        // Loop B (R3): 1 REC, 2 latch (Shift: inversion), 3 octave, 4 extension.
         assert_eq!(
-            m.handle(2, pad(PadMode::Loop, 0, false)),
+            m.handle(2, pad(PadMode::Loop, 1, false)),
             Some(Action::ToggleLatch)
         );
         assert_eq!(
-            m.handle(3, pad(PadMode::Loop, 1, false)),
+            m.handle(3, pad(PadMode::Loop, 1, true)),
             Some(Action::NudgeInversion(1))
-        );
-        assert_eq!(
-            m.handle(4, pad(PadMode::Loop, 1, true)),
-            Some(Action::NudgeInversion(-1))
         );
         assert_eq!(
             m.handle(5, pad(PadMode::Loop, 2, true)),
@@ -1365,91 +1387,98 @@ mod tests {
     }
 
     #[test]
-    fn deck_b_arp_pads_loops_and_rate_jog() {
+    fn deck_b_follows_the_d8_map() {
         let mut m = mapping();
-        let pad = |mode, pad, shift| ControllerEvent::Pad {
+        let pad = |mode, pad, shift, pressed| ControllerEvent::Pad {
             deck: Deck::B,
             mode,
             pad,
             shift,
-            pressed: true,
-            velocity: 127,
+            pressed,
+            velocity: if pressed { 127 } else { 0 },
         };
+        // Sampler B: the generative phrase.
         assert_eq!(
-            m.handle(1, pad(PadMode::Fx, 2, false)),
-            Some(Action::ArpMode(2)),
-            "FX 3 = up-down"
+            m.handle(1, pad(PadMode::Sampler, 0, false, true)),
+            Some(Action::PhraseGenerate)
         );
         assert_eq!(
-            m.handle(2, pad(PadMode::Fx, 3, true)),
+            m.handle(2, pad(PadMode::Sampler, 1, false, true)),
+            Some(Action::PhraseMutate)
+        );
+        assert_eq!(
+            m.handle(3, pad(PadMode::Sampler, 2, false, true)),
+            Some(Action::TogglePhraseFreeze)
+        );
+        assert_eq!(
+            m.handle(4, pad(PadMode::Sampler, 3, false, true)),
+            Some(Action::PhraseClear)
+        );
+        // FX B: throws held, delay time, arpeggio (Shift: octaves).
+        assert_eq!(
+            m.handle(5, pad(PadMode::Fx, 0, false, true)),
+            Some(Action::Throw {
+                delay: true,
+                held: true
+            })
+        );
+        assert_eq!(
+            m.handle(6, pad(PadMode::Fx, 0, false, false)),
+            Some(Action::Throw {
+                delay: true,
+                held: false
+            })
+        );
+        assert_eq!(
+            m.handle(7, pad(PadMode::Fx, 1, false, true)),
+            Some(Action::Throw {
+                delay: false,
+                held: true
+            })
+        );
+        assert_eq!(
+            m.handle(8, pad(PadMode::Fx, 3, false, true)),
+            Some(Action::ToggleArp)
+        );
+        assert_eq!(
+            m.handle(9, pad(PadMode::Fx, 3, true, true)),
             Some(Action::ArpOctaves(4))
         );
-        // Sampler B: melody loops (026); Shift erases.
+        // Loop B 1: REC held.
         assert_eq!(
-            m.handle(3, pad(PadMode::Sampler, 1, false)),
-            Some(Action::Loop(1))
+            m.handle(10, pad(PadMode::Loop, 0, false, true)),
+            Some(Action::PhraseRec(true))
         );
         assert_eq!(
-            m.handle(4, pad(PadMode::Sampler, 1, true)),
-            Some(Action::ClearLoop(1))
+            m.handle(11, pad(PadMode::Loop, 0, false, false)),
+            Some(Action::PhraseRec(false))
         );
-        let sync_b = ControllerEvent::Button {
-            deck: Deck::B,
-            button: Button::Sync,
-            shift: false,
-            pressed: true,
-        };
-        assert_eq!(m.handle(5, sync_b), Some(Action::ToggleNoteMode));
-        let pfl_b = ControllerEvent::Button {
-            deck: Deck::B,
-            button: Button::Pfl,
-            shift: false,
-            pressed: true,
-        };
-        assert_eq!(m.handle(6, pfl_b), Some(Action::RecLoop));
-        let top = |delta| ControllerEvent::Jog {
-            deck: Deck::B,
-            surface: JogSurface::Top,
-            shift: true,
-            delta,
-        };
-        // A confirmed touch on top of the jog (≥ 80 ms), then a quarter turn: one length step.
-        m.handle(
-            0,
-            ControllerEvent::Button {
-                deck: Deck::B,
-                button: Button::JogTouch,
-                shift: true,
-                pressed: true,
-            },
-        );
-        let longer: Vec<_> = (0..62)
-            .filter_map(|t| m.handle(100 * MS + t, top(1)))
-            .collect();
-        assert_eq!(longer, vec![Action::NudgeLoopBars(1)]);
-        let jog = |delta| ControllerEvent::Jog {
+        // Jog B: transposition, whatever the touch; Shift: the scale.
+        let jog = |shift, delta| ControllerEvent::Jog {
             deck: Deck::B,
             surface: JogSurface::Edge,
-            shift: false,
+            shift,
             delta,
         };
-        let faster: Vec<_> = (0..70).filter_map(|t| m.handle(100 + t, jog(1))).collect();
-        assert_eq!(
-            faster,
-            vec![Action::NudgeArpRate(1)],
-            "a quarter turn per rate"
-        );
-        // The scale (Shift) keeps its own count: the 8 ticks left over do not leak into it.
-        let shifted = ControllerEvent::Jog {
-            deck: Deck::B,
-            surface: JogSurface::Edge,
-            shift: true,
-            delta: 1,
-        };
-        let scale: Vec<_> = (0..120)
-            .filter_map(|t| m.handle(300 + t, shifted))
+        let up: Vec<_> = (0..62)
+            .filter_map(|t| m.handle(100 + t, jog(false, 1)))
             .collect();
-        assert!(scale.is_empty());
+        assert_eq!(up, vec![Action::NudgeTranspose(1)]);
+        let scale: Vec<_> = (0..124)
+            .filter_map(|t| m.handle(300 + t, jog(true, 1)))
+            .collect();
+        assert_eq!(scale, vec![Action::NudgeScale(1)]);
+        // Tempo B: the phrase density.
+        assert_eq!(
+            m.handle(
+                500,
+                ControllerEvent::Tempo {
+                    deck: Deck::B,
+                    value: MAX_14BIT
+                }
+            ),
+            Some(Action::SetLevel(Target::PhraseDensity, 1.0))
+        );
     }
 
     #[test]

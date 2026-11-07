@@ -1,5 +1,5 @@
-//! The window: the D4 layout painted with the D5 tokens (`theme`). 020 is the shell: only the time
-//! bar is live, the deck panels are empty frames until the D6 widgets.
+//! The window: the groovebox layout of D8 (« écran central ») painted with the D5 tokens
+//! (`theme`); the widgets are in `groove`.
 //!
 //! Runs on: main thread (the macOS event loop). Reads only `View`, which the control thread
 //! publishes; writes nothing back except the quit request when the window closes.
@@ -16,8 +16,7 @@ use egui::{
 
 use crate::theme::{self, Accent, Rgb, TextStyle};
 
-mod melody;
-mod rhythm;
+mod groove;
 
 /// A pad as its LED shows it on the controller (the window mirrors the hardware).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -115,17 +114,24 @@ pub struct View {
     pub arp_mode: u8,
     pub arp_rate: u8,
     pub arp_octaves: u8,
-    pub phrase: Option<(u8, bool)>,
-    pub pending_phrase: Option<Option<(u8, bool)>>,
-    /// Chord pads play single notes; note pads held (bit `i` = pad `i`).
-    pub note_mode: bool,
-    pub notes_held: u8,
-    /// Loop slots (`looper::LoopState::index`), their lengths, the next length, and the progress
-    /// (step, steps) of the loop playing or being recorded.
-    pub loops: [u8; 4],
-    pub loop_bars: [u8; 4],
-    pub next_loop_bars: u8,
-    pub loop_progress: Option<(u16, u16)>,
+    /// The generative phrase: its events, what waits for the bar (`phrase::Pending::index`),
+    /// frozen, REC held, density.
+    pub phrase_events: engine::phrase::Notes,
+    pub phrase_pending: u8,
+    pub phrase_frozen: bool,
+    pub phrase_rec: bool,
+    pub phrase_density: f32,
+    /// Dub throws held (delay, reverb).
+    pub throws: (bool, bool),
+    /// A random bass line waits for the bar.
+    pub pending_random_bass: bool,
+    /// Shift is held: the panels show the Shift layer.
+    pub shift: bool,
+    /// Knob values in `groove::RINGS` order (`None`: untouched, the kit's sound).
+    pub knobs: [Option<f32>; 16],
+    pub crossfade: f32,
+    pub master: f32,
+    pub reverb: f32,
     pub delay_time: u8,
     /// The HUD of the last gesture, while it is shown.
     pub hud: Option<Hud>,
@@ -389,233 +395,6 @@ fn panel(p: &Painter, rect: Rect, accent: Option<Accent>) {
     }
 }
 
-/// Footer: the meters (drums, bass, melody, master) and the limiter; scenes come in phase 6.
-fn footer_bar(p: &Painter, rect: Rect, v: &View) {
-    panel(p, rect, None);
-    let mid = rect.center().y;
-    text(
-        p,
-        Pos2::new(rect.left() + theme::SPACE_5, mid),
-        Align2::LEFT_CENTER,
-        "F : plein écran",
-        theme::BODY,
-        theme::TEXT_DIM,
-    );
-    let meters = [
-        ("Batterie", theme::ACCENT_WARM.base),
-        ("Basse", theme::ACCENT_AMBER.base),
-        ("Mélodie", theme::ACCENT_COLD.base),
-        ("Master", theme::TEXT),
-    ];
-    let mut x = rect.right() - theme::SPACE_5;
-    // The limiter, rightmost: lit while it reduces the gain.
-    let lim = text(
-        p,
-        Pos2::new(x, mid),
-        Align2::RIGHT_CENTER,
-        "Limiteur",
-        theme::LABEL,
-        if v.limiting { theme::TEXT } else { theme::MARK },
-    );
-    let dot = Rect::from_center_size(
-        Pos2::new(lim.left() - theme::SPACE_2 - 4.0, mid),
-        Vec2::splat(8.0),
-    );
-    p.rect_filled(
-        dot,
-        radius(theme::RADIUS_CELL),
-        color(if v.limiting { theme::TEXT } else { theme::LINE }),
-    );
-    x = dot.left() - theme::SPACE_6;
-    for ((name, c), &level) in meters.iter().zip(v.meters.iter()).rev() {
-        let track = Rect::from_min_size(
-            Pos2::new(x - 96.0, mid - theme::SIZE_BAR / 2.0),
-            Vec2::new(96.0, theme::SIZE_BAR),
-        );
-        let pill = radius(theme::SIZE_BAR / 2.0);
-        p.rect_filled(track, pill, color(theme::LINE));
-        let filled =
-            Rect::from_min_size(track.min, Vec2::new(track.width() * level, track.height()));
-        p.rect_filled(filled, pill, color(*c));
-        let label = text(
-            p,
-            Pos2::new(track.left() - theme::SPACE_2, mid),
-            Align2::RIGHT_CENTER,
-            name,
-            theme::BODY,
-            theme::TEXT_DIM,
-        );
-        x = label.left() - theme::SPACE_5;
-    }
-}
-
-fn time_bar(p: &Painter, rect: Rect, v: &View) {
-    panel(p, rect, None);
-    let mid = rect.center().y;
-    let mut x = rect.left() + theme::SPACE_5;
-    // Play / stop.
-    let icon = Rect::from_center_size(Pos2::new(x + 11.0, mid), Vec2::splat(22.0));
-    if v.playing {
-        let pts = vec![
-            Pos2::new(icon.left() + 3.0, icon.top() + 2.0),
-            Pos2::new(icon.right() - 2.0, mid),
-            Pos2::new(icon.left() + 3.0, icon.bottom() - 2.0),
-        ];
-        p.add(egui::Shape::convex_polygon(
-            pts,
-            color(theme::TEXT),
-            Stroke::NONE,
-        ));
-    } else {
-        p.rect_filled(icon.shrink(4.0), 0, color(theme::TEXT_DIM));
-    }
-    x += 22.0 + theme::SPACE_3;
-    let bpm = tabular(
-        p,
-        Pos2::new(x, mid),
-        &format!("{:.0}", v.bpm),
-        theme::DISPLAY,
-        theme::TEXT,
-    );
-    text(
-        p,
-        Pos2::new(bpm.right() + theme::SPACE_2, mid + 4.0),
-        Align2::LEFT_CENTER,
-        "BPM",
-        theme::LABEL,
-        theme::TEXT_DIM,
-    );
-    x = rect.left() + 210.0;
-    // Four beats: the current one lit while playing, the first a landmark.
-    let beat = (v.beats.max(0.0) as u64 % engine::BEATS_PER_BAR) as usize;
-    for i in 0..4 {
-        let r = Rect::from_min_size(Pos2::new(x, mid - 14.0), Vec2::splat(28.0));
-        let fill = if v.playing && i == beat {
-            theme::TEXT
-        } else if i == 0 {
-            theme::MARK
-        } else {
-            theme::LINE
-        };
-        p.rect_filled(r, CornerRadius::same(theme::RADIUS_PAD as u8), color(fill));
-        x += 28.0 + theme::SPACE_2;
-    }
-    x += theme::SPACE_4;
-    let bar = (v.beats.max(0.0) / engine::BEATS_PER_BAR as f64) as u64;
-    tabular(
-        p,
-        Pos2::new(x, mid - 10.0),
-        &format!("Mesure {}", bar + 1),
-        theme::BODY,
-        theme::TEXT,
-    );
-    tabular(
-        p,
-        Pos2::new(x, mid + 12.0),
-        &format!("Phrase {} / 8", bar % 8 + 1),
-        theme::BODY,
-        theme::TEXT_DIM,
-    );
-    x += 150.0;
-    let key = |tonic: u8, scale: u8| {
-        format!(
-            "{} {}",
-            engine::bass::tonic_name(tonic),
-            engine::bass::Scale::from_index(scale).map_or("?", engine::bass::Scale::name)
-        )
-    };
-    let key_rect = text(
-        p,
-        Pos2::new(x, mid - 9.0),
-        Align2::LEFT_CENTER,
-        &key(v.tonic, v.scale),
-        theme::TITLE,
-        theme::TEXT,
-    );
-    if let Some((tonic, scale)) = v.pending_key {
-        text(
-            p,
-            Pos2::new(key_rect.right() + theme::SPACE_3, mid - 9.0),
-            Align2::LEFT_CENTER,
-            &format!("→ {} à la mesure", key(tonic, scale)),
-            theme::BODY,
-            theme::TEXT_DIM,
-        );
-    }
-    let style = match v.pending_style {
-        Some(next) => format!(
-            "{} → {} à la mesure · swing {:.0} %",
-            engine::style::name(v.style),
-            engine::style::name(next),
-            v.swing * 100.0
-        ),
-        None => format!(
-            "{} · swing {:.0} %",
-            engine::style::name(v.style),
-            v.swing * 100.0
-        ),
-    };
-    text(
-        p,
-        Pos2::new(x, mid + 14.0),
-        Align2::LEFT_CENTER,
-        &style,
-        theme::BODY,
-        theme::TEXT_DIM,
-    );
-    // Health, at the right: an alert takes the place of the quiet status.
-    let right = Pos2::new(rect.right() - theme::SPACE_5, mid);
-    let alert = if !v.controller {
-        Some("Contrôleur absent")
-    } else if v.xrun_recent {
-        Some("Xrun")
-    } else if v.overload {
-        Some("Surcharge CPU")
-    } else {
-        None
-    };
-    match alert {
-        Some(label) => {
-            let style = TextStyle {
-                caps: true,
-                weight: 700,
-                ..theme::BODY
-            };
-            let pad = Vec2::new(14.0, 8.0);
-            let size = layout(p, label, style, theme::INK).size() + 2.0 * pad;
-            let badge = Align2::RIGHT_CENTER.anchor_size(right, size);
-            p.rect_filled(
-                badge,
-                CornerRadius::same(theme::RADIUS_PAD as u8),
-                color(theme::ACCENT_ALERT.base),
-            );
-            text(
-                p,
-                badge.center(),
-                Align2::CENTER_CENTER,
-                label,
-                style,
-                theme::INK,
-            );
-        }
-        None => {
-            let status = text(
-                p,
-                right,
-                Align2::RIGHT_CENTER,
-                &format!("DJControl Mix · charge {:.0} %", v.load * 100.0),
-                theme::BODY,
-                theme::TEXT_DIM,
-            );
-            p.circle_filled(
-                Pos2::new(status.left() - theme::SPACE_2 - 4.0, mid),
-                4.0,
-                color(theme::OK),
-            );
-        }
-    }
-}
-
 impl eframe::App for Window {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -631,40 +410,24 @@ impl eframe::App for Window {
         let p = ui.painter();
         let full = ui.max_rect();
         p.rect_filled(full, 0, color(theme::BG));
-        // D4 layout: time bar, three columns (A · bass · B), footer.
+        // D8 layout: deck A · the screen · deck B.
         let inner = full.shrink2(Vec2::new(theme::SPACE_6, theme::SPACE_5));
-        let gap = theme::SPACE_4;
-        let header = Rect::from_min_size(inner.min, Vec2::new(inner.width(), theme::SIZE_HEADER));
-        let footer = Rect::from_min_max(
-            Pos2::new(inner.left(), inner.bottom() - theme::SIZE_FOOTER),
-            inner.max,
+        let gap = theme::SPACE_5;
+        let side_w = (inner.width() * 0.24).clamp(260.0, 340.0);
+        let deck_a = Rect::from_min_size(inner.min, Vec2::new(side_w, inner.height()));
+        let deck_b = Rect::from_min_max(Pos2::new(inner.right() - side_w, inner.top()), inner.max);
+        let screen = Rect::from_min_max(
+            Pos2::new(deck_a.right() + gap, inner.top()),
+            Pos2::new(deck_b.left() - gap, inner.bottom()),
         );
-        let main = Rect::from_min_max(
-            Pos2::new(inner.left(), header.bottom() + gap),
-            Pos2::new(inner.right(), footer.top() - gap),
-        );
-        let bass_w = 196.0;
-        let deck_w = (main.width() - bass_w - 2.0 * gap) / 2.0;
-        let deck_a = Rect::from_min_size(main.min, Vec2::new(deck_w, main.height()));
-        let bass = Rect::from_min_size(
-            Pos2::new(deck_a.right() + gap, main.top()),
-            Vec2::new(bass_w, main.height()),
-        );
-        let deck_b = Rect::from_min_max(Pos2::new(bass.right() + gap, main.top()), main.max);
-        time_bar(p, header, &v);
         panel(p, deck_a, Some(theme::ACCENT_WARM));
-        rhythm::deck_a(p, deck_a, &v);
-        panel(p, bass, Some(theme::ACCENT_AMBER));
-        rhythm::bass_column(p, bass, &v);
+        groove::side(p, deck_a, &v, 0);
+        panel(p, screen, None);
+        groove::screen(p, screen, &v);
         panel(p, deck_b, Some(theme::ACCENT_COLD));
-        melody::deck_b(p, deck_b, &v);
-        footer_bar(p, footer, &v);
+        groove::side(p, deck_b, &v, 1);
         if let Some(h) = &v.hud {
-            melody::hud(
-                p,
-                [deck_a, Rect::from_min_max(deck_a.min, deck_b.max), deck_b],
-                h,
-            );
+            groove::hud(p, [deck_a, screen, deck_b], h);
         }
         if v.playing {
             ctx.request_repaint_after(FRAME);

@@ -126,8 +126,8 @@ struct Wanted {
     transpose: i8,
     /// Drums from the sample kit rather than the synth.
     samples: bool,
-    /// Chord pads of deck B play single notes (degrees 1 to 8).
-    note_mode: bool,
+    /// Density of the generated phrase (fader Tempo B), once touched.
+    phrase_density: Option<f32>,
     /// Bass sound knobs once touched (resonance, envelope, decay, amplitude decay); untouched, the
     /// kit's sound holds.
     bass_sound: [Option<f32>; 4],
@@ -139,7 +139,7 @@ struct Session {
     mapping: Mapping,
     /// Last values echoed to the console (continuous controls are echoed by steps only).
     shown_bpm: f64,
-    shown_levels: [f32; 13],
+    shown_levels: [f32; 14],
     shown_swing: f32,
     shown_density: f32,
     /// Beat-repeat pads held, last pressed last: releasing it falls back to the previous one.
@@ -156,8 +156,6 @@ struct Session {
     hud: Option<(ui::Hud, Instant)>,
     /// A sample kit was loaded at start (Shift + PFL A can switch to it).
     kit_loaded: bool,
-    /// Note pads held (bit `i` = pad `i`), for the window.
-    notes_held: u8,
 }
 
 /// How long the tap-tempo LED asks for attention after a tempo control moved without effect.
@@ -178,11 +176,12 @@ struct LedRoles {
     /// Arpeggio mode pads with the mode index, phrase pads with the phrase index.
     arp_modes: Vec<(Led, u8)>,
     phrases: Vec<(Led, u8)>,
-    /// Loop pads with their slot; the chords ↔ notes switch (lit in notes).
-    loops: Vec<(Led, u8)>,
-    note_mode: Vec<Led>,
-    /// REC: blinks while armed, blinks fast while recording.
-    rec: Vec<Led>,
+    /// Phrase pads: generate, mutate, freeze, clear; the arpeggio switch.
+    phrase_generate: Vec<Led>,
+    phrase_mutate: Vec<Led>,
+    phrase_freeze: Vec<Led>,
+    phrase_clear: Vec<Led>,
+    arp_toggle: Vec<Led>,
 }
 
 impl LedRoles {
@@ -205,9 +204,11 @@ impl LedRoles {
             latch: leds(ActionName::LatchToggle),
             arp_modes: indexed(ActionName::ArpMode),
             phrases: indexed(ActionName::Phrase),
-            loops: indexed(ActionName::Loop),
-            note_mode: leds(ActionName::NoteMode),
-            rec: leds(ActionName::LoopRec),
+            phrase_generate: leds(ActionName::PhraseGenerate),
+            phrase_mutate: leds(ActionName::PhraseMutate),
+            phrase_freeze: leds(ActionName::PhraseFreeze),
+            phrase_clear: leds(ActionName::PhraseClear),
+            arp_toggle: leds(ActionName::ArpToggle),
         }
     }
 }
@@ -431,6 +432,9 @@ fn open(
     handle.send(Command::BassMute(wanted.bass_muted));
     handle.send(Command::SetTonic(wanted.tonic));
     handle.send(Command::SetParam(Param::BassCutoff, wanted.bass_cutoff));
+    if let Some(density) = wanted.phrase_density {
+        handle.send(Command::SetParam(Param::PhraseDensity, density));
+    }
     for (param, value) in BASS_SOUND.into_iter().zip(wanted.bass_sound) {
         if let Some(value) = value {
             handle.send(Command::SetParam(param, value));
@@ -583,35 +587,44 @@ fn handle_controller(
                 scale_name(s.wanted.scale)
             );
         }
-        Action::Chord { pad, held } if s.wanted.note_mode => {
-            handle.send(Command::Note { pad, on: held });
-            let bit = 1u8.checked_shl(u32::from(pad)).unwrap_or(0);
-            if held {
-                s.notes_held |= bit;
-            } else {
-                s.notes_held &= !bit;
-            }
+        Action::PhraseGenerate => {
+            handle.send(Command::PhraseGenerate);
+            println!("  ⚄ phrase générée à la mesure");
         }
-        Action::ToggleNoteMode => {
-            s.wanted.note_mode = !s.wanted.note_mode;
-            // Notes held while switching end now.
-            for pad in 0..8 {
-                if s.notes_held & (1 << pad) != 0 {
-                    handle.send(Command::Note { pad, on: false });
-                }
-            }
-            s.notes_held = 0;
+        Action::PhraseMutate => {
+            handle.send(Command::PhraseMutate);
+            println!("  ⚂ phrase mutée à la mesure");
+        }
+        Action::PhraseClear => {
+            handle.send(Command::PhraseClear);
+            println!("  ✕ phrase effacée à la mesure");
+        }
+        Action::TogglePhraseFreeze => {
+            let frozen = !handle.snapshot().phrase_frozen;
+            handle.send(Command::PhraseFreeze(frozen));
             println!(
-                "  ♪ pads Hot Cue B : {}",
-                if s.wanted.note_mode {
-                    "notes (degrés 1 à 8)"
-                } else {
-                    "accords"
-                }
+                "  {} phrase {}",
+                if frozen { "❄" } else { "~" },
+                if frozen { "figée" } else { "libre" }
             );
         }
-        Action::Loop(slot) => {
-            handle.send(Command::Loop(slot));
+        Action::PhraseRec(held) => {
+            handle.send(Command::PhraseRec(held));
+            if held {
+                println!("  ● enregistrement des accords par-dessus la phrase");
+            }
+        }
+        Action::Throw { delay, held } => {
+            handle.send(Command::Throw { delay, on: held });
+        }
+        Action::ToggleArp => {
+            s.wanted.arp.mode = if s.wanted.arp.mode == ArpMode::Off {
+                ArpMode::Up
+            } else {
+                ArpMode::Off
+            };
+            send_arp(handle, s.wanted.arp);
+            echo_arp(s.wanted.arp);
         }
         Action::SetSwing(swing) => {
             s.wanted.swing =
@@ -637,16 +650,6 @@ fn handle_controller(
                 s.shown_density = s.wanted.density;
                 println!("  ▥ densité {:.0} %", s.wanted.density * 100.0);
             }
-        }
-        Action::RecLoop => {
-            handle.send(Command::RecLoop);
-        }
-        Action::ClearLoop(slot) => {
-            handle.send(Command::ClearLoop(slot));
-            println!("  ✕ boucle {} effacée", slot + 1);
-        }
-        Action::NudgeLoopBars(delta) => {
-            handle.send(Command::NudgeLoopBars(delta));
         }
         Action::Chord { pad, held } => {
             handle.send(Command::Chord { pad, on: held });
@@ -871,6 +874,10 @@ fn handle_controller(
                         name,
                     )
                 }
+                Target::PhraseDensity => {
+                    s.wanted.phrase_density = Some(value);
+                    (Param::PhraseDensity, 13, "densité de la phrase")
+                }
                 Target::Tempo => return,
             };
             if let Some(shown) = s.shown_levels.get_mut(slot)
@@ -882,6 +889,31 @@ fn handle_controller(
             handle.send(Command::SetParam(param, value));
         }
     }
+}
+
+/// Values of the knobs the window draws, in `ui::KNOBS` order (`None`: untouched, the kit's).
+fn knob_values(w: &Wanted) -> [Option<f32>; 16] {
+    let [res, env, decay, amp] = w.bass_sound;
+    [
+        // Deck A, then its Shift layer.
+        Some(w.bass_cutoff),
+        res,
+        decay,
+        Some(w.drum_level),
+        Some(w.bass_cutoff),
+        env,
+        amp,
+        Some(w.bass_level),
+        // Deck B, then its Shift layer.
+        w.phrase_density,
+        Some(w.brightness),
+        Some(w.delay_send),
+        Some(w.melody_level),
+        w.phrase_density,
+        Some(w.brightness),
+        Some(w.delay_feedback),
+        Some(w.metronome_level),
+    ]
 }
 
 /// Engine parameters of the bass sound knobs, in `Wanted::bass_sound` order.
@@ -1047,39 +1079,35 @@ fn update_leds(leds: &mut LedBank, s: &Session, snap: &EngineSnapshot, beats: f6
             },
         );
     }
-    for &(led, slot) in &s.leds.loops {
-        use engine::looper::LoopState;
-        let state = snap
-            .loops
-            .get(usize::from(slot))
-            .map_or(LoopState::Empty, |&i| LoopState::from_index(i));
-        // Playing lit; waiting for the bar blinks; recording blinks fast.
-        let led_state = match state {
-            LoopState::Playing => LedState::On,
-            LoopState::Armed | LoopState::Waiting | LoopState::Stopping => LedState::Blink,
-            LoopState::Recording => LedState::BlinkFast,
-            LoopState::Empty | LoopState::Stopped => LedState::Off,
-        };
-        leds.set_state(led, led_state);
-    }
-    let rec = {
-        use engine::looper::LoopState;
-        let states = snap.loops.map(LoopState::from_index);
-        if states.contains(&LoopState::Recording) {
-            LedState::BlinkFast
-        } else if states.contains(&LoopState::Armed) {
+    // Phrase pads: what waits for the bar blinks; freeze lit while frozen; arpeggio lit when on.
+    let pending = engine::phrase::Pending::from_index(snap.phrase_pending);
+    let waits = |p| {
+        if pending == p {
             LedState::Blink
         } else {
             LedState::Off
         }
     };
-    for &led in &s.leds.rec {
-        leds.set_state(led, rec);
-    }
-    if s.wanted.note_mode {
-        for &led in &s.leds.note_mode {
-            leds.set_state(led, LedState::On);
+    for (leds_of, state) in [
+        (
+            &s.leds.phrase_generate,
+            waits(engine::phrase::Pending::Generate),
+        ),
+        (
+            &s.leds.phrase_mutate,
+            waits(engine::phrase::Pending::Mutate),
+        ),
+        (&s.leds.phrase_clear, waits(engine::phrase::Pending::Clear)),
+    ] {
+        for &led in leds_of {
+            leds.set_state(led, state);
         }
+    }
+    for &led in &s.leds.phrase_freeze {
+        leds.set(led, snap.phrase_frozen);
+    }
+    for &led in &s.leds.arp_toggle {
+        leds.set(led, snap.arp_mode != 0);
     }
     for &led in &s.held {
         leds.set(led, true);
@@ -1223,16 +1251,13 @@ fn run(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
     result
 }
 
-fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
-    let _awake = io::system::keep_alive("LiveDeck live session");
-    let (mapping, mapping_source) = load_mapping(args.mapping.as_ref())?;
-    let mut s = Session {
+/// A fresh session: the defaults of the instrument (A minor, first kit, levels at 80 %).
+fn new_session(mapping: Mapping, bpm: f64, metronome: bool) -> Session {
+    Session {
         wanted: Wanted {
             playing: true,
-            bpm: args
-                .bpm
-                .clamp(engine::clock::MIN_BPM, engine::clock::MAX_BPM),
-            metronome: args.metronome,
+            bpm: bpm.clamp(engine::clock::MIN_BPM, engine::clock::MAX_BPM),
+            metronome,
             master_gain: 1.0,
             metronome_level: 0.7,
             drum_level: 0.8,
@@ -1258,13 +1283,13 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
             arp: ArpSettings::default(),
             transpose: 0,
             samples: false,
-            note_mode: false,
+            phrase_density: None,
             bass_sound: [None; 4],
         },
         leds: LedRoles::of(&mapping),
         mapping,
         shown_bpm: 0.0,
-        shown_levels: [-1.0; 13],
+        shown_levels: [-1.0; 14],
         shown_swing: 0.54,
         shown_density: 1.0,
         repeats_held: Vec::new(),
@@ -1274,8 +1299,13 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
         tempo_ignored_at: None,
         hud: None,
         kit_loaded: false,
-        notes_held: 0,
-    };
+    }
+}
+
+fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
+    let _awake = io::system::keep_alive("LiveDeck live session");
+    let (mapping, mapping_source) = load_mapping(args.mapping.as_ref())?;
+    let mut s = new_session(mapping, args.bpm, args.metronome);
     let kit = load_kit(args.kit.as_ref());
     s.kit_loaded = kit.is_some();
     println!("Mapping : {mapping_source} ({} liaisons)", s.mapping.len());
@@ -1327,7 +1357,6 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
     let mut shown_samples = (false, None);
     let mut shown_scale = (u8::MAX, None);
     let mut shown_phrase = (None, None);
-    let mut shown_loops = ([0u8; engine::looper::SLOTS], 0u8);
     let mut shown_delay = u8::MAX;
 
     let mut last_report = Instant::now();
@@ -1435,32 +1464,6 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
                 (None, Some(now)) => println!("  ◆ {}", phrase_label(now)),
                 (None, None) => println!("  ◆ pas de phrase"),
             }
-        }
-        if (snap.loops, snap.next_loop_bars) != shown_loops {
-            use engine::looper::LoopState;
-            for (slot, (&now, &was)) in snap.loops.iter().zip(shown_loops.0.iter()).enumerate() {
-                if now == was {
-                    continue;
-                }
-                let bars = snap.loop_bars.get(slot).copied().unwrap_or(0);
-                let what = match LoopState::from_index(now) {
-                    LoopState::Armed => format!("enregistrement à la mesure ({bars} mes.)"),
-                    LoopState::Recording => format!("enregistre ({bars} mes.)"),
-                    LoopState::Waiting => "part à la mesure".to_owned(),
-                    LoopState::Playing => format!(
-                        "tourne ({} notes)",
-                        snap.loop_notes.get(slot).copied().unwrap_or(0)
-                    ),
-                    LoopState::Stopping => "s'arrête à la mesure".to_owned(),
-                    LoopState::Stopped => "arrêtée".to_owned(),
-                    LoopState::Empty => "vide".to_owned(),
-                };
-                println!("  ⟲ boucle {} : {what}", slot + 1);
-            }
-            if snap.next_loop_bars != shown_loops.1 && shown_loops.1 != 0 {
-                println!("  ⟲ prochaine boucle : {} mesure(s)", snap.next_loop_bars);
-            }
-            shown_loops = (snap.loops, snap.next_loop_bars);
         }
         if snap.delay_time != shown_delay {
             // Skip the first value: the starting delay time is not news.
@@ -1640,14 +1643,18 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
                 arp_mode: snap.arp_mode,
                 arp_rate: snap.arp_rate,
                 arp_octaves: snap.arp_octaves,
-                phrase: snap.phrase,
-                pending_phrase: snap.pending_phrase,
-                note_mode: s.wanted.note_mode,
-                notes_held: s.notes_held,
-                loops: snap.loops,
-                loop_bars: snap.loop_bars,
-                next_loop_bars: snap.next_loop_bars,
-                loop_progress: snap.loop_progress,
+                pending_random_bass: snap.pending_random_bass,
+                phrase_events: snap.phrase_events,
+                phrase_pending: snap.phrase_pending,
+                phrase_frozen: snap.phrase_frozen,
+                phrase_rec: snap.phrase_rec,
+                phrase_density: snap.phrase_density,
+                throws: snap.throws,
+                shift: s.mapping.shift_held(),
+                knobs: knob_values(&s.wanted),
+                crossfade: s.wanted.crossfade,
+                master: s.wanted.master_gain,
+                reverb: s.wanted.reverb_send,
                 delay_time: snap.delay_time,
                 hud: shown_hud(&s),
                 meters: meters.update(snap.peaks),
@@ -1686,6 +1693,7 @@ fn hud_of(action: Action, s: &Session) -> Option<ui::Hud> {
                 Target::BassEnv => (Zone::A, "Enveloppe basse"),
                 Target::BassDecay => (Zone::A, "Decay filtre basse"),
                 Target::BassAmpDecay => (Zone::A, "Decay basse"),
+                Target::PhraseDensity => (Zone::B, "Densité phrase"),
                 Target::Tempo => return None,
             };
             (zone, label, Percent(v))
@@ -1811,4 +1819,229 @@ fn main() {
 fn fail(message: &str) -> ! {
     eprintln!("erreur : {message}");
     std::process::exit(1);
+}
+
+/// End-to-end scenarios (R3–R5): controller gestures go through the real mapping, the control
+/// thread's handling and the engine, rendered offline — no controller, no sound card.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod scenario {
+    use super::*;
+    use io::controller::{DeckKnob, JogSurface, MAX_14BIT, MixerControl};
+    use io::mapping::DEFAULT_MAPPING;
+
+    const SR: u32 = 48_000;
+    const BLOCK: usize = 256;
+
+    struct Rig {
+        s: Session,
+        audio: link::AudioEngine,
+        handle: EngineHandle,
+        t: u64,
+        /// Largest sample of the last run.
+        peak: f32,
+    }
+
+    impl Rig {
+        fn new() -> Self {
+            let mapping = Mapping::from_toml_str(DEFAULT_MAPPING).expect("mapping");
+            let s = new_session(mapping, 120.0, false);
+            let (audio, mut handle) = link::connect(Engine::new(SR, BLOCK, 120.0));
+            handle.send(Command::Metronome(false));
+            handle.send(Command::Start);
+            let mut rig = Self {
+                s,
+                audio,
+                handle,
+                t: 0,
+                peak: 0.0,
+            };
+            rig.run_beats(0.1);
+            rig
+        }
+
+        fn gesture(&mut self, event: ControllerEvent) {
+            self.t += 1_000;
+            handle_controller(self.t, event, &mut self.s, &mut self.handle, true);
+        }
+
+        fn pad(&mut self, deck: Deck, mode: PadMode, pad: u8, shift: bool) {
+            for pressed in [true, false] {
+                self.gesture(ControllerEvent::Pad {
+                    deck,
+                    mode,
+                    pad,
+                    shift,
+                    pressed,
+                    velocity: if pressed { 127 } else { 0 },
+                });
+            }
+        }
+
+        fn hold(&mut self, deck: Deck, mode: PadMode, pad: u8, pressed: bool) {
+            self.gesture(ControllerEvent::Pad {
+                deck,
+                mode,
+                pad,
+                shift: false,
+                pressed,
+                velocity: if pressed { 127 } else { 0 },
+            });
+        }
+
+        /// Renders `beats` at 120 BPM; keeps the peak.
+        fn run_beats(&mut self, beats: f64) {
+            let frames = (beats * f64::from(SR) / 2.0) as usize;
+            let mut out = vec![0.0; BLOCK * 2];
+            self.peak = 0.0;
+            for _ in 0..frames.div_ceil(BLOCK) {
+                self.audio.process(&mut out, 2);
+                self.peak = out.iter().fold(self.peak, |m, s| m.max(s.abs()));
+            }
+        }
+
+        /// Runs to the end of the current bar and a little past it.
+        fn next_bar(&mut self) {
+            let beats = self.handle.snapshot().beats;
+            let to_bar = 4.0 - beats % 4.0;
+            self.run_beats(to_bar + 0.25);
+        }
+
+        fn snap(&mut self) -> EngineSnapshot {
+            self.handle.snapshot()
+        }
+    }
+
+    #[test]
+    fn a_kit_changes_at_the_bar_and_the_jog_sets_the_density() {
+        let mut rig = Rig::new();
+        rig.run_beats(1.0);
+        rig.pad(Deck::A, PadMode::Sampler, 2, true);
+        rig.run_beats(0.1);
+        assert_eq!(rig.snap().pending_style, Some(2), "Dub waits for the bar");
+        rig.next_bar();
+        let snap = rig.snap();
+        assert_eq!((snap.style, snap.pending_style), (2, None));
+        assert!(rig.peak > 0.01, "the drums play");
+        for surface in [JogSurface::Edge, JogSurface::Top] {
+            rig.gesture(ControllerEvent::Jog {
+                deck: Deck::A,
+                surface,
+                shift: false,
+                delta: -50,
+            });
+        }
+        rig.run_beats(0.1);
+        assert!(rig.snap().density < 0.9, "{}", rig.snap().density);
+        // Swing: Shift + Loop A 3 = 58 %.
+        rig.pad(Deck::A, PadMode::Loop, 2, true);
+        rig.run_beats(0.1);
+        assert!((rig.snap().swing - 0.58).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_phrase_is_generated_at_the_bar_and_plays() {
+        let mut rig = Rig::new();
+        // Rhythm and bass out of the way: the crossfader to the melody.
+        rig.gesture(ControllerEvent::Mixer {
+            control: MixerControl::Crossfader,
+            value: MAX_14BIT,
+        });
+        rig.run_beats(1.0);
+        assert_eq!(rig.snap().phrase_events.count, 0, "silent at start");
+        rig.pad(Deck::B, PadMode::Sampler, 0, false);
+        rig.run_beats(0.1);
+        assert_eq!(rig.snap().phrase_pending, 1, "waits for the bar");
+        rig.next_bar();
+        let snap = rig.snap();
+        assert_eq!(snap.phrase_pending, 0);
+        assert!(snap.phrase_events.count > 0);
+        assert!(!snap.phrase_frozen);
+        rig.run_beats(4.0);
+        assert!(rig.peak > 0.01, "the phrase sounds: {}", rig.peak);
+        // Freeze, then mutate at the bar.
+        rig.pad(Deck::B, PadMode::Sampler, 2, false);
+        rig.run_beats(0.1);
+        assert!(rig.snap().phrase_frozen);
+        rig.pad(Deck::B, PadMode::Sampler, 1, false);
+        rig.run_beats(0.1);
+        assert_eq!(rig.snap().phrase_pending, 2);
+        // Clear.
+        rig.pad(Deck::B, PadMode::Sampler, 3, false);
+        rig.next_bar();
+        assert_eq!(rig.snap().phrase_events.count, 0);
+        assert_eq!(rig.snap().nan_count, 0);
+    }
+
+    #[test]
+    fn chords_played_while_rec_is_held_join_the_phrase() {
+        let mut rig = Rig::new();
+        rig.hold(Deck::B, PadMode::Loop, 0, true);
+        rig.run_beats(0.1);
+        assert!(rig.snap().phrase_rec);
+        rig.hold(Deck::B, PadMode::HotCue, 1, true);
+        rig.run_beats(0.5);
+        rig.hold(Deck::B, PadMode::HotCue, 1, false);
+        rig.hold(Deck::B, PadMode::Loop, 0, false);
+        rig.run_beats(0.1);
+        let snap = rig.snap();
+        assert!(!snap.phrase_rec);
+        let chord = snap.phrase_events.iter().find(|e| e.chord).copied();
+        assert!(matches!(chord, Some(e) if e.degree == 1 && e.len >= 1));
+    }
+
+    #[test]
+    fn throws_hold_while_the_pad_is_held() {
+        let mut rig = Rig::new();
+        rig.hold(Deck::B, PadMode::Fx, 0, true);
+        rig.run_beats(0.1);
+        assert_eq!(rig.snap().throws, (true, false));
+        rig.hold(Deck::B, PadMode::Fx, 1, true);
+        rig.hold(Deck::B, PadMode::Fx, 0, false);
+        rig.run_beats(0.1);
+        assert_eq!(rig.snap().throws, (false, true));
+        rig.hold(Deck::B, PadMode::Fx, 1, false);
+        rig.run_beats(0.1);
+        assert_eq!(rig.snap().throws, (false, false));
+        // The arpeggio switch.
+        rig.pad(Deck::B, PadMode::Fx, 3, false);
+        rig.run_beats(0.1);
+        assert_ne!(rig.snap().arp_mode, 0);
+    }
+
+    #[test]
+    fn deck_a_shapes_the_bass_and_draws_a_line() {
+        let mut rig = Rig::new();
+        rig.gesture(ControllerEvent::Knob {
+            deck: Deck::A,
+            knob: DeckKnob::Bass,
+            value: MAX_14BIT,
+        });
+        rig.gesture(ControllerEvent::Tempo {
+            deck: Deck::A,
+            value: 0,
+        });
+        assert_eq!(rig.s.wanted.bass_sound[0], Some(1.0), "resonance");
+        assert_eq!(rig.s.wanted.bass_sound[2], Some(0.0), "filter decay");
+        rig.pad(Deck::A, PadMode::Sampler, 3, true);
+        rig.run_beats(0.1);
+        assert!(rig.snap().pending_random_bass);
+        rig.next_bar();
+        assert!(!rig.snap().pending_random_bass);
+        assert!(rig.peak > 0.01 && rig.peak <= 1.0, "{}", rig.peak);
+        assert_eq!(rig.snap().nan_count, 0);
+    }
+
+    #[test]
+    fn the_window_view_follows_the_gestures() {
+        let mut rig = Rig::new();
+        rig.pad(Deck::B, PadMode::Sampler, 0, false);
+        rig.next_bar();
+        let snap = rig.snap();
+        // What the window reads for the phrase and the knobs.
+        let knobs = knob_values(&rig.s.wanted);
+        assert_eq!(knobs[0], Some(rig.s.wanted.bass_cutoff));
+        assert_eq!(knobs[1], None, "resonance untouched: the kit's");
+        assert!(snap.phrase_events.count > 0);
+    }
 }

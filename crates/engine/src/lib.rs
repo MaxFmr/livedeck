@@ -19,9 +19,9 @@ pub mod dsp;
 pub mod fx;
 pub mod limiter;
 pub mod link;
-pub mod looper;
 pub mod melody;
 pub mod metronome;
+pub mod phrase;
 pub mod poly;
 pub mod repeat;
 pub mod sampler;
@@ -69,6 +69,8 @@ pub enum Param {
     BassEnv,
     BassDecay,
     BassAmpDecay,
+    /// How many notes a generated phrase draws (R3).
+    PhraseDensity,
 }
 
 /// Beats per bar (4/4 only for now).
@@ -93,7 +95,10 @@ pub struct Engine {
     synth: PolySynth,
     chords: chords::ChordPads,
     melody: Melody,
-    looper: looper::Looper,
+    phrase: phrase::Phrase,
+    /// Dub throws, 0..1 (smoothed so a throw does not click).
+    throw_delay: Smoothed,
+    throw_reverb: Smoothed,
     /// Style whose synth patch is loaded.
     synth_style: u8,
     sequencer: Sequencer,
@@ -155,7 +160,9 @@ impl Engine {
             synth: PolySynth::new(sample_rate),
             chords: chords::ChordPads::default(),
             melody: Melody::new(),
-            looper: looper::Looper::new(),
+            phrase: phrase::Phrase::new(),
+            throw_delay: Smoothed::new(0.0, sample_rate, 0.01),
+            throw_reverb: Smoothed::new(0.0, sample_rate, 0.01),
             synth_style: 0,
             sequencer: Sequencer::new(),
             limiter: Limiter::new(sample_rate),
@@ -191,7 +198,6 @@ impl Engine {
         self.clock.start();
         self.sequencer.reset();
         self.melody.reset();
-        self.looper.reset();
         self.sync_arp();
         self.repeat.release();
         self.last_hit = None;
@@ -203,8 +209,8 @@ impl Engine {
         self.bass.note_off();
         self.chords.release_all(&mut self.synth);
         self.melody.stop();
-        self.looper.stop();
-        for owner in looper::NOTE_OWNER..looper::LOOP_OWNER + 8 {
+        self.phrase.stop();
+        for owner in phrase::OWNER..phrase::OWNER + 8 {
             self.synth.release(owner);
         }
         self.sync_arp();
@@ -237,40 +243,53 @@ impl Engine {
             .press_phrase(index, variation, self.clock.is_playing());
     }
 
-    /// Note pad `pad` (0..8: degrees 1 to 8) pressed or released; recorded into the loop being
-    /// recorded.
-    pub fn note(&mut self, pad: u8, on: bool) {
-        let key = (self.sequencer.bass().key(), self.chords.transpose());
-        let beats = self.clock.beats();
-        self.looper.note(pad, on, &mut self.synth, key, beats);
+    /// The generative phrase (R3): generate, mutate or clear at the next bar (now if stopped).
+    pub fn phrase_generate(&mut self) {
+        let playing = self.clock.is_playing();
+        self.phrase.generate(playing);
     }
 
-    /// Loop pad `slot`: records an empty slot from the next bar, starts or stops a recorded one at
-    /// the bar.
-    pub fn press_loop(&mut self, slot: u8) {
-        let (beats, playing) = (self.clock.beats(), self.clock.is_playing());
-        self.looper.press(usize::from(slot), beats, playing);
+    pub fn phrase_mutate(&mut self) {
+        let playing = self.clock.is_playing();
+        self.phrase.mutate(playing);
     }
 
-    /// REC: records the first empty loop from the next bar; pressed while recording, drops it.
-    pub fn rec_loop(&mut self) {
-        let (beats, playing) = (self.clock.beats(), self.clock.is_playing());
-        self.looper.rec(beats, playing);
+    pub fn phrase_clear(&mut self) {
+        let playing = self.clock.is_playing();
+        self.phrase.clear(playing);
     }
 
-    /// Erases loop `slot`.
-    pub fn clear_loop(&mut self, slot: u8) {
-        self.looper.clear(usize::from(slot), &mut self.synth);
+    /// Frozen, the phrase no longer varies by itself.
+    pub fn phrase_freeze(&mut self, frozen: bool) {
+        self.phrase.set_frozen(frozen);
     }
 
-    /// Length of the next loop recorded, one step of `looper::LENGTHS` per unit.
-    pub fn nudge_loop_bars(&mut self, delta: i8) {
-        self.looper.nudge_bars(delta);
+    /// REC held: chord pads played are added to the phrase.
+    pub fn phrase_rec(&mut self, on: bool) {
+        self.phrase.set_recording(on);
     }
 
     #[must_use]
-    pub fn looper(&self) -> &looper::Looper {
-        &self.looper
+    pub fn phrase(&self) -> &phrase::Phrase {
+        &self.phrase
+    }
+
+    /// Dub throws (R4): while on, the melody and the drums go full into the delay or the reverb.
+    pub fn throw(&mut self, delay: bool, on: bool) {
+        let target = if on { 1.0 } else { 0.0 };
+        if delay {
+            self.throw_delay.set(target);
+        } else {
+            self.throw_reverb.set(target);
+        }
+    }
+
+    #[must_use]
+    pub fn throws(&self) -> (bool, bool) {
+        (
+            self.throw_delay.target() > 0.5,
+            self.throw_reverb.target() > 0.5,
+        )
     }
 
     /// Melody transposition in scale degrees (chords, arpeggio, phrases), right away.
@@ -306,6 +325,7 @@ impl Engine {
             Param::BassEnv => self.bass.set_env_amount(value),
             Param::BassDecay => self.bass.set_env_decay(value),
             Param::BassAmpDecay => self.bass.set_amp_decay(value),
+            Param::PhraseDensity => self.phrase.set_density(value),
             Param::DelaySend => self.delay_send.set(gain_curve(value)),
             Param::DelayFeedback => self
                 .delay_feedback
@@ -374,7 +394,7 @@ impl Engine {
     pub fn chord(&mut self, pad: u8, on: bool) {
         let key = self.sequencer.bass().key();
         self.chords.pad(&mut self.synth, key, pad, on);
-        self.looper.chord(pad, on, self.clock.beats());
+        self.phrase.chord(pad, on, self.clock.beats());
     }
 
     /// Latch of the chord pads.
@@ -591,6 +611,8 @@ impl Engine {
             let delay_send = self.delay_send.skip(n);
             self.delay.set_feedback(self.delay_feedback.skip(n));
             let reverb_send = self.reverb_send.skip(n);
+            let throw_delay = self.throw_delay.skip(n);
+            let throw_reverb = self.throw_reverb.skip(n);
             let (rhythm_fade, melody_fade) = crossfade_gains(self.crossfade.skip(n));
             let (drum_gain, bass_gain) = (drum_gain * rhythm_fade, bass_gain * rhythm_fade);
             let melody_gain = melody_gain * melody_fade;
@@ -608,7 +630,7 @@ impl Engine {
                     synth: &mut self.synth,
                     chords: &self.chords,
                     melody: &mut self.melody,
-                    looper: &mut self.looper,
+                    phrase: &mut self.phrase,
                     last_hit: &mut self.last_hit,
                     roll_pending: &mut self.roll_pending,
                     repeat: &mut self.repeat,
@@ -629,10 +651,14 @@ impl Engine {
                 .zip(synth.iter())
             {
                 let (drum, bass, synth) = (drum * drum_gain, bass * bass_gain, synth * melody_gain);
-                let echo = self.delay.tick(synth * delay_send);
+                // A throw sends the melody and the drums full into the effect, on top of the knob.
+                let echo = self
+                    .delay
+                    .tick(synth * delay_send + throw_delay * (synth + 0.6 * drum));
+                let into_reverb = synth + 0.5 * drum + 0.1 * bass + echo;
                 let (wet_l, wet_r) = self
                     .reverb
-                    .tick((synth + 0.5 * drum + 0.1 * bass + echo) * reverb_send);
+                    .tick(into_reverb * reverb_send + throw_reverb * (synth + 0.8 * drum + echo));
                 let [p_drum, p_bass, p_melody, _] = &mut self.peaks;
                 *p_drum = p_drum.max(drum.abs());
                 *p_bass = p_bass.max(bass.abs());
@@ -699,7 +725,7 @@ struct Voices<'a> {
     synth: &'a mut PolySynth,
     chords: &'a chords::ChordPads,
     melody: &'a mut Melody,
-    looper: &'a mut looper::Looper,
+    phrase: &'a mut phrase::Phrase,
     last_hit: &'a mut Option<u64>,
     roll_pending: &'a mut Option<usize>,
     repeat: &'a mut BeatRepeat,
@@ -768,9 +794,8 @@ fn render_mono(v: Voices<'_>, buses: Buses<'_>) {
                 v.clock,
                 |len, held| sequencer.gate_of_fired(v.clock, len, held),
             );
-            v.looper.fire_step(
+            v.phrase.fire_step(
                 bar_step,
-                v.clock.beats(),
                 v.synth,
                 (
                     sequencer.bass().key(),

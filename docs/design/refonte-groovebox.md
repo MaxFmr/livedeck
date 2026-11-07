@@ -143,17 +143,16 @@ Une ligne par contrôle ; « Shift » seulement pour les réglages rares. Tout c
 | Contrôle | Fonction | Shift |
 |---|---|---|
 | Pads Hot Cue | accords dub (4 degrés de la gamme, stabs 7e / 9e) | 4 autres degrés |
-| Pads Sampler | **boucle** : générer · muter · figer · effacer | — |
+| Pads Sampler | **phrase** : générer · muter · figer · effacer | — |
 | Pads FX | throw delay (tenu) · throw réverb (tenu) · temps du delay · arpège on/off | — |
-| Pads Loop | enregistrer par-dessus (tenu = enregistre) · latch · octave · extension | — |
-| Jog (tranche) | registre de la phrase | gamme |
-| Jog (dessus) | transposition dans la gamme | — |
+| Pads Loop | REC tenu (accords dans la phrase) · latch · octave · extension | latch → renversement, octave −, triade |
+| Jog (tranche ou dessus) | transposition dans la gamme | gamme |
 | Filter | brillance du synthé | — |
 | Bass | envoi au delay | répétitions |
 | Fader Tempo | densité de la phrase générée | — |
 | Volume | niveau de la mélodie | — |
 | Cue | tonique −1 | tonique +1 |
-| Sync, PFL | libres (réservés) | PFL : temps du delay |
+| Sync, PFL | libres | PFL : temps du delay |
 | Play | lecture / arrêt | — |
 
 ### Mixer
@@ -183,3 +182,4 @@ Une ligne par contrôle ; « Shift » seulement pour les réglages rares. Tout c
 
 - 2026-11-07 : D8 validée (piste 3). **R1 faite** : [027](../iterations/027-r1-rythme-dub-techno.md) — 3 kits, kick à la noire, deck A selon la carte.
 - 2026-11-07 : **R2 faite** : [028](../iterations/028-r2-basse.md) — résonance, enveloppe, decays, ligne au hasard. Essai groupé R1 + R2 : `tools/try-028.sh`.
+- 2026-11-07 : **R3, R4, R5 faites** d'un bloc : [029](../iterations/029-r3-r5-groovebox.md). Reste R6 : l'essai intégral ([plan](../tests/plan-essai-groovebox.md)).
