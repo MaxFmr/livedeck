@@ -4,6 +4,7 @@
 - Script guidé : `tools/try-groovebox.sh` (voix pour chaque étape, silence pendant le jeu libre ;
   Ctrl-C arrête tout, app comprise). Journal : `target/groovebox-test.txt`.
 - Avant : contrôleur branché en USB, casque ou enceintes, `df -h /` correct.
+- Version détaillée à cocher, à suivre seul : [checklist-groovebox.md](checklist-groovebox.md).
 
 ## Ce que les tests automatiques couvrent déjà (sans matériel)
 
