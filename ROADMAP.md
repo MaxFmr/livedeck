@@ -108,6 +108,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 | Date | Évènement |
 |---|---|
+| 2026-11-07 | **R2** ([028](docs/iterations/028-r2-basse.md)) : basse réglable (résonance, enveloppe, decays) et ligne au hasard ; D8 : écran central retenu pour R5. Essai groupé R1 + R2 à faire. |
 | 2026-11-07 | D8 validée (piste 3 · pads et anneaux). **R1** ([027](docs/iterations/027-r1-rythme-dub-techno.md)) : 3 kits 808 · 909 · Dub à la place des 6 styles, kick à la noire, deck A selon la carte. |
 | 2026-11-07 | **Refonte « groovebox » dub techno** décidée après le 2e essai de 026 (boucles peu fiables, trop de gestes) : brief [refonte-groovebox](docs/design/refonte-groovebox.md) à valider, puis R0–R6. |
 | 2026-11-07 | Cap changé : pas de scènes (trop de complexité dans le jeu), impro à la volée ; 026 = notes jouées au pad + boucles de mélodie enregistrées sur les pads Sampler B. |

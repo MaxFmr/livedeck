@@ -99,6 +99,8 @@ pub enum Command {
     ClearLoop(u8),
     /// REC: the first empty loop records from the next bar (again: dropped).
     RecLoop,
+    /// A bass line drawn at random replaces the current one at the next bar.
+    RandomBassLine,
     /// Length of the next loop recorded, in steps of `looper::LENGTHS`.
     NudgeLoopBars(i8),
 }
@@ -153,6 +155,8 @@ pub struct EngineSnapshot {
     pub bass_line: u8,
     pub pending_bass_line: Option<u8>,
     pub bass_muted: bool,
+    /// A random bass line waits for the bar.
+    pub pending_random_bass: bool,
     /// Tonic (0 = C … 11 = B) and the one waiting for the next bar.
     pub tonic: u8,
     pub pending_tonic: Option<u8>,
@@ -260,6 +264,7 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         bass_line: engine.sequencer().bass().current(),
         pending_bass_line: engine.sequencer().bass().pending(),
         bass_muted: engine.sequencer().bass().muted(),
+        pending_random_bass: engine.sequencer().bass().pending_random(),
         tonic: engine.sequencer().bass().key().tonic,
         pending_tonic: engine.sequencer().bass().pending_tonic(),
         style: engine.sequencer().style(),
@@ -376,6 +381,7 @@ impl AudioEngine {
             Command::Loop(slot) => self.engine.press_loop(slot),
             Command::ClearLoop(slot) => self.engine.clear_loop(slot),
             Command::RecLoop => self.engine.rec_loop(),
+            Command::RandomBassLine => self.engine.queue_random_bass_line(),
             Command::NudgeLoopBars(delta) => self.engine.nudge_loop_bars(delta),
             Command::Drum {
                 voice,

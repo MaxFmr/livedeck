@@ -60,6 +60,10 @@ pub enum Target {
     DelayFeedback,
     ReverbSend,
     Crossfade,
+    BassResonance,
+    BassEnv,
+    BassDecay,
+    BassAmpDecay,
 }
 
 /// Result of a mapped gesture, applied by the control thread.
@@ -143,6 +147,8 @@ pub enum Action {
     Kit(u8),
     /// Drum density change, as a fraction (0.01 = 1 %).
     NudgeDensity(f32),
+    /// A bass line drawn at random, at the next bar.
+    RandomBassLine,
     /// Length of the next loop recorded, in steps of 1, 2, 4 bars.
     NudgeLoopBars(i8),
     SetTempo(f64),
@@ -203,6 +209,11 @@ pub enum ActionName {
     LoopBars,
     Kit,
     DensityNudge,
+    BassResonance,
+    BassEnv,
+    BassDecay,
+    BassAmpDecay,
+    RandomBassLine,
 }
 
 #[derive(Debug, Deserialize)]
@@ -600,6 +611,7 @@ impl Mapping {
             (ActionName::NoteMode, Input::Press(true)) => Some(Action::ToggleNoteMode),
             (ActionName::LoopRec, Input::Press(true)) => Some(Action::RecLoop),
             (ActionName::Kit, Input::Press(true)) => Some(Action::Kit(binding.pattern)),
+            (ActionName::RandomBassLine, Input::Press(true)) => Some(Action::RandomBassLine),
             (ActionName::DensityNudge, Input::Relative(ticks)) => Some(Action::NudgeDensity(
                 ticks as f32 * binding.step as f32 / 100.0,
             )),
@@ -662,7 +674,11 @@ impl Mapping {
                 | ActionName::DelaySend
                 | ActionName::DelayFeedback
                 | ActionName::ReverbSend
-                | ActionName::Crossfade,
+                | ActionName::Crossfade
+                | ActionName::BassResonance
+                | ActionName::BassEnv
+                | ActionName::BassDecay
+                | ActionName::BassAmpDecay,
                 Input::Absolute(v),
             ) => {
                 let target = target_of(binding.action)?;
@@ -789,7 +805,11 @@ fn normalized(binding: &Binding, target: Target, value: f64) -> f32 {
         | Target::DelaySend
         | Target::DelayFeedback
         | Target::ReverbSend
-        | Target::Crossfade => value.clamp(0.0, 1.0) as f32,
+        | Target::Crossfade
+        | Target::BassResonance
+        | Target::BassEnv
+        | Target::BassDecay
+        | Target::BassAmpDecay => value.clamp(0.0, 1.0) as f32,
     }
 }
 
@@ -812,6 +832,10 @@ fn target_of(action: ActionName) -> Option<Target> {
         ActionName::DelayFeedback => Some(Target::DelayFeedback),
         ActionName::ReverbSend => Some(Target::ReverbSend),
         ActionName::Crossfade => Some(Target::Crossfade),
+        ActionName::BassResonance => Some(Target::BassResonance),
+        ActionName::BassEnv => Some(Target::BassEnv),
+        ActionName::BassDecay => Some(Target::BassDecay),
+        ActionName::BassAmpDecay => Some(Target::BassAmpDecay),
         _ => None,
     }
 }
@@ -841,6 +865,7 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::LoopClear
         | ActionName::LoopRec
         | ActionName::Kit
+        | ActionName::RandomBassLine
         | ActionName::Chord
         | ActionName::LatchToggle
         | ActionName::Inversion
@@ -865,6 +890,10 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::DelayFeedback
         | ActionName::ReverbSend
         | ActionName::Crossfade
+        | ActionName::BassResonance
+        | ActionName::BassEnv
+        | ActionName::BassDecay
+        | ActionName::BassAmpDecay
         | ActionName::Brightness => {
             matches!(kind, Kind::Absolute)
         }
@@ -1171,9 +1200,9 @@ mod tests {
         // Shift released: drums again, waiting for 0.3.
         m.handle(6, shift(false));
         assert_eq!(m.handle(7, volume(at(0.6))), None, "drum pickup not met");
-        // The tempo fader A is kept for the bass envelope (R2): nothing yet.
+        // The tempo fader A with Shift: the amplitude decay of the bass (R2).
         m.handle(8, shift(true));
-        assert_eq!(
+        assert!(matches!(
             m.handle(
                 9,
                 ControllerEvent::Tempo {
@@ -1181,8 +1210,8 @@ mod tests {
                     value: 100
                 }
             ),
-            None
-        );
+            Some(Action::SetLevel(Target::BassAmpDecay, _))
+        ));
     }
 
     #[test]
@@ -1534,9 +1563,36 @@ mod tests {
     }
 
     #[test]
-    fn tempo_fader_a_waits_for_the_bass_envelope() {
+    fn deck_a_knobs_shape_the_bass() {
         let mut m = mapping();
-        assert_eq!(m.handle(0, tempo_event(MAX_14BIT)), None);
+        assert_eq!(
+            m.handle(0, tempo_event(MAX_14BIT)),
+            Some(Action::SetLevel(Target::BassDecay, 1.0))
+        );
+        let bass = |value| ControllerEvent::Knob {
+            deck: Deck::A,
+            knob: DeckKnob::Bass,
+            value,
+        };
+        assert_eq!(
+            m.handle(1, bass(0)),
+            Some(Action::SetLevel(Target::BassResonance, 0.0))
+        );
+        // Shift: the envelope amount, which waits for the knob to meet it once it is known.
+        m.handle(2, ControllerEvent::Shift { pressed: true });
+        assert_eq!(
+            m.handle(3, bass(MAX_14BIT)),
+            Some(Action::SetLevel(Target::BassEnv, 1.0))
+        );
+        let pad = ControllerEvent::Pad {
+            deck: Deck::A,
+            mode: PadMode::Sampler,
+            pad: 3,
+            shift: true,
+            pressed: true,
+            velocity: 127,
+        };
+        assert_eq!(m.handle(4, pad), Some(Action::RandomBassLine));
     }
 
     #[test]

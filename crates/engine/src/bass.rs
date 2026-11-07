@@ -283,6 +283,12 @@ pub struct BassVoice {
     env_octaves: f32,
     /// Bass knob, 0..=1, smoothed.
     cutoff: Smoothed,
+    /// Sound knobs (R2), `None` until touched: the kit's value holds.
+    knob_resonance: Option<f32>,
+    knob_env: Option<f32>,
+    knob_decay: Option<f32>,
+    /// Amplitude decay while the gate is open: per-sample factor (1 = held).
+    amp_decay_coef: f32,
     amp: f32,
     amp_target: f32,
     attack_coef: f32,
@@ -309,6 +315,10 @@ impl BassVoice {
             filter_env: Decay::default(),
             env_octaves: BassParams::default().env_octaves,
             cutoff: Smoothed::new(0.45, sample_rate, 0.02),
+            knob_resonance: None,
+            knob_env: None,
+            knob_decay: None,
+            amp_decay_coef: 1.0,
             amp: 0.0,
             amp_target: 0.0,
             attack_coef: one_pole(sr, ATTACK),
@@ -325,6 +335,59 @@ impl BassVoice {
         }
     }
 
+    /// Resonance knob, 0..=1: Q from 0.5 to 8 (exponential).
+    pub fn set_resonance(&mut self, value: f32) {
+        if value.is_finite() {
+            self.knob_resonance = Some(0.5 * 16f32.powf(value.clamp(0.0, 1.0)));
+        }
+    }
+
+    /// Envelope amount knob, 0..=1: 0 to 5 octaves of filter sweep (accents: 1.5 more).
+    pub fn set_env_amount(&mut self, value: f32) {
+        if value.is_finite() {
+            self.knob_env = Some(5.0 * value.clamp(0.0, 1.0));
+        }
+    }
+
+    /// Envelope decay knob, 0..=1: 30 ms to 1.5 s (exponential).
+    pub fn set_env_decay(&mut self, value: f32) {
+        if value.is_finite() {
+            self.knob_decay = Some(0.03 * 50f32.powf(value.clamp(0.0, 1.0)));
+        }
+    }
+
+    /// Amplitude decay knob, 0..=1: notes fade to -60 dB in 80 ms to 2 s; at the top, held.
+    pub fn set_amp_decay(&mut self, value: f32) {
+        if !value.is_finite() {
+            return;
+        }
+        let v = value.clamp(0.0, 1.0);
+        self.amp_decay_coef = if v >= 0.98 {
+            1.0
+        } else {
+            let seconds = 0.08 * 25f32.powf(v);
+            // -60 dB (×0.001) over `seconds`.
+            0.001f32.powf(1.0 / (seconds * self.sample_rate))
+        };
+    }
+
+    /// Sound in effect: the kit's, with the knobs touched on top.
+    #[must_use]
+    pub fn sound(&self) -> BassParams {
+        let mut p = self.params;
+        if let Some(q) = self.knob_resonance {
+            p.resonance = q;
+        }
+        if let Some(env) = self.knob_env {
+            p.env_octaves = env;
+            p.accent_octaves = env + 1.5;
+        }
+        if let Some(decay) = self.knob_decay {
+            p.decay = decay;
+        }
+        p
+    }
+
     /// Sound of the next notes (a style change).
     pub fn set_params(&mut self, params: BassParams) {
         self.params = params;
@@ -339,7 +402,7 @@ impl BassVoice {
         if !legato {
             self.pitch = note;
             self.inc = midi_to_hz(note) / self.sample_rate;
-            let p = self.params;
+            let p = self.sound();
             let decay = if accent { p.decay * 0.6 } else { p.decay };
             self.filter_env.trigger(1.0, self.sample_rate, decay);
             self.env_octaves = if accent {
@@ -368,8 +431,9 @@ impl BassVoice {
         let knob = self.cutoff.skip(CONTROL);
         let base = CUTOFF_MIN * (CUTOFF_MAX / CUTOFF_MIN).powf(knob);
         let env = self.filter_env.level * self.env_octaves;
+        let resonance = self.knob_resonance.unwrap_or(self.params.resonance);
         self.filter
-            .set(self.sample_rate, base * env.exp2(), self.params.resonance);
+            .set(self.sample_rate, base * env.exp2(), resonance);
     }
 
     /// Adds the voice into `out`.
@@ -397,6 +461,7 @@ impl BassVoice {
             }
             if self.gate > 0 {
                 self.gate -= 1;
+                self.amp_target *= self.amp_decay_coef;
                 if self.gate == 0 {
                     self.amp_target = 0.0;
                 }
@@ -442,6 +507,9 @@ pub struct BassLine {
     patterns: [BassPattern; PATTERNS],
     current: u8,
     pending: Option<u8>,
+    /// A line drawn at random, replacing the current one at the bar.
+    pending_random: Option<BassPattern>,
+    rng: u32,
     key: Key,
     pending_tonic: Option<u8>,
     pending_scale: Option<Scale>,
@@ -461,6 +529,8 @@ impl BassLine {
             patterns: default_bass_patterns(),
             current: 0,
             pending: None,
+            pending_random: None,
+            rng: 0x6C07_8965,
             // A minor.
             key: Key {
                 tonic: 9,
@@ -477,6 +547,7 @@ impl BassLine {
         if usize::from(index) >= PATTERNS {
             return;
         }
+        self.pending_random = None;
         if playing && index != self.current {
             self.pending = Some(index);
         } else {
@@ -520,10 +591,85 @@ impl BassLine {
         self.muted = muted;
     }
 
+    /// Draws a dub techno line at random (roots on the offbeats, a few passing degrees) to replace
+    /// the current one at the bar (now if stopped). It holds until another line or kit is chosen.
+    pub fn queue_random(&mut self, playing: bool) {
+        let line = self.random_line();
+        if playing {
+            self.pending_random = Some(line);
+        } else if let Some(slot) = self.patterns.get_mut(usize::from(self.current)) {
+            *slot = line;
+        }
+    }
+
+    #[must_use]
+    pub fn pending_random(&self) -> bool {
+        self.pending_random.is_some()
+    }
+
+    fn next_rand(&mut self) -> u32 {
+        let mut x = self.rng;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.rng = x;
+        x
+    }
+
+    fn random_line(&mut self) -> BassPattern {
+        // Degree, octave: the root most of the time, then fifth below, seventh below, fourth, third.
+        const PICKS: [(u8, i8); 8] = [
+            (1, 0),
+            (1, 0),
+            (1, 0),
+            (5, -1),
+            (7, -1),
+            (4, 0),
+            (3, 0),
+            (1, 1),
+        ];
+        let mut line = BassPattern::default();
+        let mut step = 0;
+        while step < STEPS {
+            let offbeat = step % 4 == 2;
+            let chance = if offbeat { 85 } else { 18 };
+            let roll = self.next_rand() % 100;
+            if roll < chance {
+                let pick = if offbeat && !self.next_rand().is_multiple_of(3) {
+                    (1, 0)
+                } else {
+                    PICKS
+                        .get((self.next_rand() % PICKS.len() as u32) as usize)
+                        .copied()
+                        .unwrap_or((1, 0))
+                };
+                let len = 1 + (self.next_rand() % 2) as u8;
+                if let Some(cell) = line.steps.get_mut(step) {
+                    *cell = Some(BassNote {
+                        degree: pick.0,
+                        octave: pick.1,
+                        len,
+                        accent: self.next_rand().is_multiple_of(5),
+                        glide: false,
+                    });
+                }
+                step += usize::from(len);
+            } else {
+                step += 1;
+            }
+        }
+        line
+    }
+
     /// Applies what waits for the bar (transport start).
     pub fn reset(&mut self) {
         if let Some(p) = self.pending.take() {
             self.current = p;
+        }
+        if let Some(line) = self.pending_random.take()
+            && let Some(slot) = self.patterns.get_mut(usize::from(self.current))
+        {
+            *slot = line;
         }
         if let Some(t) = self.pending_tonic.take() {
             self.key.tonic = t;
@@ -763,5 +909,49 @@ mod tests {
 
     fn gate_samples_fixed(len: u8, held: bool) -> u64 {
         gate_samples(u64::from(len) * 6_000, held)
+    }
+
+    #[test]
+    fn random_lines_stay_on_the_offbeat_pulse_and_wait_for_the_bar() {
+        let mut line = BassLine::new();
+        for _ in 0..20 {
+            let l = line.random_line();
+            let notes = l.steps.iter().flatten().count();
+            assert!((2..=12).contains(&notes), "{notes} notes");
+            assert!(l.steps.iter().flatten().all(|n| n.len >= 1));
+        }
+        let before = line.patterns[0];
+        line.queue_random(true);
+        assert!(line.pending_random());
+        assert_eq!(line.patterns[0], before, "waits for the bar");
+        line.reset();
+        assert!(!line.pending_random());
+        assert_ne!(line.patterns[0], before);
+    }
+
+    #[test]
+    fn bass_knobs_override_the_kit_sound() {
+        let mut voice = BassVoice::new(48_000);
+        let kit = voice.sound();
+        voice.set_resonance(1.0);
+        voice.set_env_amount(0.0);
+        voice.set_env_decay(0.0);
+        let s = voice.sound();
+        assert!((s.resonance - 8.0).abs() < 1e-4);
+        assert_eq!(s.env_octaves, 0.0);
+        assert!((s.decay - 0.03).abs() < 1e-6);
+        assert_eq!(s.saw, kit.saw, "the rest stays the kit's");
+        // Amplitude decay: a held note fades instead of staying.
+        voice.set_amp_decay(0.0);
+        voice.note_on(45.0, false, false, 48_000);
+        let mut out = vec![0.0; 48_000];
+        voice.render_add(&mut out);
+        let early = out[1_000..2_000]
+            .iter()
+            .fold(0.0_f32, |m, s| m.max(s.abs()));
+        let late = out[40_000..41_000]
+            .iter()
+            .fold(0.0_f32, |m, s| m.max(s.abs()));
+        assert!(late < early * 0.01, "{early} {late}");
     }
 }

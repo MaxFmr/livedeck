@@ -128,6 +128,9 @@ struct Wanted {
     samples: bool,
     /// Chord pads of deck B play single notes (degrees 1 to 8).
     note_mode: bool,
+    /// Bass sound knobs once touched (resonance, envelope, decay, amplitude decay); untouched, the
+    /// kit's sound holds.
+    bass_sound: [Option<f32>; 4],
 }
 
 /// Control-thread state.
@@ -136,7 +139,7 @@ struct Session {
     mapping: Mapping,
     /// Last values echoed to the console (continuous controls are echoed by steps only).
     shown_bpm: f64,
-    shown_levels: [f32; 9],
+    shown_levels: [f32; 13],
     shown_swing: f32,
     shown_density: f32,
     /// Beat-repeat pads held, last pressed last: releasing it falls back to the previous one.
@@ -428,6 +431,11 @@ fn open(
     handle.send(Command::BassMute(wanted.bass_muted));
     handle.send(Command::SetTonic(wanted.tonic));
     handle.send(Command::SetParam(Param::BassCutoff, wanted.bass_cutoff));
+    for (param, value) in BASS_SOUND.into_iter().zip(wanted.bass_sound) {
+        if let Some(value) = value {
+            handle.send(Command::SetParam(param, value));
+        }
+    }
     if wanted.playing {
         handle.send(Command::Start);
     }
@@ -604,6 +612,10 @@ fn handle_controller(
         }
         Action::Loop(slot) => {
             handle.send(Command::Loop(slot));
+        }
+        Action::RandomBassLine => {
+            handle.send(Command::RandomBassLine);
+            println!("  ⚄ ligne de basse au hasard à la mesure");
         }
         Action::Kit(kit) => {
             if kit != s.wanted.style {
@@ -833,6 +845,25 @@ fn handle_controller(
                     s.wanted.crossfade = value;
                     (Param::Crossfade, 8, "crossfader")
                 }
+                Target::BassResonance
+                | Target::BassEnv
+                | Target::BassDecay
+                | Target::BassAmpDecay => {
+                    let (i, name) = match target {
+                        Target::BassResonance => (0, "résonance basse"),
+                        Target::BassEnv => (1, "enveloppe basse"),
+                        Target::BassDecay => (2, "decay du filtre basse"),
+                        _ => (3, "decay de la basse"),
+                    };
+                    if let Some(v) = s.wanted.bass_sound.get_mut(i) {
+                        *v = Some(value);
+                    }
+                    (
+                        BASS_SOUND.get(i).copied().unwrap_or(Param::BassResonance),
+                        9 + i,
+                        name,
+                    )
+                }
                 Target::Tempo => return,
             };
             if let Some(shown) = s.shown_levels.get_mut(slot)
@@ -845,6 +876,14 @@ fn handle_controller(
         }
     }
 }
+
+/// Engine parameters of the bass sound knobs, in `Wanted::bass_sound` order.
+const BASS_SOUND: [Param; 4] = [
+    Param::BassResonance,
+    Param::BassEnv,
+    Param::BassDecay,
+    Param::BassAmpDecay,
+];
 
 /// "snare + clap" for a voice mask.
 fn voice_names(mask: u8) -> String {
@@ -1213,11 +1252,12 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
             transpose: 0,
             samples: false,
             note_mode: false,
+            bass_sound: [None; 4],
         },
         leds: LedRoles::of(&mapping),
         mapping,
         shown_bpm: 0.0,
-        shown_levels: [-1.0; 9],
+        shown_levels: [-1.0; 13],
         shown_swing: 0.54,
         shown_density: 1.0,
         repeats_held: Vec::new(),
@@ -1635,6 +1675,10 @@ fn hud_of(action: Action, s: &Session) -> Option<ui::Hud> {
                 Target::DelayFeedback => (Zone::B, "Répétitions"),
                 Target::ReverbSend => (Zone::Center, "Réverb"),
                 Target::Crossfade => (Zone::Center, "Crossfader"),
+                Target::BassResonance => (Zone::A, "Résonance basse"),
+                Target::BassEnv => (Zone::A, "Enveloppe basse"),
+                Target::BassDecay => (Zone::A, "Decay filtre basse"),
+                Target::BassAmpDecay => (Zone::A, "Decay basse"),
                 Target::Tempo => return None,
             };
             (zone, label, Percent(v))

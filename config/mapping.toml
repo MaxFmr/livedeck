@@ -19,6 +19,7 @@
 #   bass_cutoff (coupure du filtre de la basse)                        → potards
 #   style (step = crans de jog par style), kit (pattern = 1–3), à la mesure suivante → jogs, pads
 #   density_nudge (step = % par cran)                                    → jogs
+#   bass_resonance, bass_env, bass_decay, bass_amp_decay (son de la basse), random_bass_line → potards, faders, pads
 #   samples_toggle (batterie : samples ↔ synthé, à la mesure)          → boutons et pads
 #   chord (chord = 1–4 : degrés I, IV, V, vi), tenu tant que le pad l'est → pads
 #   melody_level, brightness (coupure du synthé mélodie)               → faders et potards
@@ -111,6 +112,32 @@ action = "bass_mute"
 [[bind]]
 control = "a.filter"
 action = "bass_cutoff"
+
+# Son de la basse (R2). Deux couches par contrôle : chacune attend que le potard rejoigne sa valeur
+# (pickup) quand on passe de l'une à l'autre avec Shift.
+#   Bass A = résonance · Shift : quantité d'enveloppe du filtre
+#   Fader Tempo A = decay de l'enveloppe du filtre · Shift : decay de l'amplitude (en haut : tenue)
+[[bind]]
+control = "a.bass"
+action = "bass_resonance"
+pickup = true
+
+[[bind]]
+control = "a.bass"
+shift = true
+action = "bass_env"
+pickup = true
+
+[[bind]]
+control = "a.tempo"
+action = "bass_decay"
+pickup = true
+
+[[bind]]
+control = "a.tempo"
+shift = true
+action = "bass_amp_decay"
+pickup = true
 
 [[bind]]
 control = "b.cue"
@@ -213,6 +240,12 @@ control = "a.pad.sampler.3"
 shift = true
 action = "kit"
 pattern = 3
+
+# Shift + pad Sampler A 4 (R2) : ligne de basse tirée au hasard dans la gamme, à la mesure.
+[[bind]]
+control = "a.pad.sampler.4"
+shift = true
+action = "random_bass_line"
 
 
 # --- Kit (015) : Shift + PFL A bascule la batterie entre les samples 909 et le synthé, à la mesure ---

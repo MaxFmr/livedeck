@@ -64,6 +64,11 @@ pub enum Param {
     ReverbSend,
     /// Crossfader between the decks: 0 = rhythm only, 0.5 = both full, 1 = melody only.
     Crossfade,
+    /// Bass sound knobs (R2): resonance, filter envelope amount and decay, amplitude decay.
+    BassResonance,
+    BassEnv,
+    BassDecay,
+    BassAmpDecay,
 }
 
 /// Beats per bar (4/4 only for now).
@@ -297,6 +302,10 @@ impl Engine {
             Param::MelodyLevel => self.melody_level.set(gain_curve(value)),
             Param::Brightness => self.synth.set_brightness(value),
             Param::BassCutoff => self.bass.set_cutoff(value),
+            Param::BassResonance => self.bass.set_resonance(value),
+            Param::BassEnv => self.bass.set_env_amount(value),
+            Param::BassDecay => self.bass.set_env_decay(value),
+            Param::BassAmpDecay => self.bass.set_amp_decay(value),
             Param::DelaySend => self.delay_send.set(gain_curve(value)),
             Param::DelayFeedback => self
                 .delay_feedback
@@ -426,6 +435,12 @@ impl Engine {
     pub fn queue_bass_line(&mut self, index: u8) {
         let playing = self.clock.is_playing();
         self.sequencer.bass_mut().queue(index, playing);
+    }
+
+    /// A bass line drawn at random in the key replaces the current one at the next bar.
+    pub fn queue_random_bass_line(&mut self) {
+        let playing = self.clock.is_playing();
+        self.sequencer.bass_mut().queue_random(playing);
     }
 
     /// Bass tonic (0 = C … 11 = B) for the next bar (now if stopped).

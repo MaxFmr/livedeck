@@ -2,7 +2,7 @@
 
 - Date de début : 2026-11-07
 - Phase : refonte groovebox (docs/design/refonte-groovebox.md), étape R1
-- Statut : terminée — essai au contrôleur à faire (`tools/try-027.sh`)
+- Statut : terminée — essai au contrôleur groupé avec R2 (`tools/try-028.sh`)
 
 ## Objectif
 Première étape jouable de la refonte : la section rythmique d'une groovebox dub techno, et le deck A

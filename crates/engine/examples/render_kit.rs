@@ -2,7 +2,8 @@
 //! of groove), `target/renders/patterns.wav` (the sequencer's patterns A–D, two bars each) and
 //! `target/renders/gestures.wav` (density, fills and beat-repeat on groove B) and
 //! `target/renders/bass.wav` (the four bass lines alone, then with their drums, a filter sweep and
-//! a key change) and `target/renders/styles.wav` (each style at its suggested tempo, patterns A–D,
+//! a key change), `target/renders/bass-sound.wav` (R2: resonance, envelope, decays, a random
+//! line on the Dub kit) and `target/renders/styles.wav` (each style at its suggested tempo, patterns A–D,
 //! one bar each) and `target/renders/chords.wav` (each style's synth patch on I–vi–IV–V over its
 //! pattern A) and `target/renders/voicings.wav` (I–vi–IV–V: triads, inversions, 7ths, then in
 //! dorian and major) and `target/renders/arp.wav` (latched I–vi–IV–V arpeggiated up, up-down
@@ -198,6 +199,39 @@ fn main() -> io::Result<()> {
         println!("  {} — {bpm:.0} BPM", engine::style::name(index));
     }
     save(&dir.join("styles.wav"), &styles)?;
+
+    // Bass sound (R2), Dub kit at 118, drums low: kit sound, resonance up, envelope opened,
+    // longer filter decay, short amplitude decay, then a random line; one bar each.
+    let bpm = engine::style::bpm(2);
+    let mut engine = Engine::new(SR, 512, bpm);
+    engine.set_metronome(false);
+    engine.queue_style(2);
+    engine.set_param(Param::DrumLevel, 0.4);
+    engine.start();
+    let bar = (f64::from(SR) * 60.0 / bpm * 4.0) as usize;
+    let mut sound = Vec::new();
+    let steps: [&[(Param, f32)]; 6] = [
+        &[],
+        &[(Param::BassResonance, 0.85)],
+        &[(Param::BassEnv, 0.9)],
+        &[(Param::BassDecay, 0.8)],
+        &[(Param::BassAmpDecay, 0.15)],
+        &[(Param::BassAmpDecay, 1.0), (Param::BassDecay, 0.4)],
+    ];
+    for (i, params) in steps.iter().enumerate() {
+        for &(param, value) in *params {
+            engine.set_param(param, value);
+        }
+        if i == 5 {
+            engine.queue_random_bass_line();
+        }
+        let start = sound.len();
+        sound.resize(start + bar * 2, 0.0);
+        for chunk in sound[start..].chunks_mut(256) {
+            engine.process(chunk, 2);
+        }
+    }
+    save(&dir.join("bass-sound.wav"), &sound)?;
 
     // Chords: each style at its tempo, I–vi–IV–V, one bar each, held three beats.
     let mut chords = Vec::new();
