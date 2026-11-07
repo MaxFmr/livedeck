@@ -1,5 +1,5 @@
 #!/bin/bash
-# Essai guidé à la voix de R1 (028) : 3 kits dub techno et deck A selon la carte D8.
+# Essai guidé à la voix de R1 + R2 (027-028) : kits dub techno, deck A, son de la basse.
 # La voix se tait pendant le jeu libre. Journal dans target/028-test.txt.
 #   try-028.sh          toutes les étapes
 #   try-028.sh 2 3      seulement certaines étapes
