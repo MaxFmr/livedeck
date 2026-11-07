@@ -25,6 +25,8 @@ fifo=$(mktemp -u -t livedeck-fifo)
 mkfifo "$fifo"
 target/release/app --bpm 100 ${QUIET---quiet} --no-metronome < "$fifo" > "$log" 2>&1 &
 app=$!
+# Ctrl-C (or any exit) also stops the app.
+trap 'kill "$app" 2>/dev/null; rm -f "$fifo"' EXIT
 exec 3> "$fifo"
 sleep 3
 say -v "$VOICE" "Essai des boucles de mélodie. ${#selected[@]} étapes, une toutes les $STEP secondes."
