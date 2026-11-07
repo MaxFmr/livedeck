@@ -66,6 +66,14 @@
       "w": 1280,
       "h": 800,
       "title": "D8 · 3 · Pads et anneaux (esprit Circuit)"
+    },
+    "D8-HF.dc.html": {
+      "x": 0,
+      "y": 4120,
+      "w": 1280,
+      "h": 960,
+      "title": "D8 · haute fidélité — pads et anneaux, carte du contrôleur (interactive)",
+      "is_interactive": true
     }
   },
   "order": [
@@ -76,7 +84,8 @@
     "D5.dc.html",
     "D8-Pas.dc.html",
     "D8-Ecran.dc.html",
-    "D8-Pads.dc.html"
+    "D8-Pads.dc.html",
+    "D8-HF.dc.html"
   ],
   "notes": {
     "titre": {
@@ -99,6 +108,13 @@
       "text": "D8 · groovebox dub techno — trois pistes, mêmes données (124 BPM, mesure 3, La mineur, kit Dub)",
       "kind": "title1",
       "maxW": 4000
+    },
+    "d8hf": {
+      "x": 0,
+      "y": 3820,
+      "text": "D8 · haute fidélité — piste 3 retenue : modes, Shift, carte du contrôleur",
+      "kind": "title1",
+      "maxW": 1280
     }
   },
   "designSystems": []

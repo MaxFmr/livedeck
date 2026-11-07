@@ -169,7 +169,11 @@ Une ligne par contrôle ; « Shift » seulement pour les réglages rares. Tout c
 
 - 2026-11-07 : D8 basse fidélité publiée dans le [canvas](https://claude.ai/artifact/SEij2MqjacTXCRc8kuJKU6),
   rangée « D8 » : 1 · séquenceur 16 pas (esprit TR), 2 · écran central (esprit Elektron), 3 · pads et
-  anneaux (esprit Circuit). Sources dans `design/mockups/project/D8-*.dc.html`. Choix en attente.
+  anneaux (esprit Circuit). Sources dans `design/mockups/project/D8-*.dc.html`. **Piste 3 retenue** (pads et anneaux).
+- 2026-11-07 : D8 haute fidélité interactive (`D8-HF.dc.html`) : onglets de mode par deck (Hot Cue,
+  Sampler, FX, Loop) et Shift montrent la carte du § 9 pad par pad ; potards nommés par leur commande
+  du contrôleur ; temps qui avance à 124 BPM, changements à la mesure (file « À la mesure »).
+  Validation en attente.
 
 1. **D8** : maquettes de l'interface groovebox (2–3 pistes basse fidélité, puis une haute fidélité),
    avec cette carte affichée sur la maquette pour la valider en même temps.

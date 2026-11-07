@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LiveDeck D8 — haute fidélité, pads et anneaux</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0A0B}
+a{color:#2BC8FF}a:hover{color:#BBEDFF}
+</style>
+</helmet>
+<div style="width: 1280px; height: 960px; box-sizing: border-box; padding: 24px; background: #0A0A0B; color: #E8E8EA; font-family: Inter, sans-serif; font-weight: 500; display: flex; flex-direction: column; gap: 20px">
+
+  <div style="height: 64px; background: #121214; border-radius: 6px; display: flex; align-items: center; gap: 24px; padding: 0 24px">
+    <button type="button" aria-label="Lecture / arrêt (Play)" onClick="{{togglePlay}}" style="width: 44px; height: 44px; border: none; border-radius: 4px; background: #1A1A1D; display: flex; align-items: center; justify-content: center; cursor: pointer">
+      <sc-if value="{{playing}}" hint-placeholder-val="{{ true }}"><svg width="16" height="18" viewBox="0 0 16 18" aria-hidden="true"><path d="M1 1 L15 9 L1 17 Z" fill="#E8E8EA"></path></svg></sc-if>
+      <sc-if value="{{stopped}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect width="14" height="14" fill="#8A8A90"></rect></svg></sc-if>
+    </button>
+    <div style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 36px; font-weight: 700">124</span><span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">BPM</span></div>
+    <span style="font-size: 14px; color: #8A8A90">Mesure <span style="color: #E8E8EA">{{bar}}</span></span>
+    <div style="flex-grow: 1"></div>
+    <span style="font-size: 22px; font-weight: 700">La mineur</span>
+    <span style="font-size: 14px; color: #8A8A90">kit <span style="color: #E8E8EA">{{kit}}</span> · swing 54 %</span>
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">
+      <span>DJCONTROL MIX</span><div style="width: 8px; height: 8px; border-radius: 4px; background: #5BD18B"></div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: grid; grid-template-columns: 1fr 240px 1fr; gap: 20px">
+
+    <sc-for list="{{decks}}" as="d" hint-placeholder-count="1">
+      <div style="{{d.panelStyle}}">
+        <div style="display: flex; justify-content: space-between; align-items: baseline">
+          <span style="font-size: 22px; font-weight: 700; color: {{d.color}}">{{d.title}}</span>
+          <span style="font-size: 14px; color: #8A8A90">{{d.info}}</span>
+        </div>
+
+        <div style="display: flex; justify-content: space-between">
+          <sc-for list="{{d.rings}}" as="k" hint-placeholder-count="4">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 104px">
+              <svg width="76" height="76" viewBox="0 0 56 56" aria-hidden="true">
+                <circle cx="28" cy="28" r="22" fill="none" stroke="#1A1A1D" stroke-width="7"></circle>
+                <circle cx="28" cy="28" r="22" fill="none" stroke="{{k.color}}" stroke-width="7" stroke-linecap="round" stroke-dasharray="{{k.dash}}" transform="rotate(-90 28 28)"></circle>
+                <text x="28" y="32" text-anchor="middle" font-size="11" font-family="Inter" font-weight="700" fill="#E8E8EA">{{k.value}}</text>
+              </svg>
+              <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em">{{k.name}}</span>
+              <span style="font-size: 12px; color: #8A8A90">{{k.ctl}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display: flex; gap: 6px; align-items: center">
+          <sc-for list="{{d.tabs}}" as="t" hint-placeholder-count="4">
+            <button type="button" onClick="{{t.pick}}" style="{{t.style}}">{{t.name}}</button>
+          </sc-for>
+          <div style="flex-grow: 1"></div>
+          <button type="button" onClick="{{toggleShift}}" style="{{shiftStyle}}">Shift</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+          <sc-for list="{{d.pads}}" as="p" hint-placeholder-count="4">
+            <button type="button" onClick="{{p.press}}" style="{{p.style}}">
+              <span style="font-size: 22px; font-weight: 700; text-align: left">{{p.name}}</span>
+              <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; opacity: 0.75; text-align: left">{{p.sub}}</span>
+            </button>
+          </sc-for>
+        </div>
+        <span style="font-size: 12px; color: #8A8A90">{{d.padHint}}</span>
+
+        <div style="flex-grow: 1"></div>
+        <sc-for list="{{d.lanes}}" as="l" hint-placeholder-count="2">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <span style="width: 64px; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">{{l.name}}</span>
+            <div style="flex-grow: 1; display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px">
+              <sc-for list="{{l.cells}}" as="c" hint-placeholder-count="16"><div style="{{c}}"></div></sc-for>
+            </div>
+          </div>
+        </sc-for>
+        <span style="font-size: 12px; color: #8A8A90">{{d.jogHint}}</span>
+      </div>
+
+      <sc-if value="{{d.isLeft}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 18px">
+          <svg width="200" height="200" viewBox="0 0 200 200" role="img" aria-label="{{beatLabel}}">
+            <sc-for list="{{arcs}}" as="a" hint-placeholder-count="4"><path d="{{a.d}}" fill="none" stroke="{{a.color}}" stroke-width="14"></path></sc-for>
+            <text x="100" y="106" text-anchor="middle" font-size="44" font-family="Inter" font-weight="700" fill="#E8E8EA">{{beat}}</text>
+            <text x="100" y="132" text-anchor="middle" font-size="12" font-family="Inter" font-weight="700" letter-spacing="1.5" fill="#8A8A90">TEMPS</text>
+          </svg>
+          <div style="width: 100%; display: flex; flex-direction: column; gap: 8px">
+            <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90">À LA MESURE</span>
+            <sc-for list="{{queue}}" as="q" hint-placeholder-count="2"><div style="{{q.style}}">{{q.text}}</div></sc-for>
+            <sc-if value="{{queueEmpty}}" hint-placeholder-val="{{ false }}"><span style="font-size: 14px; color: #3A3A40">rien en attente</span></sc-if>
+          </div>
+          <div style="flex-grow: 1"></div>
+          <div style="width: 100%; display: flex; flex-direction: column; gap: 8px">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A8A90"><span>RYTHME</span><span>MÉLODIE</span></div>
+            <div style="position: relative; height: 8px; border-radius: 4px; background: #1A1A1D">
+              <div style="position: absolute; left: 50%; top: -6px; width: 6px; height: 20px; margin-left: -3px; border-radius: 2px; background: #E8E8EA"></div>
+            </div>
+            <span style="font-size: 12px; color: #8A8A90; text-align: center">Crossfader · fondu</span>
+          </div>
+          <div style="display: flex; gap: 16px">
+            <sc-for list="{{mixer}}" as="k" hint-placeholder-count="2">
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px">
+                <svg width="64" height="64" viewBox="0 0 56 56" aria-hidden="true">
+                  <circle cx="28" cy="28" r="22" fill="none" stroke="#1A1A1D" stroke-width="7"></circle>
+                  <circle cx="28" cy="28" r="22" fill="none" stroke="#E8E8EA" stroke-width="7" stroke-linecap="round" stroke-dasharray="{{k.dash}}" transform="rotate(-90 28 28)"></circle>
+                </svg>
+                <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em">{{k.name}}</span>
+                <span style="font-size: 12px; color: #8A8A90">{{k.ctl}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":960}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      playing: true, step: 22, shift: false, modeA: 0, modeB: 0,
+      pattern: 1, pendingPattern: null, line: 1, pendingLine: null, kit: 'Dub', pendingKit: null,
+      fill: null, mutes: [false, false, false, true], repeat: null,
+      chords: [true, false, false, false], phrase: [0, 3, 6, 8, 10, 12, 14], frozen: true, pendingPhrase: null,
+      rec: false, latch: true, octave: 0, ext: 0, arp: false, delayTime: 0, throwD: false, throwR: false
+    };
+  }
+  componentDidMount() {
+    this.timer = setInterval(() => this.tick(), 121);
+  }
+  componentWillUnmount() {
+    clearInterval(this.timer);
+  }
+  tick() {
+    if (!this.state.playing) return;
+    const next = this.state.step + 1;
+    const s = { step: next };
+    if (next % 16 === 0) {
+      if (this.state.pendingPattern !== null) { s.pattern = this.state.pendingPattern; s.pendingPattern = null; }
+      if (this.state.pendingLine !== null) { s.line = this.state.pendingLine; s.pendingLine = null; }
+      if (this.state.pendingKit !== null) { s.kit = this.state.pendingKit; s.pendingKit = null; }
+      if (this.state.pendingPhrase !== null) { s.phrase = this.state.pendingPhrase.notes; s.pendingPhrase = null; }
+      s.fill = this.state.fill && this.state.fill.armed ? { n: this.state.fill.n, armed: false } : null;
+    }
+    this.setState(s);
+  }
+  randomPhrase(from) {
+    const density = 7;
+    if (from) {
+      const notes = from.slice();
+      for (let k = 0; k < 2; k++) notes[Math.floor(Math.random() * notes.length)] = Math.floor(Math.random() * 16);
+      return Array.from(new Set(notes)).sort((a, b) => a - b);
+    }
+    const set = new Set([0]);
+    while (set.size < density) set.add(Math.floor(Math.random() * 16));
+    return Array.from(set).sort((a, b) => a - b);
+  }
+  renderVals() {
+    const st = this.state;
+    const set = (patch) => () => this.setState(patch);
+    const C = 138.2;
+    const ring = (f) => (C * f).toFixed(1) + ' 200';
+    const pos = st.step % 16;
+    const beat = Math.floor(pos / 4) + 1;
+    const padStyle = (state, c, muted) => 'height: 104px; border: none; cursor: pointer; border-radius: 6px; display: flex; flex-direction: column; justify-content: space-between; padding: 12px; box-sizing: border-box; font-family: Inter, sans-serif;' +
+      (state === 'on' ? 'background: ' + c + '; color: #0A0A0B;' :
+        state === 'wait' ? 'background: ' + muted + '; color: #E8E8EA; outline: 2px dashed ' + c + '; outline-offset: -2px;' :
+          'background: #1A1A1D; color: #E8E8EA;');
+    const blink = pos % 2 === 0;
+    const wait = (cond) => (cond ? (blink ? 'wait' : 'off') : null);
+    const MODES = ['Hot Cue', 'Sampler', 'FX', 'Loop'];
+    const tabStyle = (on, c) => 'height: 36px; padding: 0 14px; border: none; cursor: pointer; border-radius: 4px; font-family: Inter, sans-serif; font-size: 14px; font-weight: 700;' +
+      (on ? 'background: ' + c + '; color: #0A0A0B;' : 'background: #1A1A1D; color: #8A8A90;');
+    const shiftStyle = 'height: 36px; padding: 0 14px; cursor: pointer; border-radius: 4px; font-family: Inter, sans-serif; font-size: 14px; font-weight: 700;' +
+      (st.shift ? 'background: #E8E8EA; color: #0A0A0B; border: none;' : 'background: transparent; color: #8A8A90; border: 1px solid #3A3A40;');
+
+    // Deck A pads, per mode (Shift layer where the map has one).
+    const A = st.modeA, B = st.modeB, sh = st.shift;
+    let padsA;
+    if (A === 0 && !sh) {
+      padsA = [1, 2, 3, 4].map((n) => ({ name: String(n), sub: 'PATTERN', state: st.pattern === n ? 'on' : (wait(st.pendingPattern === n) || 'off'), press: set({ pendingPattern: n === st.pattern ? null : n }) }));
+    } else if (A === 0) {
+      padsA = [1, 2, 3, 4].map((n) => ({ name: 'L' + n, sub: 'LIGNE BASSE', state: st.line === n ? 'on' : (wait(st.pendingLine === n) || 'off'), press: set({ pendingLine: n }) }));
+    } else if (A === 1 && !sh) {
+      padsA = [1, 2, 3, 4].map((n) => ({ name: 'F' + n, sub: 'REMPLISSAGE', state: st.fill && st.fill.n === n ? (st.fill.armed ? (wait(true) || 'off') : 'on') : 'off', press: set({ fill: { n, armed: true } }) }));
+    } else if (A === 1) {
+      padsA = ['808', '909', 'Dub'].map((k) => ({ name: k, sub: 'KIT', state: st.kit === k ? 'on' : (wait(st.pendingKit === k) || 'off'), press: set({ pendingKit: k }) }))
+        .concat([{ name: '⚄', sub: 'BASSE HASARD', state: wait(st.pendingLine === 0) || 'off', press: set({ pendingLine: 0 }) }]);
+    } else if (A === 2) {
+      padsA = ['Kick', 'Rim', 'Hats', 'Perc'].map((v, i) => ({ name: v, sub: 'MUTE', state: st.mutes[i] ? 'off' : 'on', press: () => { const m = st.mutes.slice(); m[i] = !m[i]; this.setState({ mutes: m }); } }));
+    } else {
+      padsA = ['1/4', '1/8', '1/16', '1/32'].map((v) => ({ name: v, sub: 'REPEAT · TENU', state: st.repeat === v ? 'on' : 'off', press: set({ repeat: st.repeat === v ? null : v }) }));
+    }
+    // Deck B pads.
+    const CH = sh ? ['ii', 'III', 'VII', "i'"] : ['i7', 'iv7', 'v9', 'VI7'];
+    let padsB;
+    if (B === 0) {
+      padsB = CH.map((n, i) => ({ name: n, sub: 'ACCORD', state: st.chords[i] && !sh ? 'on' : 'off', press: () => { const c = [false, false, false, false]; c[i] = !st.chords[i]; this.setState({ chords: c }); } }));
+    } else if (B === 1) {
+      const p = st.pendingPhrase;
+      padsB = [
+        { name: 'Générer', sub: 'PHRASE', state: p && p.kind === 'gen' ? (wait(true) || 'off') : 'off', press: () => this.setState({ pendingPhrase: { kind: 'gen', notes: this.randomPhrase(null) }, frozen: false }) },
+        { name: 'Muter', sub: 'PHRASE', state: p && p.kind === 'mut' ? (wait(true) || 'off') : 'off', press: () => this.setState({ pendingPhrase: { kind: 'mut', notes: this.randomPhrase(st.phrase) } }) },
+        { name: 'Figer', sub: 'PHRASE', state: st.frozen ? 'on' : 'off', press: set({ frozen: !st.frozen }) },
+        { name: 'Effacer', sub: 'PHRASE', state: 'off', press: set({ phrase: [], pendingPhrase: null }) }
+      ];
+    } else if (B === 2) {
+      const DT = ['3/16', '1/4', '1/8', '3/8'];
+      padsB = [
+        { name: 'Delay', sub: 'THROW · TENU', state: st.throwD ? 'on' : 'off', press: set({ throwD: !st.throwD }) },
+        { name: 'Réverb', sub: 'THROW · TENU', state: st.throwR ? 'on' : 'off', press: set({ throwR: !st.throwR }) },
+        { name: DT[st.delayTime], sub: 'TEMPS DELAY', state: 'off', press: set({ delayTime: (st.delayTime + 1) % 4 }) },
+        { name: 'Arp', sub: 'ARPÈGE', state: st.arp ? 'on' : 'off', press: set({ arp: !st.arp }) }
+      ];
+    } else {
+      const EXT = ['triade', '7e', 'sus4', 'add9'];
+      padsB = [
+        { name: 'Rec', sub: 'PAR-DESSUS · TENU', state: st.rec ? 'rec' : 'off', press: set({ rec: !st.rec }) },
+        { name: 'Latch', sub: 'ACCORDS', state: st.latch ? 'on' : 'off', press: set({ latch: !st.latch }) },
+        { name: (st.octave >= 0 ? '+' : '') + st.octave, sub: 'OCTAVE', state: 'off', press: set({ octave: st.octave >= 1 ? -1 : st.octave + 1 }) },
+        { name: EXT[st.ext], sub: 'EXTENSION', state: 'off', press: set({ ext: (st.ext + 1) % 4 }) }
+      ];
+    }
+    const styleA = (p) => ({ ...p, style: padStyle(p.state, '#FF6A2B', '#4F2514') });
+    const styleB = (p) => ({ ...p, style: p.state === 'rec' ? padStyle('on', '#FF3DA8', '#4F1837') : padStyle(p.state, '#2BC8FF', '#133F4F') });
+
+    const ctlA = sh ? ['Filter A', 'Shift + Bass A', 'Shift + Tempo A', 'Shift + Volume A'] : ['Filter A', 'Bass A', 'Tempo A', 'Volume A'];
+    const ringsA = (sh
+      ? [['COUPURE', '35', 0.35], ['ENV.', '45', 0.45], ['DECAY AMP', '60', 0.6], ['BASSE', '70', 0.7]]
+      : [['COUPURE', '35', 0.35], ['RÉSO', '60', 0.6], ['DECAY', '220', 0.3], ['RYTHME', '80', 0.8]])
+      .map(([name, value, f], i) => ({ name, value, ctl: ctlA[i], dash: ring(f), color: i === 3 && !sh ? '#FF6A2B' : '#E8A33D' }));
+    const ctlB = sh ? ['Tempo B', 'Filter B', 'Shift + Bass B', 'Volume B'] : ['Tempo B', 'Filter B', 'Bass B', 'Volume B'];
+    const ringsB = (sh
+      ? [['DENSITÉ', '60', 0.6], ['BRILL.', '50', 0.5], ['RÉPÉT.', '70', 0.7], ['MÉLODIE', '75', 0.75]]
+      : [['DENSITÉ', '60', 0.6], ['BRILL.', '50', 0.5], ['DELAY', '55', 0.55], ['MÉLODIE', '75', 0.75]])
+      .map(([name, value, f], i) => ({ name, value, ctl: ctlB[i], dash: ring(f), color: '#2BC8FF' }));
+
+    const cell = (on, c, i) => 'height: 16px; border-radius: 2px; background: ' + (i === pos ? '#E8E8EA' : on ? c : (i % 4 === 0 ? '#2A2A2E' : '#1A1A1D')) + ';';
+    const PAT = { 1: [0, 4, 8, 12], 2: [0, 4, 8, 12, 14], 3: [0, 4, 7, 8, 12], 4: [0, 3, 4, 8, 12, 15] };
+    const LINES = { 0: [1, 5, 9, 11, 13], 1: [2, 6, 10, 14], 2: [2, 3, 7, 10, 14], 3: [3, 7, 11, 15], 4: [2, 6, 7, 10, 14, 15] };
+    const lanesA = [
+      { name: 'KICK', cells: Array.from({ length: 16 }, (_, i) => cell(!st.mutes[0] && PAT[st.pattern].includes(i), '#FF6A2B', i)) },
+      { name: 'BASSE', cells: Array.from({ length: 16 }, (_, i) => cell(LINES[st.line].includes(i), '#E8A33D', i)) }
+    ];
+    const lanesB = [
+      { name: 'PHRASE', cells: Array.from({ length: 16 }, (_, i) => cell(st.phrase.includes(i), '#2BC8FF', i)) }
+    ];
+    const tabsA = MODES.map((m, i) => ({ name: m, style: tabStyle(A === i, '#FF6A2B'), pick: set({ modeA: i }) }));
+    const tabsB = MODES.map((m, i) => ({ name: m, style: tabStyle(B === i, '#2BC8FF'), pick: set({ modeB: i }) }));
+    const hintsA = ['Hot Cue A · pattern à la mesure ; Shift : ligne de basse', 'Sampler A · remplissage ; Shift : kit, basse au hasard', 'FX A · allumé = la voix joue', 'Loop A · beat-repeat tant que le pad est tenu'];
+    const hintsB = ['Hot Cue B · accord tenu (latch) ; Shift : 4 autres degrés', 'Sampler B · générer et muter tombent à la mesure', 'FX B · throw = envoi tant que le pad est tenu', 'Loop B · rec tenu = enregistre par-dessus la phrase'];
+    const panel = (c) => 'background: #121214; border-radius: 6px; border-top: 3px solid ' + c + '; padding: 20px; display: flex; flex-direction: column; gap: 16px';
+    const decks = [
+      { isLeft: true, title: 'Rythme · basse', color: '#FF6A2B', info: 'pattern ' + st.pattern + ' · ligne ' + (st.line || '⚄') + ' · densité 70 %', panelStyle: panel('#FF6A2B'), rings: ringsA, tabs: tabsA, pads: padsA.map(styleA), padHint: hintsA[A], lanes: lanesA, jogHint: 'Jog A : tranche = densité · dessus = swing · Shift = tempo' },
+      { isLeft: false, title: 'Accords · phrase', color: '#2BC8FF', info: (st.frozen ? 'figée' : 'libre') + ' · ' + st.phrase.length + ' notes · transpo +0', panelStyle: panel('#2BC8FF'), rings: ringsB, tabs: tabsB, pads: padsB.map(styleB), padHint: hintsB[B], lanes: lanesB, jogHint: 'Jog B : tranche = registre · dessus = transposition · Shift = gamme' }
+    ];
+    const arcPath = ['M100 14 A86 86 0 0 1 186 100', 'M186 100 A86 86 0 0 1 100 186', 'M100 186 A86 86 0 0 1 14 100', 'M14 100 A86 86 0 0 1 100 14'];
+    const arcs = arcPath.map((d, i) => ({ d, color: i + 1 === beat ? '#E8E8EA' : (i + 1 < beat ? '#3A3A40' : '#1A1A1D') }));
+    const q = [];
+    const qs = (c) => 'padding: 6px 10px; border-radius: 4px; border: 2px dashed ' + c + '; color: ' + c + '; font-size: 14px;';
+    if (st.pendingPattern !== null) q.push({ text: 'pattern ' + st.pendingPattern, style: qs('#FF6A2B') });
+    if (st.pendingLine !== null) q.push({ text: st.pendingLine ? 'ligne ' + st.pendingLine : 'basse au hasard', style: qs('#E8A33D') });
+    if (st.pendingKit !== null) q.push({ text: 'kit ' + st.pendingKit, style: qs('#FF6A2B') });
+    if (st.pendingPhrase !== null) q.push({ text: st.pendingPhrase.kind === 'gen' ? 'phrase générée' : 'phrase mutée', style: qs('#2BC8FF') });
+    const mixer = [{ name: 'MASTER', ctl: 'Master', f: 0.9 }, { name: 'RÉVERB', ctl: 'Headphone', f: 0.4 }].map((k) => ({ ...k, dash: ring(k.f) }));
+    return {
+      decks, arcs, beat, beatLabel: 'Temps ' + beat + ' sur 4', bar: Math.floor(st.step / 16) + 1,
+      queue: q, queueEmpty: q.length === 0, mixer, kit: st.kit, shiftStyle,
+      playing: st.playing, stopped: !st.playing,
+      togglePlay: set({ playing: !st.playing }), toggleShift: set({ shift: !st.shift })
+    };
+  }
+}
+</script>
+</body>
+</html>
