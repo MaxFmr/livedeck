@@ -25,10 +25,10 @@ lisibilité à 1 m, la latence perçue**.
 | 2 | Rythme | Jog A (n'importe comment) | densité qui monte / descend, affichée à l'écran | sensibilité |
 | 3 | Rythme | Shift + Sampler A 1–3 | kits 808, 909, Dub à la mesure | caractère de chaque kit |
 | 4 | Rythme | Pads FX A ; Shift + Loop A | mutes (pad allumé = joue) ; swing 50/54/58/62 % | |
-| 5 | Basse | Filter A, Bass A, fader Tempo A (et Shift) | coupure, résonance, enveloppe, decays ; anneaux qui bougent | plages, pickup entre couches |
+| 5 | Basse | Potard Filter/Bass A (bouton Filter/Bass pour passer de Filter à Bass), fader Tempo A (et Shift) | coupure sur Filter, résonance sur Bass (Shift : enveloppe), decays ; l'anneau inactif est estompé | plages, pickup entre couches |
 | 6 | Basse | Shift + Sampler A 4 | ligne au hasard à la mesure, visible dans la piste Basse | intérêt des lignes |
 | 7 | Phrase | Sampler B 1 « Générer » | phrase à la mesure, notes dans la piste Phrase ; elle varie toute seule tous les 4 mesures | |
-| 8 | Phrase | Fader Tempo B puis Générer | plus ou moins de notes | |
+| 8 | Phrase | Fader Tempo B puis Générer ; potard Filter/Bass B sur Filter | plus ou moins de notes ; brillance | |
 | 9 | Phrase | Sampler B 2, 3, 4 | muter (à la mesure), figer (ne varie plus), effacer | |
 | 10 | Phrase | Loop B 1 tenu + accords Hot Cue B | accords ajoutés à la phrase (blocs larges dans la piste) | calage |
 | 11 | Effets | FX B 1 et 2 tenus | throw delay, throw réverb ; voyants à l'écran | caractère dub |

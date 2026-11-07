@@ -500,6 +500,28 @@ impl Mapping {
             })
     }
 
+    /// The action `control` triggers, its Shift layer first when `shift` (else the plain one, as
+    /// `handle` does).
+    #[must_use]
+    pub fn action_of(&self, control: Control, shift: bool) -> Option<ActionName> {
+        let shifted = ControlId {
+            control,
+            shift: true,
+        };
+        let plain = ControlId {
+            control,
+            shift: false,
+        };
+        let binding = if shift {
+            self.bindings
+                .get(&shifted)
+                .or_else(|| self.bindings.get(&plain))
+        } else {
+            self.bindings.get(&plain)
+        };
+        binding.map(|b| b.action)
+    }
+
     /// Shift is held (the window shows the Shift layer).
     #[must_use]
     pub fn shift_held(&self) -> bool {
@@ -576,6 +598,11 @@ impl Mapping {
                 }
                 None => id.control = Control::Jog(deck, JogSurface::Edge),
             }
+        }
+        // A control without a Shift layer does the same with Shift held (a pad, a button): what the
+        // window shows under Shift always answers.
+        if id.shift && !self.bindings.contains_key(&id) {
+            id.shift = false;
         }
         let binding = *self.bindings.get(&id)?;
         match (binding.action, input) {
@@ -1384,6 +1411,20 @@ mod tests {
             ),
             Some(Action::CycleDelayTime)
         );
+    }
+
+    #[test]
+    fn a_pad_without_a_shift_layer_does_the_same_with_shift() {
+        let mut m = mapping();
+        let pad = ControllerEvent::Pad {
+            deck: Deck::A,
+            mode: PadMode::Fx,
+            pad: 0,
+            shift: true,
+            pressed: true,
+            velocity: 127,
+        };
+        assert!(matches!(m.handle(0, pad), Some(Action::ToggleMute(_))));
     }
 
     #[test]

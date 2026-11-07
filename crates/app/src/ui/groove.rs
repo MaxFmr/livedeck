@@ -203,11 +203,21 @@ pub(super) fn side(p: &Painter, rect: Rect, v: &View, deck: usize) {
         let x = inner.left() + (i % 2) as f32 * cell_w;
         let top = y + (i / 2) as f32 * 76.0;
         let value = v.knobs.get(deck * 8 + shift * 4 + i).copied().flatten();
-        let c = if deck == 0 && i < 3 {
+        // One physical knob is Filter or Bass, by the global Filter/Bass button: the layer it is
+        // not on is dimmed.
+        let layer = v.knob_layer.get(deck).copied().flatten();
+        let idle = match layer {
+            Some(filter) => (ctl.contains("Filter") && !filter) || (ctl.contains("Bass") && filter),
+            None => false,
+        };
+        let c = if idle {
+            theme::MARK
+        } else if deck == 0 && i < 3 {
             theme::ACCENT_AMBER.base
         } else {
             accent.base
         };
+        let fg = if idle { theme::TEXT_DIM } else { theme::TEXT };
         ring(p, Pos2::new(x + 20.0, top + 26.0), 17.0, value, c);
         let shown = value.map_or("kit".to_owned(), |v| format!("{:.0} %", v * 100.0));
         text(
@@ -216,7 +226,7 @@ pub(super) fn side(p: &Painter, rect: Rect, v: &View, deck: usize) {
             Align2::LEFT_TOP,
             name,
             theme::BODY,
-            theme::TEXT,
+            fg,
         );
         text(
             p,
@@ -224,7 +234,7 @@ pub(super) fn side(p: &Painter, rect: Rect, v: &View, deck: usize) {
             Align2::LEFT_TOP,
             &shown,
             theme::BODY,
-            theme::TEXT,
+            fg,
         );
         text(
             p,
@@ -235,7 +245,21 @@ pub(super) fn side(p: &Painter, rect: Rect, v: &View, deck: usize) {
             theme::TEXT_DIM,
         );
     }
-    y += 2.0 * 76.0 + theme::SPACE_2;
+    y += 2.0 * 76.0;
+    let knob = match v.knob_layer.get(deck).copied().flatten() {
+        Some(true) => "Filter/Bass : sur Filter",
+        Some(false) => "Filter/Bass : sur Bass",
+        None => "Filter/Bass : bouton de bascule",
+    };
+    text(
+        p,
+        Pos2::new(inner.left(), y),
+        Align2::LEFT_TOP,
+        knob,
+        theme::BODY,
+        theme::TEXT_DIM,
+    );
+    y += 22.0 + theme::SPACE_2;
     p.line_segment(
         [Pos2::new(inner.left(), y), Pos2::new(inner.right(), y)],
         Stroke::new(theme::STROKE_HAIR, color(theme::LINE)),
@@ -965,5 +989,135 @@ pub(super) fn hud(p: &Painter, zones: [Rect; 3], hud: &Hud) {
             theme::BODY,
             fg,
         );
+    }
+}
+
+/// Audit (essai intégral, 2026-11-07): everything the window shows as a setting answers a control
+/// of the controller, with or without Shift, and does what its label says.
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use io::controller::{Deck, DeckKnob, JogSurface, MixerControl, PadMode};
+    use io::mapping::{ActionName, Control, DEFAULT_MAPPING, Mapping};
+
+    fn mapping() -> Mapping {
+        Mapping::from_toml_str(DEFAULT_MAPPING).expect("mapping")
+    }
+
+    /// "Filter A", "+ Bass B"… → the control and whether Shift is part of it.
+    fn control_of(label: &str) -> (Control, bool) {
+        let (shift, rest) = match label.strip_prefix("+ ") {
+            Some(rest) => (true, rest),
+            None => (false, label),
+        };
+        let (what, deck) = rest.rsplit_once(' ').expect("deck");
+        let deck = if deck == "A" { Deck::A } else { Deck::B };
+        let control = match what {
+            "Filter" => Control::Knob(deck, DeckKnob::Filter),
+            "Bass" => Control::Knob(deck, DeckKnob::Bass),
+            "Volume" => Control::Knob(deck, DeckKnob::Volume),
+            "Tempo" => Control::Tempo(deck),
+            other => panic!("unknown control {other}"),
+        };
+        (control, shift)
+    }
+
+    #[test]
+    fn every_ring_answers_its_control_and_does_what_it_says() {
+        let m = mapping();
+        let expected = |name: &str| match name {
+            "Coupure" => ActionName::BassCutoff,
+            "Résonance" => ActionName::BassResonance,
+            "Decay" => ActionName::BassDecay,
+            "Rythme" => ActionName::DrumLevel,
+            "Env." => ActionName::BassEnv,
+            "Note" => ActionName::BassAmpDecay,
+            "Basse" => ActionName::BassLevel,
+            "Densité" => ActionName::PhraseDensity,
+            "Brillance" => ActionName::Brightness,
+            "Delay" => ActionName::DelaySend,
+            "Mélodie" => ActionName::MelodyLevel,
+            "Répét." => ActionName::DelayFeedback,
+            "Métro." => ActionName::MetronomeLevel,
+            other => panic!("ring {other} has no expected action"),
+        };
+        for (deck, layers) in RINGS.iter().enumerate() {
+            for (layer, rings) in layers.iter().enumerate() {
+                for (name, ctl) in rings {
+                    let (control, shift_in_label) = control_of(ctl);
+                    let shift = layer == 1;
+                    assert!(shift || !shift_in_label, "{ctl} outside the Shift layer");
+                    assert_eq!(
+                        m.action_of(control, shift),
+                        Some(expected(name)),
+                        "deck {deck}, Shift {shift}: {name} on {ctl}"
+                    );
+                }
+            }
+        }
+        // The mixer of the screen.
+        assert_eq!(
+            m.action_of(Control::Mixer(MixerControl::Master), false),
+            Some(ActionName::MasterGain)
+        );
+        assert_eq!(
+            m.action_of(Control::Mixer(MixerControl::Headphone), false),
+            Some(ActionName::ReverbSend)
+        );
+        assert_eq!(
+            m.action_of(Control::Mixer(MixerControl::Crossfader), false),
+            Some(ActionName::Crossfade)
+        );
+    }
+
+    #[test]
+    fn every_pad_shown_answers_in_its_mode_with_and_without_shift() {
+        let m = mapping();
+        for (d, deck) in [Deck::A, Deck::B].into_iter().enumerate() {
+            for (mi, mode) in [
+                PadMode::HotCue,
+                PadMode::Sampler,
+                PadMode::Fx,
+                PadMode::Loop,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                for shift in [false, true] {
+                    let (names, _) = PADS[d][mi][usize::from(shift)];
+                    for (pad, name) in names.iter().enumerate() {
+                        assert!(
+                            m.action_of(Control::Pad(deck, mode, pad as u8), shift)
+                                .is_some(),
+                            "{deck:?} {} pad {} « {name} » (Shift {shift}) does nothing",
+                            MODES[mi],
+                            pad + 1
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_jogs_do_what_the_panels_say() {
+        let m = mapping();
+        for surface in [JogSurface::Edge, JogSurface::Top] {
+            let jog = |deck| Control::Jog(deck, surface);
+            assert_eq!(
+                m.action_of(jog(Deck::A), false),
+                Some(ActionName::DensityNudge)
+            );
+            assert_eq!(
+                m.action_of(jog(Deck::A), true),
+                Some(ActionName::TempoNudge)
+            );
+            assert_eq!(
+                m.action_of(jog(Deck::B), false),
+                Some(ActionName::Transpose)
+            );
+            assert_eq!(m.action_of(jog(Deck::B), true), Some(ActionName::Scale));
+        }
     }
 }

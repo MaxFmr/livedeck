@@ -26,7 +26,7 @@ use engine::repeat::Division;
 use engine::sampler::SampleBank;
 use engine::{Engine, Param};
 use io::audio::{AudioOutput, BlockStamp, start_output};
-use io::controller::{ControllerEvent, Deck, Led, PadMode};
+use io::controller::{ControllerEvent, Deck, DeckKnob, Led, PadMode};
 use io::leds::{LedBank, LedState};
 use io::link::{ControllerLink, LinkEvent};
 use io::mapping::{
@@ -156,6 +156,8 @@ struct Session {
     hud: Option<(ui::Hud, Instant)>,
     /// A sample kit was loaded at start (Shift + PFL A can switch to it).
     kit_loaded: bool,
+    /// Layer of the Filter/Bass knob of each deck: `true` = Filter, unknown until it moves.
+    knob_layer: [Option<bool>; 2],
 }
 
 /// How long the tap-tempo LED asks for attention after a tempo control moved without effect.
@@ -511,6 +513,25 @@ fn handle_controller(
     // Continuous controls flood the console: only discrete gestures are echoed.
     if discrete && !quiet {
         println!("  🎛 {event}");
+    }
+    // The Filter/Bass knob of each deck: its messages tell which layer it is on; the global
+    // button swaps both decks.
+    match event {
+        ControllerEvent::Knob {
+            deck,
+            knob: knob @ (DeckKnob::Filter | DeckKnob::Bass),
+            ..
+        } => {
+            if let Some(layer) = s.knob_layer.get_mut(deck_slot(deck)) {
+                *layer = Some(knob == DeckKnob::Filter);
+            }
+        }
+        ControllerEvent::FilterBassToggle { pressed: true } => {
+            for layer in s.knob_layer.iter_mut().flatten() {
+                *layer = !*layer;
+            }
+        }
+        _ => {}
     }
     if let ControllerEvent::Pad {
         deck,
@@ -888,6 +909,13 @@ fn handle_controller(
             }
             handle.send(Command::SetParam(param, value));
         }
+    }
+}
+
+fn deck_slot(deck: Deck) -> usize {
+    match deck {
+        Deck::A => 0,
+        Deck::B => 1,
     }
 }
 
@@ -1299,6 +1327,7 @@ fn new_session(mapping: Mapping, bpm: f64, metronome: bool) -> Session {
         tempo_ignored_at: None,
         hud: None,
         kit_loaded: false,
+        knob_layer: [None; 2],
     }
 }
 
@@ -1651,6 +1680,7 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
                 phrase_density: snap.phrase_density,
                 throws: snap.throws,
                 shift: s.mapping.shift_held(),
+                knob_layer: s.knob_layer,
                 knobs: knob_values(&s.wanted),
                 crossfade: s.wanted.crossfade,
                 master: s.wanted.master_gain,
@@ -1827,7 +1857,7 @@ fn fail(message: &str) -> ! {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod scenario {
     use super::*;
-    use io::controller::{DeckKnob, JogSurface, MAX_14BIT, MixerControl};
+    use io::controller::{JogSurface, MAX_14BIT, MixerControl};
     use io::mapping::DEFAULT_MAPPING;
 
     const SR: u32 = 48_000;

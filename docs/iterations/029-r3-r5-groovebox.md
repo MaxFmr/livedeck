@@ -59,3 +59,18 @@
 | Fenêtre D4 (023, rappel) | 8,4 % | 1,9 % | 59 Mo |
 
 RSS en hausse (+25 Mo, chemins des anneaux et des pistes), toujours sous l'objectif de 120 Mo.
+
+## Essai intégral (2026-11-07) : audit « tout ce qui est affiché a un contrôle »
+Retour : « tout me semble bon », mais la brillance (deck droit) semblait sans contrôle dédié.
+Audit de chaque réglage affiché :
+- **Le potard Filter/Bass est un seul potard physique par deck**, que le bouton global Filter/Bass
+  fait passer d'un rôle à l'autre (fiche matériel, CC 01 ↔ 02). Deck A : coupure ↔ résonance ;
+  deck B : **brillance ↔ envoi au delay**. La fenêtre ne disait pas sur quel rôle il était.
+  Corrigé : l'app suit le rôle (les messages du potard le révèlent, le bouton le bascule) ; la
+  fenêtre estompe l'anneau inactif et écrit « Filter/Bass : sur Filter / sur Bass ».
+- **Trois couches Shift affichées mais muettes** : Shift + FX A (mutes), Shift + Sampler B
+  (phrase), Shift + Loop B 1 (REC). Corrigé dans le mapping : une commande sans couche Shift fait
+  la même chose avec Shift (comme les potards et faders le faisaient déjà).
+- **Test d'audit automatique** (`ui/groove.rs`) : chaque anneau répond à sa commande et fait ce que
+  son nom dit (coupure → coupure…), chaque pad affiché répond dans chaque mode avec et sans Shift,
+  les jogs font ce que les panneaux annoncent ; le mixer de l'écran aussi. 176 tests.

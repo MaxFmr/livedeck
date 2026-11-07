@@ -127,6 +127,8 @@ pub struct View {
     pub pending_random_bass: bool,
     /// Shift is held: the panels show the Shift layer.
     pub shift: bool,
+    /// Layer of each deck's Filter/Bass knob (`true` = Filter), unknown until it moves.
+    pub knob_layer: [Option<bool>; 2],
     /// Knob values in `groove::RINGS` order (`None`: untouched, the kit's sound).
     pub knobs: [Option<f32>; 16],
     pub crossfade: f32,
