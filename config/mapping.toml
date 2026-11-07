@@ -27,6 +27,8 @@
 #   arp_mode (mode = off, up, updown, random), arp_octaves (octaves = 1–4) → pads
 #   arp_rate (step = crans de jog par vitesse), transpose (step = crans de jog par degré) → jogs
 #   phrase (pattern = 1–4, variation = true : seconde moitié une tierce plus haut), à la mesure → pads
+#   note_mode (accords ↔ notes sur les pads chord), loop / loop_clear (pattern = 1–4),
+#   loop_bars (step = crans de jog par longueur)                        → boutons, pads, jogs
 #   crossfade (fondu rythme ↔ mélodie, centre = les deux)               → crossfader
 #   delay_send, delay_feedback (envoi et répétitions du delay de la mélodie),
 #   reverb_send (envoi de tout le mix à la réverb)                     → potards
@@ -357,11 +359,13 @@ shift = true
 action = "scale"
 step = 124
 
+# Shift + jog B par le dessus : longueur de la prochaine boucle (1, 2, 4 mesures), un cran par
+# quart de tour (026). La gamme reste sur Shift + jog B par la tranche.
 [[bind]]
 control = "b.jog.top"
 shift = true
-action = "scale"
-step = 124
+action = "loop_bars"
+step = 62
 
 # --- Arpège (018) : pads FX B = mode, Shift = octaves ; bord du jog B = vitesse ---
 [[bind]]
@@ -414,54 +418,52 @@ control = "b.jog.edge"
 action = "arp_rate"
 step = 62
 
-# --- Phrases (018) : pads Sampler B, à la mesure ; Shift = variation ---
+# --- Boucles de mélodie (026) : pads Sampler B ---
+# Vide : enregistre les notes jouées dès la mesure suivante, pendant la longueur choisie, puis la
+# boucle tourne. Enregistrée : lance ou arrête à la mesure. Shift : efface la boucle.
 [[bind]]
 control = "b.pad.sampler.1"
-action = "phrase"
+action = "loop"
 pattern = 1
 
 [[bind]]
 control = "b.pad.sampler.1"
 shift = true
-action = "phrase"
+action = "loop_clear"
 pattern = 1
-variation = true
 
 [[bind]]
 control = "b.pad.sampler.2"
-action = "phrase"
+action = "loop"
 pattern = 2
 
 [[bind]]
 control = "b.pad.sampler.2"
 shift = true
-action = "phrase"
+action = "loop_clear"
 pattern = 2
-variation = true
 
 [[bind]]
 control = "b.pad.sampler.3"
-action = "phrase"
+action = "loop"
 pattern = 3
 
 [[bind]]
 control = "b.pad.sampler.3"
 shift = true
-action = "phrase"
+action = "loop_clear"
 pattern = 3
-variation = true
 
 [[bind]]
 control = "b.pad.sampler.4"
-action = "phrase"
+action = "loop"
 pattern = 4
 
 [[bind]]
 control = "b.pad.sampler.4"
 shift = true
-action = "phrase"
+action = "loop_clear"
 pattern = 4
-variation = true
 
 # --- Transposition (018) : jog B par le dessus, un degré par quart de tour, tout de suite ---
 [[bind]]
@@ -510,3 +512,8 @@ action = "crossfade"
 control = "b.pfl"
 shift = true
 action = "delay_time"
+
+# Sync B (026) : les pads Hot Cue B jouent des accords ou des notes (degrés 1 à 8 de la gamme).
+[[bind]]
+control = "b.sync"
+action = "note_mode"

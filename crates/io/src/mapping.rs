@@ -131,6 +131,14 @@ pub enum Action {
     NudgeTranspose(i8),
     /// Next delay time of the scroll.
     CycleDelayTime,
+    /// Chord pads of deck B: chords ↔ single notes (degrees 1 to 8).
+    ToggleNoteMode,
+    /// Loop pad (0-based): record an empty slot, start or stop a recorded one, at the bar.
+    Loop(u8),
+    /// Erases a loop (0-based).
+    ClearLoop(u8),
+    /// Length of the next loop recorded, in steps of 1, 2, 4 bars.
+    NudgeLoopBars(i8),
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -182,6 +190,10 @@ pub enum ActionName {
     ReverbSend,
     Crossfade,
     DelayTime,
+    NoteMode,
+    Loop,
+    LoopClear,
+    LoopBars,
 }
 
 #[derive(Debug, Deserialize)]
@@ -313,7 +325,7 @@ pub struct Mapping {
     held_ticks: [i32; 2],
     taps: Vec<u64>,
     /// Jog ticks not yet turned into a step, per deck and per stepped action (`jog_slot`).
-    jog_ticks: [[i32; 3]; 2],
+    jog_ticks: [[i32; 4]; 2],
     /// Shift held (`90 03`). Faders and knobs send the same message with or without Shift, so
     /// their Shift layer is chosen here.
     shift_held: bool,
@@ -415,7 +427,7 @@ impl Mapping {
             touch_down_us: [None; 2],
             held_ticks: [0; 2],
             taps: Vec::with_capacity(8),
-            jog_ticks: [[0; 3]; 2],
+            jog_ticks: [[0; 4]; 2],
             shift_held: false,
         })
     }
@@ -576,12 +588,19 @@ impl Mapping {
             (ActionName::BassCutoff, Input::Absolute(v)) => Some(Action::SetBassCutoff(v)),
             (ActionName::ArpMode, Input::Press(true)) => Some(Action::ArpMode(binding.value)),
             (ActionName::ArpOctaves, Input::Press(true)) => Some(Action::ArpOctaves(binding.value)),
+            (ActionName::NoteMode, Input::Press(true)) => Some(Action::ToggleNoteMode),
+            (ActionName::Loop, Input::Press(true)) => Some(Action::Loop(binding.pattern)),
+            (ActionName::LoopClear, Input::Press(true)) => Some(Action::ClearLoop(binding.pattern)),
             (ActionName::Phrase, Input::Press(true)) => Some(Action::Phrase {
                 index: binding.pattern,
                 variation: binding.variation,
             }),
             (
-                ActionName::Style | ActionName::Scale | ActionName::ArpRate | ActionName::Transpose,
+                ActionName::Style
+                | ActionName::Scale
+                | ActionName::ArpRate
+                | ActionName::Transpose
+                | ActionName::LoopBars,
                 Input::Relative(ticks),
             ) => {
                 let Control::Jog(deck, _) = id.control else {
@@ -600,6 +619,7 @@ impl Mapping {
                     ActionName::Scale => Action::NudgeScale(steps),
                     ActionName::ArpRate => Action::NudgeArpRate(steps),
                     ActionName::Transpose => Action::NudgeTranspose(steps),
+                    ActionName::LoopBars => Action::NudgeLoopBars(steps),
                     _ => Action::NudgeStyle(steps),
                 })
             }
@@ -802,6 +822,9 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::BassMute
         | ActionName::SamplesToggle
         | ActionName::DelayTime
+        | ActionName::NoteMode
+        | ActionName::Loop
+        | ActionName::LoopClear
         | ActionName::Chord
         | ActionName::LatchToggle
         | ActionName::Inversion
@@ -834,7 +857,8 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::Style
         | ActionName::Scale
         | ActionName::ArpRate
-        | ActionName::Transpose => matches!(kind, Kind::Relative),
+        | ActionName::Transpose
+        | ActionName::LoopBars => matches!(kind, Kind::Relative),
     }
 }
 
@@ -844,6 +868,7 @@ fn jog_slot(action: ActionName) -> usize {
     match action {
         ActionName::ArpRate => 1,
         ActionName::Transpose => 2,
+        ActionName::LoopBars => 3,
         _ => 0,
     }
 }
@@ -1286,7 +1311,7 @@ mod tests {
     }
 
     #[test]
-    fn deck_b_arp_pads_phrases_and_rate_jog() {
+    fn deck_b_arp_pads_loops_and_rate_jog() {
         let mut m = mapping();
         let pad = |mode, pad, shift| ControllerEvent::Pad {
             deck: Deck::B,
@@ -1305,20 +1330,42 @@ mod tests {
             m.handle(2, pad(PadMode::Fx, 3, true)),
             Some(Action::ArpOctaves(4))
         );
+        // Sampler B: melody loops (026); Shift erases.
         assert_eq!(
             m.handle(3, pad(PadMode::Sampler, 1, false)),
-            Some(Action::Phrase {
-                index: 1,
-                variation: false
-            })
+            Some(Action::Loop(1))
         );
         assert_eq!(
             m.handle(4, pad(PadMode::Sampler, 1, true)),
-            Some(Action::Phrase {
-                index: 1,
-                variation: true
-            })
+            Some(Action::ClearLoop(1))
         );
+        let sync_b = ControllerEvent::Button {
+            deck: Deck::B,
+            button: Button::Sync,
+            shift: false,
+            pressed: true,
+        };
+        assert_eq!(m.handle(5, sync_b), Some(Action::ToggleNoteMode));
+        let top = |delta| ControllerEvent::Jog {
+            deck: Deck::B,
+            surface: JogSurface::Top,
+            shift: true,
+            delta,
+        };
+        // A confirmed touch on top of the jog (≥ 80 ms), then a quarter turn: one length step.
+        m.handle(
+            0,
+            ControllerEvent::Button {
+                deck: Deck::B,
+                button: Button::JogTouch,
+                shift: true,
+                pressed: true,
+            },
+        );
+        let longer: Vec<_> = (0..62)
+            .filter_map(|t| m.handle(100 * MS + t, top(1)))
+            .collect();
+        assert_eq!(longer, vec![Action::NudgeLoopBars(1)]);
         let jog = |delta| ControllerEvent::Jog {
             deck: Deck::B,
             surface: JogSurface::Edge,

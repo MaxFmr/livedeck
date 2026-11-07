@@ -89,7 +89,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 ## Phase 6 — Prêt pour la scène
 
 - [x] Crossfader : fondu rythme ↔ mélodie (choix de l'utilisateur, à la place du morph). → [024](docs/iterations/024-crossfader.md)
-- [ ] Scènes (8), presets de session (save/load TOML), rappel à la mesure.
+- [x] ~~Scènes~~ abandonnées (025 retirée, 2026-11-07) : l'utilisateur préfère l'impro à la volée. À la place : mode notes sur les pads Hot Cue B et boucles de mélodie enregistrées à la volée. → [026](docs/iterations/026-melody-loops.md)
 - [ ] Robustesse : débranchement contrôleur/casque en jeu, relance du stream, aucune perte de session.
 - [ ] Endurance : 1 h, 0 xrun, RSS stable.
 - [ ] Paquet `LiveDeck.app` (icône, signature ad hoc), démarrage < 1 s.
@@ -108,6 +108,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 | Date | Évènement |
 |---|---|
+| 2026-11-07 | Cap changé : pas de scènes (trop de complexité dans le jeu), impro à la volée ; 026 = notes jouées au pad + boucles de mélodie enregistrées sur les pads Sampler B. |
 | 2026-11-05 | **Phase 5 terminée** (020–023) : fenêtre egui conforme à D4, essai groupé et revue sur scène D7 validés ; 0 xrun, charge max 3,5 %, fenêtre 8,4 % CPU en lecture, 0,2 image/s à l'arrêt, 59 Mo. Prochaine : phase 6 (scènes, morph au crossfader). |
 | 2026-11-03 | D5 validé : jetons dans `crates/app/src/theme.rs` (4 tailles de police, 5 gris, 4 familles de couleur à 5 états, contrastes testés). Prochaine : phase 5, coquille eframe. |
 | 2026-11-03 | **Phase 4 terminée** (016–019) : poly synthé, accords et voicings, arpège et phrases, delay et réverb ; morceau complet joué au contrôleur, 0 xrun, charge max 12,6 %. Prochaine : D5 (système de design → `theme.rs`) puis phase 5. |

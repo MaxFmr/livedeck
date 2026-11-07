@@ -89,6 +89,16 @@ pub enum Command {
         velocity: f32,
         gesture_us: u64,
     },
+    /// Note pad (0..8, degrees 1 to 8) pressed or released.
+    Note {
+        pad: u8,
+        on: bool,
+    },
+    /// Loop pad (0..4): record, start or stop at the bar.
+    Loop(u8),
+    ClearLoop(u8),
+    /// Length of the next loop recorded, in steps of `looper::LENGTHS`.
+    NudgeLoopBars(i8),
 }
 
 const _: () = assert!(core::mem::size_of::<Command>() <= 32);
@@ -172,6 +182,13 @@ pub struct EngineSnapshot {
     /// Peaks of the block: drums, bass, melody, master; lowest limiter gain (1 = not limiting).
     pub peaks: [f32; 4],
     pub limiter_gain: f32,
+    /// Loop slots (`looper::LoopState::index`), their lengths in bars, the length of the next
+    /// recording, and the progress (step, steps) of the loop playing or being recorded.
+    pub loops: [u8; crate::looper::SLOTS],
+    pub loop_bars: [u8; crate::looper::SLOTS],
+    pub loop_notes: [u8; crate::looper::SLOTS],
+    pub next_loop_bars: u8,
+    pub loop_progress: Option<(u16, u16)>,
 }
 
 pub const COMMAND_CAPACITY: usize = 256;
@@ -261,6 +278,14 @@ fn snapshot_of(engine: &Engine, applied: u64, dropped_events: u32) -> EngineSnap
         delay_time: engine.delay_time().index(),
         peaks: engine.peaks(),
         limiter_gain: engine.limiter_gain(),
+        loops: engine
+            .looper()
+            .states()
+            .map(crate::looper::LoopState::index),
+        loop_bars: engine.looper().slot_bars(),
+        loop_notes: engine.looper().note_counts(),
+        next_loop_bars: engine.looper().bars(),
+        loop_progress: engine.looper().progress(engine.clock().beats()),
     }
 }
 
@@ -345,6 +370,10 @@ impl AudioEngine {
                 self.engine.beat_repeat_back(released, back);
             }
             Command::SetParam(param, value) => self.engine.set_param(param, value),
+            Command::Note { pad, on } => self.engine.note(pad, on),
+            Command::Loop(slot) => self.engine.press_loop(slot),
+            Command::ClearLoop(slot) => self.engine.clear_loop(slot),
+            Command::NudgeLoopBars(delta) => self.engine.nudge_loop_bars(delta),
             Command::Drum {
                 voice,
                 velocity,

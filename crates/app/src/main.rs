@@ -71,8 +71,10 @@ Deck B : pads Hot Cue = accords I, IV, V, vi (tenus), Volume B = mélodie (Shift
 fader Tempo B = brillance ; chaque style amène son patch de synthé. Shift + Hot Cue B = ii, iii,
 vii, I à l'octave ; pads Loop B = latch, renversement +/−, octave +/−, extension (Shift : triade) ;
 Shift + jog droit = gamme, à la mesure. Pads FX B = arpège off / montant / aller-retour / aléatoire
-(Shift : 1 à 4 octaves), bord du jog B = vitesse 1/4 … 1/32 ; pads Sampler B = phrases du style, à la
-mesure (Shift : variation) ; jog B par le dessus = transposition dans la gamme, un degré par quart de tour.
+(Shift : 1 à 4 octaves), bord du jog B = vitesse 1/4 … 1/32 ; jog B par le dessus = transposition dans
+la gamme, un degré par quart de tour. Sync B = pads Hot Cue B en notes (degrés 1 à 8) ↔ accords.
+Pads Sampler B = boucles de mélodie : vide = enregistre dès la mesure, pleine = lance / arrête à la
+mesure, Shift = efface ; Shift + jog B par le dessus = longueur 1, 2 ou 4 mesures.
 Effets : potard Bass B = delay de la mélodie (Shift : répétitions), Headphone = réverb (stéréo),
 Shift + PFL B = temps du delay 1/8 pointé, 1/4, 1/8, 1/4 pointé, 1/16 (chaque style amène le sien).
 Chaque son joué au pad affiche sa latence geste → son.";
@@ -124,6 +126,8 @@ struct Wanted {
     transpose: i8,
     /// Drums from the sample kit rather than the synth.
     samples: bool,
+    /// Chord pads of deck B play single notes (degrees 1 to 8).
+    note_mode: bool,
 }
 
 /// Control-thread state.
@@ -149,6 +153,8 @@ struct Session {
     hud: Option<(ui::Hud, Instant)>,
     /// A sample kit was loaded at start (Shift + PFL A can switch to it).
     kit_loaded: bool,
+    /// Note pads held (bit `i` = pad `i`), for the window.
+    notes_held: u8,
 }
 
 /// How long the tap-tempo LED asks for attention after a tempo control moved without effect.
@@ -169,6 +175,9 @@ struct LedRoles {
     /// Arpeggio mode pads with the mode index, phrase pads with the phrase index.
     arp_modes: Vec<(Led, u8)>,
     phrases: Vec<(Led, u8)>,
+    /// Loop pads with their slot; the chords ↔ notes switch (lit in notes).
+    loops: Vec<(Led, u8)>,
+    note_mode: Vec<Led>,
 }
 
 impl LedRoles {
@@ -191,6 +200,8 @@ impl LedRoles {
             latch: leds(ActionName::LatchToggle),
             arp_modes: indexed(ActionName::ArpMode),
             phrases: indexed(ActionName::Phrase),
+            loops: indexed(ActionName::Loop),
+            note_mode: leds(ActionName::NoteMode),
         }
     }
 }
@@ -560,6 +571,43 @@ fn handle_controller(
                 engine::bass::tonic_name(s.wanted.tonic),
                 scale_name(s.wanted.scale)
             );
+        }
+        Action::Chord { pad, held } if s.wanted.note_mode => {
+            handle.send(Command::Note { pad, on: held });
+            let bit = 1u8.checked_shl(u32::from(pad)).unwrap_or(0);
+            if held {
+                s.notes_held |= bit;
+            } else {
+                s.notes_held &= !bit;
+            }
+        }
+        Action::ToggleNoteMode => {
+            s.wanted.note_mode = !s.wanted.note_mode;
+            // Notes held while switching end now.
+            for pad in 0..8 {
+                if s.notes_held & (1 << pad) != 0 {
+                    handle.send(Command::Note { pad, on: false });
+                }
+            }
+            s.notes_held = 0;
+            println!(
+                "  ♪ pads Hot Cue B : {}",
+                if s.wanted.note_mode {
+                    "notes (degrés 1 à 8)"
+                } else {
+                    "accords"
+                }
+            );
+        }
+        Action::Loop(slot) => {
+            handle.send(Command::Loop(slot));
+        }
+        Action::ClearLoop(slot) => {
+            handle.send(Command::ClearLoop(slot));
+            println!("  ✕ boucle {} effacée", slot + 1);
+        }
+        Action::NudgeLoopBars(delta) => {
+            handle.send(Command::NudgeLoopBars(delta));
         }
         Action::Chord { pad, held } => {
             handle.send(Command::Chord { pad, on: held });
@@ -933,6 +981,26 @@ fn update_leds(leds: &mut LedBank, s: &Session, snap: &EngineSnapshot, beats: f6
             },
         );
     }
+    for &(led, slot) in &s.leds.loops {
+        use engine::looper::LoopState;
+        let state = snap
+            .loops
+            .get(usize::from(slot))
+            .map_or(LoopState::Empty, |&i| LoopState::from_index(i));
+        // Playing lit; waiting for the bar blinks; recording blinks fast.
+        let led_state = match state {
+            LoopState::Playing => LedState::On,
+            LoopState::Armed | LoopState::Waiting | LoopState::Stopping => LedState::Blink,
+            LoopState::Recording => LedState::BlinkFast,
+            LoopState::Empty | LoopState::Stopped => LedState::Off,
+        };
+        leds.set_state(led, led_state);
+    }
+    if s.wanted.note_mode {
+        for &led in &s.leds.note_mode {
+            leds.set_state(led, LedState::On);
+        }
+    }
     for &led in &s.held {
         leds.set(led, true);
     }
@@ -1110,6 +1178,7 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
             arp: ArpSettings::default(),
             transpose: 0,
             samples: false,
+            note_mode: false,
         },
         leds: LedRoles::of(&mapping),
         mapping,
@@ -1124,6 +1193,7 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
         tempo_ignored_at: None,
         hud: None,
         kit_loaded: false,
+        notes_held: 0,
     };
     let kit = load_kit(args.kit.as_ref());
     s.kit_loaded = kit.is_some();
@@ -1176,6 +1246,7 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
     let mut shown_samples = (false, None);
     let mut shown_scale = (u8::MAX, None);
     let mut shown_phrase = (None, None);
+    let mut shown_loops = ([0u8; engine::looper::SLOTS], 0u8);
     let mut shown_delay = u8::MAX;
 
     let mut last_report = Instant::now();
@@ -1283,6 +1354,32 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
                 (None, Some(now)) => println!("  ◆ {}", phrase_label(now)),
                 (None, None) => println!("  ◆ pas de phrase"),
             }
+        }
+        if (snap.loops, snap.next_loop_bars) != shown_loops {
+            use engine::looper::LoopState;
+            for (slot, (&now, &was)) in snap.loops.iter().zip(shown_loops.0.iter()).enumerate() {
+                if now == was {
+                    continue;
+                }
+                let bars = snap.loop_bars.get(slot).copied().unwrap_or(0);
+                let what = match LoopState::from_index(now) {
+                    LoopState::Armed => format!("enregistrement à la mesure ({bars} mes.)"),
+                    LoopState::Recording => format!("enregistre ({bars} mes.)"),
+                    LoopState::Waiting => "part à la mesure".to_owned(),
+                    LoopState::Playing => format!(
+                        "tourne ({} notes)",
+                        snap.loop_notes.get(slot).copied().unwrap_or(0)
+                    ),
+                    LoopState::Stopping => "s'arrête à la mesure".to_owned(),
+                    LoopState::Stopped => "arrêtée".to_owned(),
+                    LoopState::Empty => "vide".to_owned(),
+                };
+                println!("  ⟲ boucle {} : {what}", slot + 1);
+            }
+            if snap.next_loop_bars != shown_loops.1 && shown_loops.1 != 0 {
+                println!("  ⟲ prochaine boucle : {} mesure(s)", snap.next_loop_bars);
+            }
+            shown_loops = (snap.loops, snap.next_loop_bars);
         }
         if snap.delay_time != shown_delay {
             // Skip the first value: the starting delay time is not news.
@@ -1464,6 +1561,12 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
                 arp_octaves: snap.arp_octaves,
                 phrase: snap.phrase,
                 pending_phrase: snap.pending_phrase,
+                note_mode: s.wanted.note_mode,
+                notes_held: s.notes_held,
+                loops: snap.loops,
+                loop_bars: snap.loop_bars,
+                next_loop_bars: snap.next_loop_bars,
+                loop_progress: snap.loop_progress,
                 delay_time: snap.delay_time,
                 hud: shown_hud(&s),
                 meters: meters.update(snap.peaks),

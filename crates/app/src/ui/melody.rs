@@ -2,7 +2,7 @@
 
 use egui::{Align2, Painter, Pos2, Rect, Stroke, Vec2};
 
-use super::rhythm::{pads, pending};
+use super::rhythm::pads;
 use super::{Hud, HudValue, View, Zone, color, pending_phase, radius, text};
 use crate::theme;
 
@@ -13,7 +13,7 @@ const SCALE_ORDER: [usize; 8] = [0, 4, 5, 1, 2, 3, 6, 7];
 
 pub(super) const PADS_B: [(&str, [&str; 4]); 4] = [
     ("Hot Cue · accords", ["I", "IV", "V", "vi"]),
-    ("Sampler · phrases", ["P1", "P2", "P3", "P4"]),
+    ("Sampler · boucles", ["B1", "B2", "B3", "B4"]),
     ("FX · arpège", ["Off", "↑", "↑↓", "Aléa"]),
     ("Loop · voicing", ["Latch", "Renv", "Oct", "Ext"]),
 ];
@@ -50,21 +50,27 @@ pub(super) fn deck_b(p: &Painter, rect: Rect, v: &View) {
         theme::BODY,
         theme::TEXT_DIM,
     );
-    // The chords sounding.
+    // The chords sounding, or the notes held.
     let row = Rect::from_min_size(
         Pos2::new(inner.left(), top + 28.0),
         Vec2::new(inner.width(), theme::SIZE_BADGE),
     );
-    let names: Vec<&str> = DEGREES
+    const NOTES: [&str; 8] = ["1", "2", "3", "4", "5", "6", "7", "8"];
+    let (names, lit): (&[&str; 8], u8) = if v.note_mode {
+        (&NOTES, v.notes_held)
+    } else {
+        (&DEGREES, v.chords)
+    };
+    let names: Vec<&str> = names
         .iter()
         .enumerate()
-        .filter(|(i, _)| v.chords & (1 << i) != 0)
+        .filter(|(i, _)| lit & (1 << i) != 0)
         .map(|(_, n)| *n)
         .collect();
     let label = if names.is_empty() {
         "—".to_owned()
     } else {
-        names.join(" + ")
+        names.join(if v.note_mode { " " } else { " + " })
     };
     let galley_w = super::layout(p, &label, theme::DISPLAY, theme::INK)
         .size()
@@ -98,7 +104,11 @@ pub(super) fn deck_b(p: &Painter, rect: Rect, v: &View) {
         );
     }
     let x = badge.right() + theme::SPACE_3;
-    let held = if v.latch { "accord · latch" } else { "accord" };
+    let held = match (v.note_mode, v.latch) {
+        (true, _) => "notes · Sync B = accords",
+        (false, true) => "accord · latch",
+        (false, false) => "accord",
+    };
     text(
         p,
         Pos2::new(x, row.center().y - 11.0),
@@ -124,44 +134,31 @@ pub(super) fn deck_b(p: &Painter, rect: Rect, v: &View) {
             cold.base
         },
     );
-    // Phrase: playing, or waiting for the bar.
-    let phrase_x = shown.right().max(x + 160.0) + theme::SPACE_4;
-    match v.pending_phrase {
-        Some(Some((index, variation))) => {
-            let name = format!("P{}{}", index + 1, if variation { "'" } else { "" });
-            pending(p, Pos2::new(phrase_x, row.center().y), &name, cold, v);
-        }
-        Some(None) => {
-            text(
-                p,
-                Pos2::new(phrase_x, row.center().y),
-                Align2::LEFT_CENTER,
-                &format!("phrase arrêtée {}", super::until_bar(v)),
-                theme::BODY,
-                cold.base,
-            );
-        }
-        None => {}
-    }
-    // The eight degrees in scale order, the sounding ones lit.
+    let _ = shown;
+    // The eight degrees in scale order, the sounding ones lit (notes: in pad order).
     let deg_top = row.bottom() + theme::SPACE_4;
     text(
         p,
         Pos2::new(inner.left(), deg_top),
         Align2::LEFT_TOP,
-        "Degrés",
+        if v.note_mode { "Notes" } else { "Degrés" },
         theme::LABEL,
         theme::TEXT_DIM,
     );
     let cells_top = deg_top + 20.0;
     let gap = theme::SPACE_1;
     let w = (inner.width() - 7.0 * gap) / 8.0;
-    for (slot, &pad) in SCALE_ORDER.iter().enumerate() {
+    let order: [usize; 8] = if v.note_mode {
+        [0, 1, 2, 3, 4, 5, 6, 7]
+    } else {
+        SCALE_ORDER
+    };
+    for (slot, &pad) in order.iter().enumerate() {
         let r = Rect::from_min_size(
             Pos2::new(inner.left() + slot as f32 * (w + gap), cells_top),
             Vec2::new(w, 30.0),
         );
-        let on = v.chords & (1 << pad) != 0;
+        let on = lit & (1 << pad) != 0;
         p.rect_filled(
             r,
             radius(theme::RADIUS_CELL),
@@ -171,25 +168,19 @@ pub(super) fn deck_b(p: &Painter, rect: Rect, v: &View) {
             p,
             r.center(),
             Align2::CENTER_CENTER,
-            DEGREES[pad],
+            if v.note_mode {
+                NOTES[pad]
+            } else {
+                DEGREES[pad]
+            },
             theme::BODY,
             if on { theme::INK } else { theme::TEXT },
         );
     }
     // Settings of the deck, P2 values.
     let values_y = cells_top + 30.0 + theme::SPACE_4;
-    let phrase = match v.phrase {
-        Some((index, variation)) => {
-            format!(
-                "{}{}",
-                index + 1,
-                if variation { " (variation)" } else { "" }
-            )
-        }
-        None => "—".to_owned(),
-    };
     let values = [
-        ("Phrase", phrase),
+        ("Boucle", format!("{} mes.", v.next_loop_bars)),
         ("Octave", format!("{:+}", v.octave)),
         ("Renv.", format!("{:+}", v.inversion)),
         (
@@ -227,15 +218,110 @@ pub(super) fn deck_b(p: &Painter, rect: Rect, v: &View) {
         );
         vx = val.right() + theme::SPACE_5;
     }
+    loops(p, inner, values_y + 40.0, v);
+    let mut labels = PADS_B;
+    if v.note_mode {
+        labels[0] = ("Hot Cue · notes", ["1", "2", "3", "4"]);
+    }
     pads(
         p,
         inner,
-        &PADS_B,
+        &labels,
         v.pads[1],
         v.shown_mode[1],
         cold,
         pending_phase(v),
     );
+}
+
+/// The four loop slots: empty (outline), recorded (cell), playing (lit, with its progress),
+/// recording (alert colour, progress), waiting for the bar (dashed, blinking).
+fn loops(p: &Painter, inner: Rect, top: f32, v: &View) {
+    use engine::looper::LoopState;
+    let cold = theme::ACCENT_COLD;
+    let rec = theme::ACCENT_ALERT;
+    text(
+        p,
+        Pos2::new(inner.left(), top),
+        Align2::LEFT_TOP,
+        "Boucles",
+        theme::LABEL,
+        theme::TEXT_DIM,
+    );
+    let cells_top = top + 20.0;
+    let gap = theme::SPACE_2;
+    let w = (inner.width() - 3.0 * gap) / 4.0;
+    for slot in 0..4 {
+        let r = Rect::from_min_size(
+            Pos2::new(inner.left() + slot as f32 * (w + gap), cells_top),
+            Vec2::new(w, 44.0),
+        );
+        let state = LoopState::from_index(v.loops[slot]);
+        let bars = v.loop_bars[slot];
+        let (fill, fg, label) = match state {
+            LoopState::Empty => (None, theme::MARK, "vide".to_owned()),
+            LoopState::Armed => (None, rec.base, super::until_bar(v)),
+            LoopState::Recording => (Some(rec.base), theme::INK, "● rec".to_owned()),
+            LoopState::Stopped => (Some(theme::CELL), theme::TEXT, format!("{bars} mes.")),
+            LoopState::Waiting => (Some(theme::CELL), cold.base, super::until_bar(v)),
+            LoopState::Playing => (Some(cold.base), theme::INK, format!("{bars} mes.")),
+            LoopState::Stopping => (Some(cold.base), theme::INK, "arrêt à la mesure".to_owned()),
+        };
+        if let Some(c) = fill {
+            p.rect_filled(r, radius(theme::RADIUS_PAD), color(c));
+        } else {
+            p.rect_stroke(
+                r,
+                radius(theme::RADIUS_PAD),
+                Stroke::new(theme::STROKE_HAIR, color(theme::LINE)),
+                egui::StrokeKind::Inside,
+            );
+        }
+        if matches!(
+            state,
+            LoopState::Armed | LoopState::Waiting | LoopState::Stopping
+        ) && pending_phase(v)
+        {
+            super::dashed_rect(
+                p,
+                r,
+                if state == LoopState::Armed {
+                    rec.base
+                } else {
+                    cold.base
+                },
+            );
+        }
+        // Progress of the loop running (playing or recording).
+        if matches!(
+            state,
+            LoopState::Recording | LoopState::Playing | LoopState::Stopping
+        ) && let Some((step, steps)) = v.loop_progress
+        {
+            let f = f32::from(step) / f32::from(steps.max(1));
+            let bar = Rect::from_min_size(
+                Pos2::new(r.left(), r.bottom() - 4.0),
+                Vec2::new(r.width() * f, 4.0),
+            );
+            p.rect_filled(bar, 0, color(theme::INK));
+        }
+        text(
+            p,
+            Pos2::new(r.left() + theme::SPACE_3, r.center().y),
+            Align2::LEFT_CENTER,
+            &format!("B{}", slot + 1),
+            theme::TITLE,
+            fg,
+        );
+        text(
+            p,
+            Pos2::new(r.right() - theme::SPACE_3, r.center().y),
+            Align2::RIGHT_CENTER,
+            &label,
+            theme::BODY,
+            fg,
+        );
+    }
 }
 
 /// The value of the control just touched, in its zone (top right), ~1 s; while a control waits

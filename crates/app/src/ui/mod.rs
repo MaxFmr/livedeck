@@ -117,6 +117,15 @@ pub struct View {
     pub arp_octaves: u8,
     pub phrase: Option<(u8, bool)>,
     pub pending_phrase: Option<Option<(u8, bool)>>,
+    /// Chord pads play single notes; note pads held (bit `i` = pad `i`).
+    pub note_mode: bool,
+    pub notes_held: u8,
+    /// Loop slots (`looper::LoopState::index`), their lengths, the next length, and the progress
+    /// (step, steps) of the loop playing or being recorded.
+    pub loops: [u8; 4],
+    pub loop_bars: [u8; 4],
+    pub next_loop_bars: u8,
+    pub loop_progress: Option<(u16, u16)>,
     pub delay_time: u8,
     /// The HUD of the last gesture, while it is shown.
     pub hud: Option<Hud>,

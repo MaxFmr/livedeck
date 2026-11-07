@@ -107,13 +107,15 @@ continus en 14 bits (filtres et volumes sans paliers).
 
 | Contrôle | Fonction |
 |---|---|
-| Pads **Hot Cue** | accords degrés I, IV, V, vi, tenus, joués tout de suite (016) · Shift : ii, iii, vii, I à l'octave (017) |
-| Pads **Sampler** | phrases 1–4 du style, en boucle, lancées et arrêtées à la mesure · Shift : variation (seconde moitié une tierce plus haut) (018) |
+| Pads **Hot Cue** | accords degrés I, IV, V, vi, tenus, joués tout de suite (016) · Shift : ii, iii, vii, I à l'octave (017) · en **mode notes** (Sync B) : degrés 1–4, Shift : 5–8 (026) |
+| Pads **Sampler** | boucles de mélodie 1–4 (026) : vide = enregistre les notes dès la mesure suivante, calées à la double croche, pendant 1, 2 ou 4 mesures, puis la boucle tourne ; enregistrée = lancée / arrêtée à la mesure, une seule à la fois · Shift : efface. (Remplacent les phrases du style de 018.) |
 | Pads **FX** | arpège off / montant / aller-retour / aléatoire, il joue les accords tenus ou latchés pendant la lecture · Shift : 1 à 4 octaves (018) |
 | Pads **Loop** | 1 latch · 2 renversement + (Shift −) · 3 octave + (Shift −) · 4 extension triade → 7e → sus4 → add9 (Shift : triade) ; rejoue l'accord tenu (017) |
 | Jog bord | vitesse d'arpège 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32, un quart de tour par vitesse ; croches et doubles suivent le swing (018) |
 | Jog dessus + rotation | transposition **dans la gamme** des accords, de l'arpège et des phrases, un degré par quart de tour, ±7, tout de suite ; la basse ne bouge pas (018) |
-| Jog Shift + rotation | choix de la gamme, un demi-tour par gamme, à la mesure (017) |
+| Jog Shift + rotation (tranche) | choix de la gamme, un demi-tour par gamme, à la mesure (017) |
+| Jog Shift + dessus | longueur de la prochaine boucle : 1, 2 ou 4 mesures, un quart de tour par cran (026) |
+| Sync | pads Hot Cue : accords ↔ notes, LED allumée en notes (026) |
 | Tempo | brillance (coupure du synthé, ±2,5 octaves autour du patch, 016) |
 | Filter | filtre DJ du bus mélodie |
 | Bass | envoi de la mélodie au delay · Shift : répétitions 0–95 % (019) |

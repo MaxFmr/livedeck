@@ -19,6 +19,7 @@ pub mod dsp;
 pub mod fx;
 pub mod limiter;
 pub mod link;
+pub mod looper;
 pub mod melody;
 pub mod metronome;
 pub mod poly;
@@ -87,6 +88,7 @@ pub struct Engine {
     synth: PolySynth,
     chords: chords::ChordPads,
     melody: Melody,
+    looper: looper::Looper,
     /// Style whose synth patch is loaded.
     synth_style: u8,
     sequencer: Sequencer,
@@ -137,6 +139,7 @@ impl Engine {
             synth: PolySynth::new(sample_rate),
             chords: chords::ChordPads::default(),
             melody: Melody::new(),
+            looper: looper::Looper::new(),
             synth_style: 0,
             sequencer: Sequencer::new(),
             limiter: Limiter::new(sample_rate),
@@ -172,6 +175,7 @@ impl Engine {
         self.clock.start();
         self.sequencer.reset();
         self.melody.reset();
+        self.looper.reset();
         self.sync_arp();
         self.repeat.release();
         self.last_hit = None;
@@ -183,6 +187,10 @@ impl Engine {
         self.bass.note_off();
         self.chords.release_all(&mut self.synth);
         self.melody.stop();
+        self.looper.stop();
+        for owner in looper::NOTE_OWNER..looper::LOOP_OWNER + 8 {
+            self.synth.release(owner);
+        }
         self.sync_arp();
         self.repeat.release();
         self.roll_pending = None;
@@ -211,6 +219,36 @@ impl Engine {
     pub fn press_phrase(&mut self, index: u8, variation: bool) {
         self.melody
             .press_phrase(index, variation, self.clock.is_playing());
+    }
+
+    /// Note pad `pad` (0..8: degrees 1 to 8) pressed or released; recorded into the loop being
+    /// recorded.
+    pub fn note(&mut self, pad: u8, on: bool) {
+        let key = (self.sequencer.bass().key(), self.chords.transpose());
+        let beats = self.clock.beats();
+        self.looper.note(pad, on, &mut self.synth, key, beats);
+    }
+
+    /// Loop pad `slot`: records an empty slot from the next bar, starts or stops a recorded one at
+    /// the bar.
+    pub fn press_loop(&mut self, slot: u8) {
+        let (beats, playing) = (self.clock.beats(), self.clock.is_playing());
+        self.looper.press(usize::from(slot), beats, playing);
+    }
+
+    /// Erases loop `slot`.
+    pub fn clear_loop(&mut self, slot: u8) {
+        self.looper.clear(usize::from(slot), &mut self.synth);
+    }
+
+    /// Length of the next loop recorded, one step of `looper::LENGTHS` per unit.
+    pub fn nudge_loop_bars(&mut self, delta: i8) {
+        self.looper.nudge_bars(delta);
+    }
+
+    #[must_use]
+    pub fn looper(&self) -> &looper::Looper {
+        &self.looper
     }
 
     /// Melody transposition in scale degrees (chords, arpeggio, phrases), right away.
@@ -537,6 +575,7 @@ impl Engine {
                     synth: &mut self.synth,
                     chords: &self.chords,
                     melody: &mut self.melody,
+                    looper: &mut self.looper,
                     last_hit: &mut self.last_hit,
                     roll_pending: &mut self.roll_pending,
                     repeat: &mut self.repeat,
@@ -627,6 +666,7 @@ struct Voices<'a> {
     synth: &'a mut PolySynth,
     chords: &'a chords::ChordPads,
     melody: &'a mut Melody,
+    looper: &'a mut looper::Looper,
     last_hit: &'a mut Option<u64>,
     roll_pending: &'a mut Option<usize>,
     repeat: &'a mut BeatRepeat,
@@ -694,6 +734,12 @@ fn render_mono(v: Voices<'_>, buses: Buses<'_>) {
                 sequencer.style_preset().map(|style| &style.phrases),
                 v.clock,
                 |len, held| sequencer.gate_of_fired(v.clock, len, held),
+            );
+            v.looper.fire_step(
+                bar_step,
+                v.clock.beats(),
+                v.synth,
+                (sequencer.bass().key(), v.chords.transpose()),
             );
         }
         if melody_at == segment_len && melody.is_some() {
