@@ -230,8 +230,6 @@ pub struct Sequencer {
     styles: [StylePreset; STYLES],
     style: u8,
     pending_style: Option<u8>,
-    /// Swing for the next bar, applied after the style (scene recall).
-    pending_swing: Option<f32>,
     /// Drum source waiting for the bar: samples (true) or synth.
     pending_samples: Option<bool>,
 }
@@ -262,7 +260,6 @@ impl Sequencer {
             styles: presets(),
             style: 0,
             pending_style: None,
-            pending_swing: None,
             pending_samples: None,
         }
     }
@@ -409,11 +406,6 @@ impl Sequencer {
         self.enabled
     }
 
-    /// Swing for the next bar, after a style queued with it (scene recall).
-    pub fn queue_swing(&mut self, swing: f32) {
-        self.pending_swing = Some(swing);
-    }
-
     pub fn set_swing(&mut self, swing: f32) {
         if swing.is_finite() {
             self.swing = swing.clamp(MIN_SWING, MAX_SWING);
@@ -491,9 +483,6 @@ impl Sequencer {
         let step = (self.next_step % STEPS as u64) as usize;
         if step == 0 {
             self.apply_style(kit, bass);
-            if let Some(swing) = self.pending_swing.take() {
-                self.set_swing(swing);
-            }
             self.apply_samples(kit);
             if let Some(p) = self.pending.take() {
                 self.current = p;

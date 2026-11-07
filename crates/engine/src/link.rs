@@ -89,38 +89,7 @@ pub enum Command {
         velocity: f32,
         gesture_us: u64,
     },
-    /// Phrase from the next bar (none: stop), whatever plays now (scene recall).
-    QueuePhrase(Option<(u8, bool)>),
-    /// Chords sounding as latched ones (bit `i` = pad `i`).
-    SetChords(u8),
-    /// Swing from the next bar, after the style queued before it (scene recall).
-    QueueSwing(f32),
-    /// `true`: the commands that act at once wait for the next bar, until `AtBar(false)`; those
-    /// that already wait for the bar (patterns, style, phrase…) are not held (scene recall).
-    AtBar(bool),
 }
-
-impl Command {
-    /// Applied at the next bar by the engine itself.
-    #[must_use]
-    pub fn waits_for_bar(self) -> bool {
-        matches!(
-            self,
-            Self::QueuePattern(_)
-                | Self::QueueStyle(_)
-                | Self::UseSamples(_)
-                | Self::SetScale(_)
-                | Self::Phrase { .. }
-                | Self::QueuePhrase(_)
-                | Self::QueueSwing(_)
-                | Self::QueueBassLine(_)
-                | Self::SetTonic(_)
-        )
-    }
-}
-
-/// Commands an `AtBar` group may hold.
-pub const DEFERRED_CAPACITY: usize = 48;
 
 const _: () = assert!(core::mem::size_of::<Command>() <= 32);
 
@@ -217,9 +186,6 @@ pub struct AudioEngine {
     last_beat: Option<u64>,
     applied: u64,
     dropped_events: u32,
-    /// Commands held for the next bar (`Command::AtBar`), in order.
-    deferred: [Option<Command>; DEFERRED_CAPACITY],
-    deferring: bool,
 }
 
 /// Control-thread side.
@@ -245,8 +211,6 @@ pub fn connect(engine: Engine) -> (AudioEngine, EngineHandle) {
             last_beat: None,
             applied: 0,
             dropped_events: 0,
-            deferred: [None; DEFERRED_CAPACITY],
-            deferring: false,
         },
         EngineHandle {
             commands: cmd_tx,
@@ -321,15 +285,6 @@ impl AudioEngine {
             };
             self.apply(command, time);
         }
-        if self.deferred.first().is_some_and(Option::is_some)
-            && self.engine.bar_within(out.len() / channels.max(1))
-        {
-            for slot in 0..DEFERRED_CAPACITY {
-                if let Some(command) = self.deferred.get_mut(slot).and_then(Option::take) {
-                    self.run(command, time);
-                }
-            }
-        }
         self.engine.process(out, channels);
         self.report_beat();
         self.snapshot
@@ -338,21 +293,6 @@ impl AudioEngine {
 
     fn apply(&mut self, command: Command, time: BlockTime) {
         self.applied += 1;
-        if let Command::AtBar(on) = command {
-            self.deferring = on;
-            return;
-        }
-        if self.deferring
-            && !command.waits_for_bar()
-            && let Some(slot) = self.deferred.iter_mut().find(|slot| slot.is_none())
-        {
-            *slot = Some(command);
-            return;
-        }
-        self.run(command, time);
-    }
-
-    fn run(&mut self, command: Command, time: BlockTime) {
         match command {
             Command::Start => {
                 self.engine.start();
@@ -405,10 +345,6 @@ impl AudioEngine {
                 self.engine.beat_repeat_back(released, back);
             }
             Command::SetParam(param, value) => self.engine.set_param(param, value),
-            Command::QueuePhrase(phrase) => self.engine.queue_phrase(phrase),
-            Command::SetChords(mask) => self.engine.set_chords(mask),
-            Command::QueueSwing(swing) => self.engine.queue_swing(swing),
-            Command::AtBar(_) => {}
             Command::Drum {
                 voice,
                 velocity,
@@ -496,30 +432,6 @@ mod tests {
         handle.send(Command::Stop);
         run(&mut audio, 1);
         assert!(!handle.snapshot().playing);
-    }
-
-    #[test]
-    fn an_at_bar_group_waits_for_the_next_bar() {
-        let (mut audio, mut handle) = pair();
-        handle.send(Command::Start);
-        run(&mut audio, 10);
-        handle.send(Command::AtBar(true));
-        handle.send(Command::SetMutes(0b10));
-        handle.send(Command::QueuePhrase(Some((1, false))));
-        handle.send(Command::AtBar(false));
-        handle.send(Command::SetDensity(0.5));
-        run(&mut audio, 1);
-        let snap = handle.snapshot();
-        assert_eq!(snap.mutes, 0, "held for the bar");
-        assert_eq!(snap.pending_phrase, Some(Some((1, false))));
-        assert_eq!(snap.density, 0.5, "after the group: at once");
-        // 120 BPM, 48 kHz: one bar = 2 s = 750 blocks of 128 frames.
-        run(&mut audio, 735);
-        assert_eq!(handle.snapshot().mutes, 0);
-        run(&mut audio, 10);
-        let snap = handle.snapshot();
-        assert_eq!(snap.mutes, 0b10);
-        assert_eq!(snap.phrase, Some((1, false)));
     }
 
     #[test]

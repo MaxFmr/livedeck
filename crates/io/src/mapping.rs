@@ -131,10 +131,6 @@ pub enum Action {
     NudgeTranspose(i8),
     /// Next delay time of the scroll.
     CycleDelayTime,
-    /// Scene slot (0-based): stores the playing state when empty (or armed), recalls it otherwise.
-    Scene(u8),
-    /// Arms (or disarms) storing over the next scene slot pressed.
-    SceneStore,
     SetTempo(f64),
     NudgeTempo(f64),
     /// Normalized 0..=1.
@@ -186,8 +182,6 @@ pub enum ActionName {
     ReverbSend,
     Crossfade,
     DelayTime,
-    Scene,
-    SceneStore,
 }
 
 #[derive(Debug, Deserialize)]
@@ -224,8 +218,6 @@ struct BindSpec {
     /// `phrase` plays the variation of its phrase (`pattern`).
     #[serde(default)]
     variation: bool,
-    /// Scene slot (1–8) of `scene`.
-    scene: Option<u8>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -266,8 +258,6 @@ pub enum MappingError {
     BadArpMode(String),
     #[error("« {0} » : octaves attendues entre 1 et 4")]
     BadOctaves(String),
-    #[error("« {0} » : scène attendue entre 1 et 8")]
-    BadScene(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -398,10 +388,6 @@ impl Mapping {
                     Some(o @ 1..=4) => o,
                     _ => return Err(MappingError::BadOctaves(b.control)),
                 },
-                ActionName::Scene => match b.scene {
-                    Some(n @ 1..=8) => n - 1,
-                    _ => return Err(MappingError::BadScene(b.control)),
-                },
                 _ => 0,
             };
             let binding = Binding {
@@ -462,7 +448,7 @@ impl Mapping {
                 let value = match b.action {
                     ActionName::Fill => b.fill,
                     ActionName::Chord => b.chord,
-                    ActionName::ArpMode | ActionName::ArpOctaves | ActionName::Scene => b.value,
+                    ActionName::ArpMode | ActionName::ArpOctaves => b.value,
                     ActionName::Mute => b.mask,
                     ActionName::BeatRepeat => b.division.denominator(),
                     _ => b.pattern,
@@ -558,8 +544,6 @@ impl Mapping {
             }
             (ActionName::Mute, Input::Press(true)) => Some(Action::ToggleMute(binding.mask)),
             (ActionName::Fill, Input::Press(true)) => Some(Action::Fill(binding.fill)),
-            (ActionName::Scene, Input::Press(true)) => Some(Action::Scene(binding.value)),
-            (ActionName::SceneStore, Input::Press(true)) => Some(Action::SceneStore),
             (ActionName::BeatRepeat, Input::Press(held)) => Some(Action::BeatRepeat {
                 division: binding.division,
                 held,
@@ -818,8 +802,6 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::BassMute
         | ActionName::SamplesToggle
         | ActionName::DelayTime
-        | ActionName::Scene
-        | ActionName::SceneStore
         | ActionName::Chord
         | ActionName::LatchToggle
         | ActionName::Inversion
@@ -1642,26 +1624,5 @@ mod tests {
         assert!((bpm - 120.0).abs() < 1e-9);
         // A pause longer than 2 s restarts the sequence.
         assert_eq!(m.handle(5_000 * MS, sync), None);
-    }
-
-    #[test]
-    fn shift_fx_and_loop_pads_of_deck_a_are_the_scenes() {
-        let mut m = mapping();
-        let pad = |mode, pad| ControllerEvent::Pad {
-            deck: Deck::A,
-            mode,
-            pad,
-            shift: true,
-            pressed: true,
-            velocity: 127,
-        };
-        assert_eq!(m.handle(0, pad(PadMode::Fx, 0)), Some(Action::Scene(0)));
-        assert_eq!(m.handle(1, pad(PadMode::Loop, 3)), Some(Action::Scene(7)));
-        assert!(
-            Mapping::from_toml_str(
-                "[[bind]]\ncontrol = \"a.pad.fx.1\"\naction = \"scene\"\nscene = 9"
-            )
-            .is_err()
-        );
     }
 }

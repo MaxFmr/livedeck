@@ -13,8 +13,6 @@ assert_no_alloc.workspace = true
 rtrb.workspace = true
 eframe = { workspace = true, default-features = false }
 egui.workspace = true
-serde.workspace = true
-toml.workspace = true
 
 # Renderer of the window: glow (020, measured and kept). wgpu stays available but was not measured:
 # `--no-default-features --features wgpu`.

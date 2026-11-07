@@ -125,12 +125,6 @@ pub struct View {
     pub limiting: bool,
     /// Callback load over 70 % at the last report.
     pub overload: bool,
-    /// Scene slots filled (bit `i` = slot `i`), the scene last recalled or stored, the one waiting
-    /// for the bar, and storing armed (Sync B).
-    pub scenes: u8,
-    pub scene: Option<u8>,
-    pub pending_scene: Option<u8>,
-    pub scene_armed: bool,
 }
 
 /// The control thread → window link.
@@ -390,7 +384,14 @@ fn panel(p: &Painter, rect: Rect, accent: Option<Accent>) {
 fn footer_bar(p: &Painter, rect: Rect, v: &View) {
     panel(p, rect, None);
     let mid = rect.center().y;
-    scene_strip(p, Pos2::new(rect.left() + theme::SPACE_5, mid), v);
+    text(
+        p,
+        Pos2::new(rect.left() + theme::SPACE_5, mid),
+        Align2::LEFT_CENTER,
+        "F : plein écran",
+        theme::BODY,
+        theme::TEXT_DIM,
+    );
     let meters = [
         ("Batterie", theme::ACCENT_WARM.base),
         ("Basse", theme::ACCENT_AMBER.base),
@@ -436,94 +437,6 @@ fn footer_bar(p: &Painter, rect: Rect, v: &View) {
             theme::TEXT_DIM,
         );
         x = label.left() - theme::SPACE_5;
-    }
-}
-
-/// The 8 scene slots: empty (outline), stored (number), current (lit), waiting for the bar
-/// (dashed, blinking); storing armed (Sync B): "Enregistrer" and blinking amber outlines.
-fn scene_strip(p: &Painter, left_mid: Pos2, v: &View) {
-    let amber = theme::ACCENT_AMBER.base;
-    let label = text(
-        p,
-        left_mid,
-        Align2::LEFT_CENTER,
-        if v.scene_armed {
-            "Enregistrer"
-        } else {
-            "Scènes"
-        },
-        theme::LABEL,
-        if v.scene_armed {
-            amber
-        } else {
-            theme::TEXT_DIM
-        },
-    );
-    let size = 28.0;
-    let mut x = label.right() + theme::SPACE_3;
-    for slot in 0..crate::scene::SLOTS as u8 {
-        let r = Rect::from_min_size(Pos2::new(x, left_mid.y - size / 2.0), Vec2::splat(size));
-        x = r.right() + theme::SPACE_1;
-        let filled = v.scenes & (1 << slot) != 0;
-        let current = v.scene == Some(slot) && v.pending_scene.is_none();
-        let pending = v.pending_scene == Some(slot);
-        let number = (slot + 1).to_string();
-        if pending {
-            if pending_phase(v) {
-                dashed_rect(p, r, theme::TEXT);
-            }
-            text(
-                p,
-                r.center(),
-                Align2::CENTER_CENTER,
-                &number,
-                theme::BODY,
-                theme::TEXT,
-            );
-        } else if current {
-            p.rect_filled(r, radius(theme::RADIUS_CELL), color(theme::TEXT));
-            text(
-                p,
-                r.center(),
-                Align2::CENTER_CENTER,
-                &number,
-                theme::BODY,
-                theme::INK,
-            );
-        } else if filled {
-            p.rect_filled(r, radius(theme::RADIUS_CELL), color(theme::CELL));
-            text(
-                p,
-                r.center(),
-                Align2::CENTER_CENTER,
-                &number,
-                theme::BODY,
-                theme::TEXT,
-            );
-        } else {
-            p.rect_stroke(
-                r,
-                radius(theme::RADIUS_CELL),
-                Stroke::new(theme::STROKE_HAIR, color(theme::LINE)),
-                egui::StrokeKind::Inside,
-            );
-            text(
-                p,
-                r.center(),
-                Align2::CENTER_CENTER,
-                &number,
-                theme::BODY,
-                theme::MARK,
-            );
-        }
-        if v.scene_armed && pending_phase(v) {
-            p.rect_stroke(
-                r,
-                radius(theme::RADIUS_CELL),
-                Stroke::new(theme::STROKE_STATE, color(amber)),
-                egui::StrokeKind::Inside,
-            );
-        }
     }
 }
 

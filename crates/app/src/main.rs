@@ -5,7 +5,6 @@
 //! prints the engine state, publishes it to the window and rebuilds the audio stream if the device
 //! goes away. `--headless`: no window, the control loop runs on the main thread.
 
-mod scene;
 // Design tokens (D5); the widgets that use the rest come with D6.
 #[allow(dead_code)]
 mod theme;
@@ -44,7 +43,6 @@ USAGE: app [--bpm <60-200>] [--buffer <frames>] [--mapping <fichier>] [--seconds
 
   --mapping       fichier de mapping (défaut : config/mapping.toml, sinon le mapping intégré)
   --kit           dossier du kit de samples, kick.wav, snare.wav… (défaut : assets/kits/tr909)
-  --session       fichier des scènes (défaut : config/session.toml, créé au premier enregistrement)
   --headless      sans fenêtre (console seule) ; dans la fenêtre, F = plein écran
 
   --seconds       s'arrête après n secondes (endurance)
@@ -151,13 +149,6 @@ struct Session {
     hud: Option<(ui::Hud, Instant)>,
     /// A sample kit was loaded at start (Shift + PFL A can switch to it).
     kit_loaded: bool,
-    /// Scene slots, their session file, the scene last recalled or stored, the one waiting for
-    /// the bar (with the beat it starts on), storing armed (Sync B).
-    scenes: scene::Scenes,
-    session_path: PathBuf,
-    scene: Option<u8>,
-    pending_scene: Option<(u8, f64)>,
-    scene_armed: bool,
 }
 
 /// How long the tap-tempo LED asks for attention after a tempo control moved without effect.
@@ -178,8 +169,6 @@ struct LedRoles {
     /// Arpeggio mode pads with the mode index, phrase pads with the phrase index.
     arp_modes: Vec<(Led, u8)>,
     phrases: Vec<(Led, u8)>,
-    /// Arms storing a scene: blinks fast while armed.
-    scene_store: Vec<Led>,
 }
 
 impl LedRoles {
@@ -202,7 +191,6 @@ impl LedRoles {
             latch: leds(ActionName::LatchToggle),
             arp_modes: indexed(ActionName::ArpMode),
             phrases: indexed(ActionName::Phrase),
-            scene_store: leds(ActionName::SceneStore),
         }
     }
 }
@@ -241,7 +229,6 @@ struct Args {
     mapping: Option<PathBuf>,
     record: Option<PathBuf>,
     kit: Option<PathBuf>,
-    session: PathBuf,
     headless: bool,
 }
 
@@ -255,7 +242,6 @@ fn parse_args() -> Result<Args, String> {
         mapping: None,
         kit: None,
         record: None,
-        session: PathBuf::from("config/session.toml"),
         headless: false,
     };
     let mut it = std::env::args().skip(1);
@@ -279,7 +265,6 @@ fn parse_args() -> Result<Args, String> {
             "--mapping" => args.mapping = Some(PathBuf::from(value("--mapping")?)),
             "--record" => args.record = Some(PathBuf::from(value("--record")?)),
             "--kit" => args.kit = Some(PathBuf::from(value("--kit")?)),
-            "--session" => args.session = PathBuf::from(value("--session")?),
             "--headless" => args.headless = true,
             "-h" | "--help" => {
                 println!("{USAGE}");
@@ -636,18 +621,6 @@ fn handle_controller(
                 echo_arp(s.wanted.arp);
             }
         }
-        Action::SceneStore => {
-            s.scene_armed = !s.scene_armed;
-            println!(
-                "  {}",
-                if s.scene_armed {
-                    "● enregistrement armé : touche une scène (Shift + FX/Loop A)"
-                } else {
-                    "○ enregistrement annulé"
-                }
-            );
-        }
-        Action::Scene(slot) => press_scene(s, handle, slot),
         Action::CycleDelayTime => {
             handle.send(Command::CycleDelayTime);
         }
@@ -805,150 +778,6 @@ fn handle_controller(
     }
 }
 
-/// A scene pad: stores the state played into an empty (or armed) slot, recalls a stored one at
-/// the next bar.
-fn press_scene(s: &mut Session, handle: &mut EngineHandle, slot: u8) {
-    let stored = s.scenes.get(slot);
-    match stored {
-        Some(scene) if !s.scene_armed => recall_scene(s, handle, slot, scene),
-        _ => {
-            let snap = handle.snapshot();
-            s.scenes.set(slot, scene_of(&s.wanted, &snap));
-            s.scene_armed = false;
-            s.scene = Some(slot);
-            s.pending_scene = None;
-            match s.scenes.save(&s.session_path) {
-                Ok(()) => println!(
-                    "  ✚ scène {} enregistrée ({})",
-                    slot + 1,
-                    s.session_path.display()
-                ),
-                Err(e) => println!("  ⚠ scène {} gardée en mémoire, pas écrite : {e}", slot + 1),
-            }
-        }
-    }
-}
-
-/// What a scene keeps of the state played.
-fn scene_of(w: &Wanted, snap: &EngineSnapshot) -> scene::Scene {
-    // A phrase waiting for the bar is the one meant.
-    let phrase = snap.pending_phrase.unwrap_or(snap.phrase);
-    scene::Scene {
-        style: w.style,
-        pattern: w.pattern,
-        swing: w.swing,
-        mutes: w.mutes,
-        density: w.density,
-        samples: w.samples,
-        bass_line: w.bass_line,
-        bass_muted: w.bass_muted,
-        tonic: w.tonic,
-        bass_cutoff: w.bass_cutoff,
-        scale: w.scale,
-        latch: w.latch,
-        chords: if w.latch { snap.chords } else { 0 },
-        inversion: w.voicing.inversion,
-        octave: w.voicing.octave,
-        extension: w.voicing.extension.index(),
-        arp_mode: w.arp.mode.index(),
-        arp_rate: w.arp.rate.index(),
-        arp_octaves: w.arp.octaves,
-        phrase: phrase.map(|(index, _)| index),
-        phrase_variation: phrase.is_some_and(|(_, variation)| variation),
-        transpose: w.transpose,
-        brightness: w.brightness,
-        delay_send: w.delay_send,
-        delay_feedback: w.delay_feedback,
-        reverb_send: w.reverb_send,
-    }
-}
-
-/// Recalls `scene` at the next bar: the engine queues what already waits for the bar and holds
-/// the rest (`Command::AtBar`) so everything changes on the downbeat.
-fn recall_scene(s: &mut Session, handle: &mut EngineHandle, slot: u8, scene: scene::Scene) {
-    let w = &mut s.wanted;
-    w.style = scene.style;
-    w.pattern = scene.pattern;
-    w.swing = scene.swing;
-    w.mutes = scene.mutes;
-    w.density = scene.density;
-    let samples_before = w.samples;
-    w.samples = scene.samples && s.kit_loaded;
-    w.bass_line = scene.bass_line;
-    w.bass_muted = scene.bass_muted;
-    w.tonic = scene.tonic;
-    w.bass_cutoff = scene.bass_cutoff;
-    w.scale = scene.scale;
-    w.latch = scene.latch;
-    w.voicing = Voicing {
-        inversion: scene.inversion,
-        octave: scene.octave,
-        extension: Extension::from_index(scene.extension),
-    };
-    w.arp = ArpSettings {
-        mode: ArpMode::from_index(scene.arp_mode),
-        rate: ArpRate::from_index(scene.arp_rate),
-        octaves: scene.arp_octaves,
-    };
-    w.transpose = scene.transpose;
-    w.brightness = scene.brightness;
-    w.delay_send = scene.delay_send;
-    w.delay_feedback = scene.delay_feedback;
-    w.reverb_send = scene.reverb_send;
-    let w = *w;
-    handle.send(Command::AtBar(true));
-    // Style first (it brings its swing and keeps the pattern index), then the pattern (it brings
-    // the bass line of the same index), then the line itself.
-    handle.send(Command::QueueStyle(w.style));
-    handle.send(Command::QueuePattern(w.pattern));
-    handle.send(Command::QueueBassLine(w.bass_line));
-    handle.send(Command::QueueSwing(w.swing));
-    if w.samples != samples_before {
-        handle.send(Command::UseSamples(w.samples));
-    }
-    handle.send(Command::SetScale(w.scale));
-    handle.send(Command::SetTonic(w.tonic));
-    handle.send(Command::QueuePhrase(
-        scene.phrase.map(|index| (index, scene.phrase_variation)),
-    ));
-    handle.send(Command::SetMutes(w.mutes));
-    handle.send(Command::SetDensity(w.density));
-    handle.send(Command::BassMute(w.bass_muted));
-    handle.send(Command::SetParam(Param::BassCutoff, w.bass_cutoff));
-    handle.send(Command::Latch(w.latch));
-    handle.send(Command::Voicing {
-        inversion: w.voicing.inversion,
-        octave: w.voicing.octave,
-        extension: w.voicing.extension.index(),
-    });
-    handle.send(Command::Transpose(w.transpose));
-    handle.send(Command::SetChords(scene.chords));
-    send_arp(handle, w.arp);
-    handle.send(Command::SetParam(Param::Brightness, w.brightness));
-    handle.send(Command::SetParam(Param::DelaySend, w.delay_send));
-    handle.send(Command::SetParam(Param::DelayFeedback, w.delay_feedback));
-    handle.send(Command::SetParam(Param::ReverbSend, w.reverb_send));
-    handle.send(Command::AtBar(false));
-    // Knobs with pickup must meet the recalled values before taking over again.
-    for (target, value) in [
-        (Target::DelaySend, w.delay_send),
-        (Target::DelayFeedback, w.delay_feedback),
-        (Target::ReverbSend, w.reverb_send),
-    ] {
-        s.mapping.software_changed(target, f64::from(value));
-    }
-    let snap = handle.snapshot();
-    let bar = engine::BEATS_PER_BAR as f64;
-    s.scene = Some(slot);
-    if snap.playing {
-        s.pending_scene = Some((slot, (snap.beats / bar).floor() * bar + bar));
-        println!("  ◇ scène {} à la mesure suivante", slot + 1);
-    } else {
-        s.pending_scene = None;
-        println!("  ▶ scène {}", slot + 1);
-    }
-}
-
 /// "snare + clap" for a voice mask.
 fn voice_names(mask: u8) -> String {
     DrumVoice::ALL
@@ -1103,11 +932,6 @@ fn update_leds(leds: &mut LedBank, s: &Session, snap: &EngineSnapshot, beats: f6
                 LedState::On
             },
         );
-    }
-    if s.scene_armed {
-        for &led in &s.leds.scene_store {
-            leds.set_state(led, LedState::BlinkFast);
-        }
     }
     for &led in &s.held {
         leds.set(led, true);
@@ -1300,22 +1124,7 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
         tempo_ignored_at: None,
         hud: None,
         kit_loaded: false,
-        scenes: scene::Scenes::default(),
-        session_path: args.session.clone(),
-        scene: None,
-        pending_scene: None,
-        scene_armed: false,
     };
-    match scene::Scenes::load(&s.session_path) {
-        Ok(scenes) => {
-            let count = scenes.filled().count_ones();
-            if count > 0 {
-                println!("Session : {} ({count} scène(s))", s.session_path.display());
-            }
-            s.scenes = scenes;
-        }
-        Err(e) => println!("  ⚠ session illisible, scènes vides : {e}"),
-    }
     let kit = load_kit(args.kit.as_ref());
     s.kit_loaded = kit.is_some();
     println!("Mapping : {mapping_source} ({} liaisons)", s.mapping.len());
@@ -1453,12 +1262,6 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
         } else {
             stopped_since.elapsed().as_secs_f64() * s.wanted.bpm / 60.0
         };
-        if let Some((slot, at)) = s.pending_scene
-            && (!snap.playing || snap.beats >= at)
-        {
-            s.pending_scene = None;
-            println!("  ▶ scène {}", slot + 1);
-        }
         update_leds(link.leds_mut(), &s, &snap, beats);
         if let Some(r) = recording.as_mut() {
             r.drain();
@@ -1666,10 +1469,6 @@ fn control(args: &Args, window: Option<&WindowLink>) -> Result<(), String> {
                 meters: meters.update(snap.peaks),
                 limiting: snap.limiter_gain < 0.98,
                 overload: shown_load > 0.7,
-                scenes: s.scenes.filled(),
-                scene: s.scene,
-                pending_scene: s.pending_scene.map(|(slot, _)| slot),
-                scene_armed: s.scene_armed,
             };
             // Playing, the window repaints at its own pace; otherwise on a change, at most at its
             // playing rate (a falling meter changes on every turn of this loop).
