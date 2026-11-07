@@ -41,3 +41,12 @@ réorganisé selon la carte validée avec la maquette D8.
 - Tests : kick sur chaque temps dans tous les patterns, lignes d'une mesure ; mapping du deck A
   (kits, densité au jog, swing, tempo, coupure sur Filter A). 165 tests, clippy propre.
 - Rendus d'écoute : `target/renders/styles.wav` (chaque kit, patterns 1–4), `fx.wav` (kit Dub).
+
+## Essai groupé R1 + R2 au contrôleur (2026-11-07)
+- **La densité ne répondait pas** : tourner le jog la main posée dessus active le capteur de toucher,
+  donc tout partait sur le dessus (le swing). Le journal ne montre que du swing. Corrigé (**choix par
+  défaut, à revoir**) : **tout le jog A fait la densité**, Shift + jog A le tempo (tranche ou dessus,
+  même pas), et le **swing passe sur Shift + pads Loop A** : 50 · 54 · 58 · 62 %, tout de suite.
+  Règle retenue : ne jamais séparer deux fonctions par le seul toucher du dessus du jog.
+- « L'UI est la même qu'avant » : la nouvelle interface (écran central D8) est l'étape R5, pas encore
+  faite.

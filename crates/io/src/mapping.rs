@@ -149,6 +149,8 @@ pub enum Action {
     NudgeDensity(f32),
     /// A bass line drawn at random, at the next bar.
     RandomBassLine,
+    /// Swing set to a value (0.5..=0.75).
+    SetSwing(f32),
     /// Length of the next loop recorded, in steps of 1, 2, 4 bars.
     NudgeLoopBars(i8),
     SetTempo(f64),
@@ -214,6 +216,7 @@ pub enum ActionName {
     BassDecay,
     BassAmpDecay,
     RandomBassLine,
+    SwingSet,
 }
 
 #[derive(Debug, Deserialize)]
@@ -612,6 +615,9 @@ impl Mapping {
             (ActionName::LoopRec, Input::Press(true)) => Some(Action::RecLoop),
             (ActionName::Kit, Input::Press(true)) => Some(Action::Kit(binding.pattern)),
             (ActionName::RandomBassLine, Input::Press(true)) => Some(Action::RandomBassLine),
+            (ActionName::SwingSet, Input::Press(true)) => {
+                Some(Action::SetSwing(binding.step as f32 / 100.0))
+            }
             (ActionName::DensityNudge, Input::Relative(ticks)) => Some(Action::NudgeDensity(
                 ticks as f32 * binding.step as f32 / 100.0,
             )),
@@ -866,6 +872,7 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::LoopRec
         | ActionName::Kit
         | ActionName::RandomBassLine
+        | ActionName::SwingSet
         | ActionName::Chord
         | ActionName::LatchToggle
         | ActionName::Inversion
@@ -1709,17 +1716,30 @@ mod tests {
             Some(Action::NudgeDensity(d)) => assert!((d - 0.004).abs() < 1.0e-6),
             other => panic!("{other:?}"),
         }
-        // Real touch: early ticks are held, then join the top (swing) once confirmed.
+        // Real touch: early ticks are held, then join the top (density as well) once confirmed.
         m.handle(200 * MS, touch(true));
         assert_eq!(m.handle(210 * MS, top), None);
         match m.handle(300 * MS, top) {
-            Some(Action::NudgeSwing(d)) => assert!((d - 0.004).abs() < 1.0e-6),
+            Some(Action::NudgeDensity(d)) => assert!((d - 0.004).abs() < 1.0e-6),
             other => panic!("{other:?}"),
         }
         assert!(matches!(
             m.handle(310 * MS, top),
-            Some(Action::NudgeSwing(_))
+            Some(Action::NudgeDensity(_))
         ));
+        // Swing: Shift + Loop A pads.
+        let loop_pad = ControllerEvent::Pad {
+            deck: Deck::A,
+            mode: PadMode::Loop,
+            pad: 2,
+            shift: true,
+            pressed: true,
+            velocity: 127,
+        };
+        match m.handle(500 * MS, loop_pad) {
+            Some(Action::SetSwing(v)) => assert!((v - 0.58).abs() < 1.0e-6),
+            other => panic!("{other:?}"),
+        }
         assert_eq!(m.handle(400 * MS, touch(false)), None);
     }
 

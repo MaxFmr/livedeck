@@ -62,8 +62,8 @@ Commandes (taper puis Entrée) :
 
 Deck A : pads Hot Cue = patterns 1–4, kick à la noire (à la mesure suivante), pads Sampler = fills
 (Shift : kits 808 · boom, 909 · techno, Dub, à la mesure), pads FX = mutes kick / snare+clap / hats / perc,
-pads Loop tenus = beat-repeat 1/4 … 1/32, jog tranche = densité, jog dessus = swing,
-Shift + jog = tempo (dessus : fin). Basse : chaque pattern amène sa ligne, Shift + Hot Cue = ligne seule,
+pads Loop tenus = beat-repeat 1/4 … 1/32 (Shift : swing 50 · 54 · 58 · 62 %), jog = densité,
+Shift + jog = tempo. Basse : chaque pattern amène sa ligne, Shift + Hot Cue = ligne seule,
 Cue A = mute, potard Filter A = coupure, Cue B = tonique −1 (Shift : +1), à la mesure.
 Volume A = batterie, Shift + Volume A = basse.
 Deck B : pads Hot Cue = accords I, IV, V, vi (tenus), Volume B = mélodie (Shift : métronome),
@@ -612,6 +612,13 @@ fn handle_controller(
         }
         Action::Loop(slot) => {
             handle.send(Command::Loop(slot));
+        }
+        Action::SetSwing(swing) => {
+            s.wanted.swing =
+                swing.clamp(engine::sequencer::MIN_SWING, engine::sequencer::MAX_SWING);
+            handle.send(Command::SetSwing(s.wanted.swing));
+            s.shown_swing = s.wanted.swing;
+            println!("  ≈ swing {:.0} %", s.wanted.swing * 100.0);
         }
         Action::RandomBassLine => {
             handle.send(Command::RandomBassLine);

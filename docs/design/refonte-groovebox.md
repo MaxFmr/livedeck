@@ -127,9 +127,8 @@ Une ligne par contrôle ; « Shift » seulement pour les réglages rares. Tout c
 | Pads Hot Cue | patterns 1–4 (kick à la noire dans chacun) | lignes de basse 1–4 |
 | Pads Sampler | remplissages 1–4 | kits 1–3 · 4 = ligne de basse au hasard dans la gamme |
 | Pads FX | mutes : kick · snare/clap · hats · perc | — |
-| Pads Loop | beat-repeat 1/4 … 1/32, tenu | — |
-| Jog (tranche) | densité de la batterie | tempo |
-| Jog (dessus) | swing | tempo fin |
+| Pads Loop | beat-repeat 1/4 … 1/32, tenu | swing 50 · 54 · 58 · 62 % (essai R1) |
+| Jog (tranche ou dessus) | densité de la batterie | tempo |
 | Filter | coupure de la basse | — |
 | Bass | résonance de la basse | quantité d'enveloppe |
 | Fader Tempo | decay de l'enveloppe de la basse | decay de l'amplitude |
