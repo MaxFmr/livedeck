@@ -60,13 +60,12 @@ Commandes (taper puis Entrée) :
   h        kick (comme le pad Hot Cue 1 du deck A)
   q        quitter
 
-Deck A : pads Hot Cue = patterns A–D (à la mesure suivante), pads Sampler = fills
-(Shift : kick, snare, hats), pads FX = mutes kick / snare+clap / hats / perc,
-pads Loop tenus = beat-repeat 1/4 … 1/32, fader Tempo = densité, jog bord = swing,
-jog dessus = tempo. Basse : chaque pattern amène sa ligne, Shift + Hot Cue = ligne seule,
-Cue A = mute, potard Bass A = filtre, Cue B = tonique −1 (Shift : +1), à la mesure.
-Shift + PFL A = batterie samples 909 ↔ synthé, à la mesure. Volume A = batterie, Shift + Volume A = basse.
-Shift + jog gauche (un demi-tour) = style (kit, patterns, basse, swing), à la mesure ; le tempo reste le tien.
+Deck A : pads Hot Cue = patterns 1–4, kick à la noire (à la mesure suivante), pads Sampler = fills
+(Shift : kits 808 · boom, 909 · techno, Dub, à la mesure), pads FX = mutes kick / snare+clap / hats / perc,
+pads Loop tenus = beat-repeat 1/4 … 1/32, jog tranche = densité, jog dessus = swing,
+Shift + jog = tempo (dessus : fin). Basse : chaque pattern amène sa ligne, Shift + Hot Cue = ligne seule,
+Cue A = mute, potard Filter A = coupure, Cue B = tonique −1 (Shift : +1), à la mesure.
+Volume A = batterie, Shift + Volume A = basse.
 Deck B : pads Hot Cue = accords I, IV, V, vi (tenus), Volume B = mélodie (Shift : métronome),
 fader Tempo B = brillance ; chaque style amène son patch de synthé. Shift + Hot Cue B = ii, iii,
 vii, I à l'octave ; pads Loop B = latch, renversement +/−, octave +/−, extension (Shift : triade) ;
@@ -605,6 +604,20 @@ fn handle_controller(
         }
         Action::Loop(slot) => {
             handle.send(Command::Loop(slot));
+        }
+        Action::Kit(kit) => {
+            if kit != s.wanted.style {
+                s.wanted.style = kit;
+                handle.send(Command::QueueStyle(kit));
+            }
+        }
+        Action::NudgeDensity(delta) => {
+            s.wanted.density = (s.wanted.density + delta).clamp(0.0, 1.0);
+            handle.send(Command::SetDensity(s.wanted.density));
+            if (s.wanted.density - s.shown_density).abs() >= 0.05 {
+                s.shown_density = s.wanted.density;
+                println!("  ▥ densité {:.0} %", s.wanted.density * 100.0);
+            }
         }
         Action::RecLoop => {
             handle.send(Command::RecLoop);

@@ -131,6 +131,17 @@ impl Engine {
     /// Allocates everything the audio thread will ever need. Call before starting the stream.
     #[must_use]
     pub fn new(sample_rate: u32, max_block: usize, bpm: f64) -> Self {
+        let mut engine = Self::bare(sample_rate, max_block, bpm);
+        // Start on the first kit: its sounds, patterns and lines; the synth patch and the effects
+        // follow on the first block (`synth_style` differs).
+        engine
+            .sequencer
+            .load_style(0, &mut engine.drums, &mut engine.bass);
+        engine.synth_style = u8::MAX;
+        engine
+    }
+
+    fn bare(sample_rate: u32, max_block: usize, bpm: f64) -> Self {
         Self {
             clock: Clock::new(sample_rate, bpm),
             click: Click::new(sample_rate),
@@ -846,8 +857,9 @@ mod tests {
 
     #[test]
     fn roll_waits_for_the_next_hit_when_the_last_one_is_old() {
-        // Density 0 on pattern A: kicks on beats 1 and 3 only (samples 0 and 48 000).
-        let mut engine = Engine::new(SR, 128, 120.0);
+        // Density 0 on the built-in pattern A (no kit loaded): kicks on beats 1 and 3 only
+        // (samples 0 and 48 000).
+        let mut engine = Engine::bare(SR, 128, 120.0);
         engine.set_metronome(false);
         engine.set_param(Param::MasterGain, 0.5);
         engine.set_density(0.0);
@@ -951,16 +963,17 @@ mod tests {
     #[test]
     fn delay_time_follows_the_style_until_scrolled() {
         let mut engine = Engine::new(SR, 128, 120.0);
+        render(&mut engine, 128, 2, 128);
         engine.cycle_delay_time();
-        assert_eq!(engine.delay_time(), fx::DelayTime::Quarter);
-        // Lo-fi brings its quarter-note delay and longer reverb (stopped: right away).
-        engine.queue_style(4);
+        assert_eq!(engine.delay_time(), style::TEXTS[0].fx.delay.next());
+        // The Dub kit brings its delay back and its long reverb (stopped: right away).
+        engine.queue_style(2);
         render(&mut engine, 256, 2, 128);
-        let lofi = style::TEXTS[4].fx;
-        assert_eq!(engine.delay_time(), lofi.delay);
-        assert!((engine.reverb_decay() - lofi.reverb_decay).abs() < 1e-6);
+        let dub = style::TEXTS[2].fx;
+        assert_eq!(engine.delay_time(), dub.delay);
+        assert!((engine.reverb_decay() - dub.reverb_decay).abs() < 1e-6);
         engine.cycle_delay_time();
-        assert_eq!(engine.delay_time(), lofi.delay.next());
+        assert_eq!(engine.delay_time(), dub.delay.next());
     }
 
     #[test]

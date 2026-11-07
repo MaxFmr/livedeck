@@ -17,7 +17,8 @@
 #   tempo_nudge (step = BPM par cran)                                  → jogs
 #   bass_line (pattern = 1–4), bass_mute, tonic (step = demi-tons)     → boutons et pads
 #   bass_cutoff (coupure du filtre de la basse)                        → potards
-#   style (step = crans de jog par style), à la mesure suivante        → jogs
+#   style (step = crans de jog par style), kit (pattern = 1–3), à la mesure suivante → jogs, pads
+#   density_nudge (step = % par cran)                                    → jogs
 #   samples_toggle (batterie : samples ↔ synthé, à la mesure)          → boutons et pads
 #   chord (chord = 1–4 : degrés I, IV, V, vi), tenu tant que le pad l'est → pads
 #   melody_level, brightness (coupure du synthé mélodie)               → faders et potards
@@ -102,13 +103,13 @@ shift = true
 action = "bass_line"
 pattern = 4
 
-# --- Basse (013) : mute sur Cue A, filtre au potard Bass A, tonique sur Cue B (à la mesure) ---
+# --- Basse (013) : mute sur Cue A, coupure au potard Filter A (R1), tonique sur Cue B (à la mesure) ---
 [[bind]]
 control = "a.cue"
 action = "bass_mute"
 
 [[bind]]
-control = "a.bass"
+control = "a.filter"
 action = "bass_cutoff"
 
 [[bind]]
@@ -122,10 +123,11 @@ shift = true
 action = "tonic"
 step = 1
 
+# Jog A par la tranche (R1) : densité de la batterie, % par cran (248 crans par tour ≈ 50 % par tour).
+# 0 = kicks sur les temps seulement → 100 % = le pattern complet.
 [[bind]]
 control = "a.jog.edge"
-action = "swing"
-# % de swing par cran du jog (248 crans par tour)
+action = "density_nudge"
 step = 0.2
 
 # --- Deck A : fills (itération 012), de la prochaine noire à la fin de la mesure ---
@@ -192,36 +194,26 @@ control = "a.pad.loop.4"
 action = "beat_repeat"
 division = 32
 
-# --- Sons seuls (010) : Shift + pads Sampler A ---
+# --- Kits (R1) : Shift + pads Sampler A 1–3 = 808 · boom, 909 · techno, Dub, à la mesure ---
+# (Shift + pad 4 : ligne de basse au hasard, en R2.)
 [[bind]]
 control = "a.pad.sampler.1"
 shift = true
-action = "drum"
-voice = "kick"
+action = "kit"
+pattern = 1
 
 [[bind]]
 control = "a.pad.sampler.2"
 shift = true
-action = "drum"
-voice = "snare"
+action = "kit"
+pattern = 2
 
 [[bind]]
 control = "a.pad.sampler.3"
 shift = true
-action = "drum"
-voice = "closed_hat"
+action = "kit"
+pattern = 3
 
-[[bind]]
-control = "a.pad.sampler.4"
-shift = true
-action = "drum"
-voice = "open_hat"
-
-
-# --- Densité de la batterie (012) : le fader suit sa position physique, sans pickup ---
-[[bind]]
-control = "a.tempo"
-action = "drum_density"
 
 # --- Kit (015) : Shift + PFL A bascule la batterie entre les samples 909 et le synthé, à la mesure ---
 [[bind]]
@@ -229,26 +221,25 @@ control = "a.pfl"
 shift = true
 action = "samples_toggle"
 
-# --- Style (014) : Shift + jog gauche fait défiler les styles (kit, patterns, basse, swing) ---
+# --- Tempo (R1) : Shift + jog A par la tranche, fin par le dessus ; tap tempo sur Sync A ---
 [[bind]]
 control = "a.jog.edge"
 shift = true
-action = "style"
-# 124 crans (un demi-tour, 248 crans par tour) par style — choix de l'essai 014
-step = 124
+action = "tempo_nudge"
+# 248 crans par tour : 0,25 BPM/cran ≈ 60 BPM par tour (essai 008).
+step = 0.25
 
 [[bind]]
 control = "a.jog.top"
 shift = true
-action = "style"
-step = 124
+action = "tempo_nudge"
+step = 0.05
 
-# --- Tempo : jog A par le dessus, tap tempo sur Sync A ---
+# --- Swing (R1) : jog A par le dessus, % par cran ---
 [[bind]]
 control = "a.jog.top"
-action = "tempo_nudge"
-# 248 crans par tour : 0,25 BPM/cran ≈ 60 BPM par tour (1,0 était beaucoup trop sensible, essai 008).
-step = 0.25
+action = "swing"
+step = 0.2
 
 # --- Niveaux ---
 [[bind]]

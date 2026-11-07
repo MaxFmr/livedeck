@@ -13,8 +13,8 @@ use crate::fx::DelayTime;
 use crate::poly::{Adsr, SynthPatch, Wave};
 use crate::sequencer::{PATTERNS, Pattern, SwingGrid, default_fills, default_patterns};
 
-/// Number of styles: the hybrid kit of 010–013, then the five starting presets.
-pub const STYLES: usize = 6;
+/// Number of kits (styles): 808, 909, Dub (R1).
+pub const STYLES: usize = 3;
 
 /// Drum rows of one pattern, in the text form of `Pattern::from_rows`.
 type Rows = &'static [(DrumVoice, &'static str)];
@@ -123,546 +123,233 @@ pub fn bpm(index: u8) -> f64 {
     TEXTS.get(usize::from(index)).map_or(120.0, |t| t.bpm)
 }
 
-const NEUTRAL: (f32, f32, f32) = (0.0, 1.0, 1.0);
-
 use DrumVoice::{Clap, ClosedHat, Kick, OpenHat, Perc, Snare};
 
-pub const TEXTS: [StyleText; STYLES] = [
-    StyleText {
-        name: "Hybride",
-        bpm: 120.0,
-        swing: 0.54,
-        grid: SwingGrid::Eighth,
-        kit: [NEUTRAL; 6],
-        bass: BassParams {
-            saw: 0.5,
-            sub: 0.45,
-            resonance: 1.1,
-            env_octaves: 2.5,
-            accent_octaves: 4.0,
-            decay: 0.2,
-            glide: 0.045,
-            drive: 1.4,
-        },
-        synth: SynthPatch {
-            wave1: Wave::Saw,
-            wave2: Wave::Saw,
-            detune: 8.0,
-            cutoff: 1_200.0,
-            resonance: 0.9,
-            env_octaves: 1.5,
-            amp: Adsr {
-                attack: 0.25,
-                decay: 0.5,
-                sustain: 0.8,
-                release: 0.6,
-            },
-            filter: Adsr {
-                attack: 0.3,
-                decay: 0.8,
-                sustain: 0.4,
-                release: 0.6,
-            },
-            level: 0.5,
-        },
-        fx: FxPreset {
-            // The engine starts with these (no style change to apply them).
-            delay: DelayTime::DottedEighth,
-            reverb_decay: 2.5,
-        },
-        patterns: None,
-        fills: None,
-        bass_lines: None,
-        phrases: None,
+/// A stab for dub chords: short, filtered, made to be thrown into the delay.
+const DUB_STAB: SynthPatch = SynthPatch {
+    wave1: Wave::Saw,
+    wave2: Wave::Saw,
+    detune: 6.0,
+    cutoff: 950.0,
+    resonance: 1.1,
+    env_octaves: 2.5,
+    amp: Adsr {
+        attack: 0.003,
+        decay: 0.28,
+        sustain: 0.0,
+        release: 0.22,
     },
-    // Half-time at 140: the snare lands on beat 3 (step 8). Deep kick, sub-heavy bass, long notes.
+    filter: Adsr {
+        attack: 0.0,
+        decay: 0.2,
+        sustain: 0.0,
+        release: 0.15,
+    },
+    level: 0.55,
+};
+
+/// Bass lines shared by the kits: offbeat roots, the dub techno pulse (degrees of the key).
+const DUB_LINES: [&str; PATTERNS] = [
+    ". . 1 . . . 1 . . . 1 . . . 1 .",
+    ". . 1 - . . 1 . . . 5, - . . 1 .",
+    ". . 1 . . 1 . . . . 4, . . 1 . .",
+    ". . 1 - . . 1 - . . 7, - . . 5, -",
+];
+
+/// Phrases until the generated melody (R3) replaces them.
+const DUB_PHRASES: [&str; PATTERNS] = [
+    "5 - - - . . 3 - . . . . 4 - - -",
+    ". . 1' - . . 7 - 5 - - - . . . .",
+    "3 . . 3 . . 3 . 4 . . 4 . . 5 .",
+    "1 - - - 3 - - - 5 - - - 4 - 3 -",
+];
+
+/// Fills shared by the kits (from the next beat to the end of the bar).
+const DUB_FILLS: [Rows; PATTERNS] = [
+    &[(Kick, "X...X...X...X..."), (Snare, "..........o.xxXX")],
+    &[(Kick, "X...X...X...X..."), (Perc, "X..X..X..X..XXXX")],
+    // Drop: the first kick, then silence until the bar.
+    &[(Kick, "X...............")],
+    &[
+        (Kick, "X...X...X...X..."),
+        (ClosedHat, "3344556677889XX."),
+        (OpenHat, "...............X"),
+    ],
+];
+
+/// The three kits of the groovebox (R1, 2026-11-07): every pattern keeps the kick on each beat.
+pub const TEXTS: [StyleText; STYLES] = [
+    // Deep, long kick and a soft clap: the analogue boom.
     StyleText {
-        name: "Dub / steppa",
-        bpm: 140.0,
-        swing: 0.5,
-        grid: SwingGrid::Eighth,
+        name: "808 · boom",
+        bpm: 124.0,
+        swing: 0.54,
+        grid: SwingGrid::Sixteenth,
         kit: [
-            (-2.0, 1.4, 1.0),
-            (-1.0, 1.2, 0.9),
+            (-3.0, 1.7, 1.0),
             (0.0, 0.8, 0.7),
-            (0.0, 1.2, 0.7),
+            (0.0, 0.7, 0.65),
             (0.0, 1.0, 0.6),
-            (2.0, 0.8, 0.9),
+            (0.0, 1.2, 0.85),
+            (4.0, 0.7, 0.7),
         ],
         bass: BassParams {
-            saw: 0.25,
-            sub: 0.7,
-            resonance: 0.8,
-            env_octaves: 1.5,
+            saw: 0.2,
+            sub: 0.8,
+            resonance: 0.7,
+            env_octaves: 1.8,
             accent_octaves: 2.5,
-            decay: 0.3,
-            glide: 0.06,
-            drive: 1.6,
+            decay: 0.35,
+            glide: 0.05,
+            drive: 1.3,
         },
-        // Skank: short, bright, nothing held.
-        synth: SynthPatch {
-            wave1: Wave::Square,
-            wave2: Wave::Saw,
-            detune: 5.0,
-            cutoff: 1_800.0,
-            resonance: 1.2,
-            env_octaves: 2.0,
-            amp: Adsr {
-                attack: 0.002,
-                decay: 0.18,
-                sustain: 0.0,
-                release: 0.08,
-            },
-            filter: Adsr {
-                attack: 0.0,
-                decay: 0.12,
-                sustain: 0.0,
-                release: 0.1,
-            },
-            level: 0.6,
-        },
+        synth: DUB_STAB,
         fx: FxPreset {
             delay: DelayTime::DottedEighth,
-            reverb_decay: 4.0,
+            reverb_decay: 3.5,
         },
         patterns: Some([
-            // One drop.
-            &[
-                (Kick, "........X......."),
-                (Snare, "........X......."),
-                (ClosedHat, "x.x.x.x.x.x.x.x."),
-                (Perc, "....o.......o..."),
-            ],
-            // Steppa: kick on every beat.
             &[
                 (Kick, "X...X...X...X..."),
-                (Snare, "........X......."),
+                (Clap, "....x.......x..."),
+                (ClosedHat, "..x...x...x...x."),
+            ],
+            &[
+                (Kick, "X...X...X...X..."),
+                (Clap, "....x.......x..."),
                 (ClosedHat, "x.xox.xox.xox.xo"),
                 (OpenHat, "..............x."),
             ],
-            // Rockers.
-            &[
-                (Kick, "X.....X.X......."),
-                (Snare, "....X.......X..."),
-                (ClosedHat, "x.x.x.x.x.x.x.x."),
-                (OpenHat, "..............x."),
-                (Perc, "......o.......o."),
-            ],
-            // Dub break.
-            &[
-                (Kick, "X......X..X....."),
-                (Snare, "....X..o....X.o."),
-                (ClosedHat, "xxxoxxxoxxxoxxxo"),
-                (Perc, "..o.....o..o...."),
-            ],
-        ]),
-        fills: Some([
-            &[(Kick, "X..............."), (Snare, "......X...X.X.XX")],
-            &[(Kick, "X......."), (Perc, "X..X..X..X..XXXX")],
-            // Drop: only the first kick, then silence until the bar.
-            &[(Kick, "X...............")],
-            &[
-                (ClosedHat, "3344556677889XX."),
-                (OpenHat, "...............X"),
-            ],
-        ]),
-        bass_lines: Some([
-            "1! - - - - - . . 1 - - . 5, - 7, -",
-            "1! - . 1 . . 1 . 3 - . 3 . . 5, .",
-            "1! - - . 1 . 5, . 7, - - . 1 - 3 .",
-            "1! - . . 4 - . . 5 - . . 1 - 7, -",
-        ]),
-        phrases: Some([
-            "5 - - - . . 3 - 4 - - - . . . .",
-            ". . 1' - . . 7 - 5 - - - . . . .",
-            "3 . . 3 . . 3 . 4 . . 4 . . 5 .",
-            "1 - - - 3 - - - 5 - - - 4 - 3 -",
-        ]),
-    },
-    // Swung 16ths, congas on the perc, melodic bass.
-    StyleText {
-        name: "Afrobeat / reggae",
-        bpm: 108.0,
-        swing: 0.58,
-        grid: SwingGrid::Sixteenth,
-        kit: [
-            (0.0, 0.8, 1.0),
-            (1.0, 0.8, 0.85),
-            (0.0, 0.9, 0.8),
-            (0.0, 1.0, 0.7),
-            (0.0, 1.0, 0.7),
-            (3.0, 1.2, 1.0),
-        ],
-        bass: BassParams {
-            saw: 0.45,
-            sub: 0.5,
-            resonance: 1.0,
-            env_octaves: 2.0,
-            accent_octaves: 3.0,
-            decay: 0.18,
-            glide: 0.04,
-            drive: 1.4,
-        },
-        // Organ: squares, little filter movement, held.
-        synth: SynthPatch {
-            wave1: Wave::Square,
-            wave2: Wave::Square,
-            detune: 3.0,
-            cutoff: 2_500.0,
-            resonance: 0.7,
-            env_octaves: 0.5,
-            amp: Adsr {
-                attack: 0.005,
-                decay: 0.1,
-                sustain: 0.9,
-                release: 0.08,
-            },
-            filter: Adsr {
-                attack: 0.0,
-                decay: 0.2,
-                sustain: 0.8,
-                release: 0.1,
-            },
-            level: 0.45,
-        },
-        fx: FxPreset {
-            delay: DelayTime::Quarter,
-            reverb_decay: 2.2,
-        },
-        patterns: Some([
-            // Afrobeat.
-            &[
-                (Kick, "X..x..X...X..x.."),
-                (Snare, "....X..o.o..X..."),
-                (ClosedHat, "xxXxxxXxxxXxxxXx"),
-                (Perc, "..x..x.x..x..x.x"),
-            ],
-            // Roots reggae: one drop with an offbeat rim (the skank's place).
-            &[
-                (Kick, "........X......."),
-                (Snare, "........X......."),
-                (ClosedHat, "x.xxx.xxx.xxx.xx"),
-                (Perc, "..x...x...x...x."),
-            ],
-            // Highlife: 3-3-4-3-3 clave on the perc.
             &[
                 (Kick, "X...X...X...X..."),
-                (Snare, "....x.......x..o"),
-                (ClosedHat, "x.x.x.x.x.x.x.x."),
-                (OpenHat, "..x...x...x...x."),
-                (Perc, "x..x..x...x..x.."),
-            ],
-            // Busy.
-            &[
-                (Kick, "X..x.xX...X..x.."),
-                (Snare, "..o.X..o.o.oX.o."),
-                (ClosedHat, "XoxoXoxoXoxoXoxo"),
-                (Perc, "x.xx.x.xx.x.xx.x"),
-            ],
-        ]),
-        fills: Some([
-            &[(Kick, "X..............."), (Snare, "....x.x.xxxx6789")],
-            &[(Kick, "X.......X......."), (Perc, "x.xxx.xxx.xxXXXX")],
-            &[(Kick, "X...X...X.X.XXXX"), (Snare, "X...X...X.X.XXXX")],
-            &[
-                (Kick, "X...X...X...X..."),
-                (ClosedHat, "3344556677889XX."),
-                (OpenHat, "...............X"),
-            ],
-        ]),
-        bass_lines: Some([
-            "1 . . 1' . 7 . 5 . . 4 . 5 . 7 .",
-            "1! - . . . . . . 1 . 3 . 5 . 3 .",
-            "1 . 3 . 5 . 3 . 4 . 6 . 5 . 3 .",
-            "1! . 1' . 7 . 5 4 . 3 . 1 . 3 4 5",
-        ]),
-        phrases: Some([
-            "1 . 3 1 . 5 . 3 . 1 . 3 5 . 3 .",
-            "5 5 . 6 . 5 3 . 5 5 . 6 . 8 . .",
-            ". 3 5 . 3 5 . 6 . 5 3 . 2 . 1 .",
-            "1' . 7 . 5 . 7 . 1' . 7 . 5 3 5 .",
-        ]),
-    },
-    // 2-step: shuffled 16ths, short kick, loud clap, short punchy bass notes.
-    StyleText {
-        name: "UK garage",
-        bpm: 132.0,
-        swing: 0.62,
-        grid: SwingGrid::Sixteenth,
-        kit: [
-            (1.0, 0.6, 1.0),
-            (2.0, 0.7, 0.8),
-            (0.0, 0.7, 0.85),
-            (0.0, 0.9, 0.8),
-            (0.0, 1.0, 1.0),
-            (5.0, 0.6, 0.8),
-        ],
-        bass: BassParams {
-            saw: 0.6,
-            sub: 0.4,
-            resonance: 1.3,
-            env_octaves: 2.5,
-            accent_octaves: 4.0,
-            decay: 0.1,
-            glide: 0.03,
-            drive: 1.8,
-        },
-        // Stab: resonant filter snapping shut.
-        synth: SynthPatch {
-            wave1: Wave::Saw,
-            wave2: Wave::Saw,
-            detune: 12.0,
-            cutoff: 900.0,
-            resonance: 1.6,
-            env_octaves: 3.0,
-            amp: Adsr {
-                attack: 0.002,
-                decay: 0.25,
-                sustain: 0.2,
-                release: 0.15,
-            },
-            filter: Adsr {
-                attack: 0.0,
-                decay: 0.15,
-                sustain: 0.0,
-                release: 0.1,
-            },
-            level: 0.55,
-        },
-        fx: FxPreset {
-            delay: DelayTime::Eighth,
-            reverb_decay: 1.6,
-        },
-        patterns: Some([
-            // 2-step.
-            &[
-                (Kick, "X.........X..x.."),
-                (Clap, "....X.......X..."),
-                (ClosedHat, "xox.xoxxxox.xoxx"),
-                (OpenHat, "..x.......x....."),
+                (Clap, "....x.......x..o"),
+                (ClosedHat, "..x...x...x...x."),
                 (Perc, "...o..o....o..o."),
             ],
             &[
-                (Kick, "X......x..X....."),
-                (Clap, "....X.......X..."),
-                (Snare, "..........o...o."),
-                (ClosedHat, "x.xxx.xxx.xxx.xx"),
-                (Perc, "..o..o..o..o..o."),
-            ],
-            // Four to the floor (speed garage).
-            &[
-                (Kick, "X...X...X...X..."),
-                (Clap, "....X.......X..."),
-                (ClosedHat, "x.x.x.x.x.x.x.x."),
+                (Kick, "X...X...X...X.o."),
+                (Snare, "....x.......x..."),
+                (ClosedHat, "xxoxxxoxxxoxxxox"),
                 (OpenHat, "..x...x...x...x."),
-            ],
-            // Broken.
-            &[
-                (Kick, "X..x......X..x.."),
-                (Snare, "....X..o....X.oo"),
-                (Clap, "....X.......X..."),
-                (ClosedHat, "xoxxxoxxxoxxxoxx"),
-                (Perc, "x.o.x.o.x.o.x.o."),
-            ],
-        ]),
-        fills: None,
-        bass_lines: Some([
-            "1! . . . . . . 1 . . 1' . . 7 . .",
-            "1! . . 3 . . 1 . . . 5, . 7, . 1 .",
-            ". . 1! . . . 1 . . . 1' . . . 7 .",
-            "1! . 1 . . 4 . . 3 . . 1 . 7, ~1 .",
-        ]),
-        phrases: Some([
-            ". . 5 . . 5 . . 4 . . 3 . . 1 .",
-            "1' . . 7 . . 5 . . 7 . . 1' - . .",
-            "3 - 5 . . 3 . 5 . . 6 - 5 . . .",
-            ". 5 . 5 . 6 . 5 . 3 . 3 . 2 . 1",
-        ]),
-    },
-    // Heavy, darker kit; long warm bass notes.
-    StyleText {
-        name: "Lo-fi / hip-hop",
-        bpm: 86.0,
-        swing: 0.6,
-        grid: SwingGrid::Sixteenth,
-        kit: [
-            (-1.0, 1.1, 1.0),
-            (-2.0, 1.1, 1.0),
-            (-2.0, 0.6, 0.6),
-            (-2.0, 0.8, 0.6),
-            (0.0, 1.0, 0.5),
-            (-3.0, 1.0, 0.8),
-        ],
-        bass: BassParams {
-            saw: 0.35,
-            sub: 0.6,
-            resonance: 0.8,
-            env_octaves: 1.2,
-            accent_octaves: 2.0,
-            decay: 0.3,
-            glide: 0.06,
-            drive: 1.2,
-        },
-        // Soft keys: dark, slow decay.
-        synth: SynthPatch {
-            wave1: Wave::Saw,
-            wave2: Wave::Square,
-            detune: 4.0,
-            cutoff: 700.0,
-            resonance: 0.8,
-            env_octaves: 1.5,
-            amp: Adsr {
-                attack: 0.01,
-                decay: 0.9,
-                sustain: 0.3,
-                release: 0.4,
-            },
-            filter: Adsr {
-                attack: 0.0,
-                decay: 0.5,
-                sustain: 0.2,
-                release: 0.4,
-            },
-            level: 0.55,
-        },
-        fx: FxPreset {
-            delay: DelayTime::Quarter,
-            reverb_decay: 2.6,
-        },
-        patterns: Some([
-            // Boom bap.
-            &[
-                (Kick, "X......x..X....."),
-                (Snare, "....X.......X..."),
-                (ClosedHat, "x.x.x.x.x.x.x.x."),
-            ],
-            &[
-                (Kick, "X.x.......X..x.."),
-                (Snare, "....X.......X..o"),
-                (ClosedHat, "xox.xox.xox.xoxo"),
                 (Perc, "......o.......o."),
             ],
-            &[
-                (Kick, "X......X.XX....."),
-                (Snare, "....X.......X..."),
-                (ClosedHat, "x.xxx.xxx.xxx.xx"),
-                (OpenHat, "..............x."),
-            ],
-            &[
-                (Kick, "X..x...x..X..x.."),
-                (Snare, "....X..o.o..X..."),
-                (ClosedHat, "x.x.x.x.x.x.x.x."),
-                (Clap, "....x.......x..."),
-                (Perc, "..o....o.....o.."),
-            ],
         ]),
-        fills: None,
-        bass_lines: Some([
-            "1 - - . . . . 3 5 - . . 4 - 3 .",
-            "1 . . 1 . . 7, - . . 5, - 6, - 7, .",
-            "1 - - - 3 - . . 4 - - - 3 - 2 .",
-            "1 . . 5, 7, . 1 . . 3 . . 4 . 3 .",
-        ]),
-        phrases: Some([
-            "3 - - 2 1 - - - 5, - - - . . . .",
-            ". . 5 - 4 - 3 - . . 2 - 3 - - -",
-            "1' - - - 7 - - - 6 - - - 5 - - -",
-            ". 3 5 7 . . 6 . . 5 3 . 2 - . .",
-        ]),
+        fills: Some(DUB_FILLS),
+        bass_lines: Some(DUB_LINES),
+        phrases: Some(DUB_PHRASES),
     },
-    // Four to the floor, open hats on the offbeats, offbeat or rolling bass.
+    // Punchy kick, open hats on the offbeat: straight techno.
     StyleText {
-        name: "House / techno",
-        bpm: 124.0,
+        name: "909 · techno",
+        bpm: 128.0,
         swing: 0.52,
         grid: SwingGrid::Sixteenth,
         kit: [
-            (0.0, 0.9, 1.0),
-            (0.0, 1.0, 0.8),
-            (0.0, 1.0, 0.8),
-            (0.0, 1.0, 0.9),
             (0.0, 1.0, 1.0),
-            (4.0, 1.0, 0.8),
+            (1.0, 0.8, 0.8),
+            (2.0, 0.6, 0.6),
+            (1.0, 1.1, 0.75),
+            (0.0, 0.9, 0.8),
+            (5.0, 0.6, 0.75),
         ],
         bass: BassParams {
             saw: 0.55,
             sub: 0.45,
-            resonance: 1.2,
-            env_octaves: 2.5,
-            accent_octaves: 4.0,
-            decay: 0.15,
-            glide: 0.04,
-            drive: 1.5,
-        },
-        // House stab.
-        synth: SynthPatch {
-            wave1: Wave::Saw,
-            wave2: Wave::Saw,
-            detune: 10.0,
-            cutoff: 1_000.0,
             resonance: 1.4,
             env_octaves: 3.0,
-            amp: Adsr {
-                attack: 0.002,
-                decay: 0.3,
-                sustain: 0.0,
-                release: 0.12,
-            },
-            filter: Adsr {
-                attack: 0.0,
-                decay: 0.2,
-                sustain: 0.0,
-                release: 0.1,
-            },
-            level: 0.55,
+            accent_octaves: 4.0,
+            decay: 0.18,
+            glide: 0.04,
+            drive: 1.6,
         },
+        synth: DUB_STAB,
         fx: FxPreset {
             delay: DelayTime::DottedEighth,
-            reverb_decay: 2.0,
+            reverb_decay: 2.8,
+        },
+        patterns: Some([
+            &[(Kick, "X...X...X...X..."), (OpenHat, "..x...x...x...x.")],
+            &[
+                (Kick, "X...X...X...X..."),
+                (Clap, "....x.......x..."),
+                (ClosedHat, ".x.x.x.x.x.x.x.x"),
+                (OpenHat, "..x...x...x...x."),
+            ],
+            &[
+                (Kick, "X...X...X...X..."),
+                (Clap, "....x.......x..."),
+                (OpenHat, "..x...x...x...x."),
+                (Perc, "...x..x...x..x.."),
+            ],
+            &[
+                (Kick, "X...X...X...X..."),
+                (Snare, "....x..o....x.o."),
+                (ClosedHat, "xoxoxoxoxoxoxoxo"),
+                (OpenHat, "..x...x...x...x."),
+            ],
+        ]),
+        fills: Some(DUB_FILLS),
+        bass_lines: Some(DUB_LINES),
+        phrases: Some(DUB_PHRASES),
+    },
+    // Muffled kick, rimshot (high, short snare), felt hats, a lot of space.
+    StyleText {
+        name: "Dub",
+        bpm: 118.0,
+        swing: 0.56,
+        grid: SwingGrid::Sixteenth,
+        kit: [
+            (-1.0, 1.3, 0.95),
+            (7.0, 0.35, 0.7),
+            (-2.0, 0.6, 0.5),
+            (-2.0, 0.9, 0.5),
+            (0.0, 1.0, 0.6),
+            (3.0, 0.8, 0.7),
+        ],
+        bass: BassParams {
+            saw: 0.3,
+            sub: 0.65,
+            resonance: 0.9,
+            env_octaves: 2.0,
+            accent_octaves: 3.0,
+            decay: 0.25,
+            glide: 0.06,
+            drive: 1.4,
+        },
+        synth: DUB_STAB,
+        fx: FxPreset {
+            delay: DelayTime::DottedEighth,
+            reverb_decay: 5.0,
         },
         patterns: Some([
             &[
                 (Kick, "X...X...X...X..."),
-                (Clap, "....X.......X..."),
-                (ClosedHat, "x.x.x.x.x.x.x.x."),
-                (OpenHat, "..x...x...x...x."),
+                (Snare, "......o.......o."),
+                (ClosedHat, "..o...o...o...o."),
             ],
             &[
                 (Kick, "X...X...X...X..."),
-                (Clap, "....X.......X..."),
-                (ClosedHat, "XoxoXoxoXoxoXoxo"),
-                (OpenHat, "..x...x...x...x."),
-                (Perc, "...o.....o....o."),
-            ],
-            // Techno.
-            &[
-                (Kick, "X...X...X...X..x"),
-                (Clap, "............X..."),
+                (Snare, "....o.......o..."),
                 (ClosedHat, "..x...x...x...x."),
-                (Perc, "x..x..x..x..x..."),
+                (Perc, "...o.....o......"),
             ],
             &[
                 (Kick, "X...X...X...X..."),
-                (Snare, "....X.......X..o"),
-                (Clap, "....X.......X..."),
-                (ClosedHat, "xxXxxxXxxxXxxxXx"),
-                (OpenHat, "..x...x...x...x."),
-                (Perc, "x.?..?.x.?..?.x."),
+                (Snare, ".......o.......o"),
+                (ClosedHat, "x.ox.xo.x.ox.xo."),
+                (OpenHat, "..........x....."),
+            ],
+            &[
+                (Kick, "X...X...X...X..o"),
+                (Snare, "....x..o....x..."),
+                (ClosedHat, "..x...x...x...x."),
+                (OpenHat, "......x.......x."),
+                (Perc, ".o....o..o....o."),
             ],
         ]),
-        fills: None,
-        bass_lines: Some([
-            ". . 1! . . . 1 . . . 1! . . . 1 .",
-            ". . 1! 1 . . 1 . . . 1! 1 . 7, ~1 .",
-            ". 1 1 1 . 1 1 1 . 1 1 1 . 1 1 1",
-            "1! . . 1 . . 3 . . 1 . . 5, . 7, .",
-        ]),
-        phrases: Some([
-            "1' . 1' . 5 . 1' . 6 . 5 . 3 . 5 .",
-            ". . 5 . . . 5 . . . 6 . . . 5 .",
-            "1 3 5 1' 5 3 1 3 5 1' 5 3 1 3 5 1'",
-            "5 - - 3 - - 1 - 5 - - 6 - - 5 -",
-        ]),
+        fills: Some(DUB_FILLS),
+        bass_lines: Some(DUB_LINES),
+        phrases: Some(DUB_PHRASES),
     },
 ];
 
@@ -709,13 +396,14 @@ mod tests {
     }
 
     #[test]
-    fn hybrid_is_the_sound_of_before() {
-        let hybrid = presets()[0];
-        assert_eq!(hybrid.patterns, default_patterns());
-        assert_eq!(hybrid.bass_lines, default_bass_patterns());
-        assert_eq!(hybrid.bass, BassParams::default());
-        assert!(hybrid.kit.iter().all(|p| *p == VoiceParams::default()));
-        assert_eq!(hybrid.synth, SynthPatch::default());
+    fn every_pattern_keeps_the_kick_on_each_beat() {
+        for style in presets() {
+            for pattern in &style.patterns {
+                for beat in [0, 4, 8, 12] {
+                    assert!(pattern.steps[0][beat].velocity > 0.0, "{}", style.name);
+                }
+            }
+        }
     }
 
     #[test]

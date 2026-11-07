@@ -591,14 +591,14 @@ mod tests {
         let (mut audio, mut handle) = pair();
         handle.send(Command::Start);
         run(&mut audio, 10);
-        handle.send(Command::QueueStyle(3));
+        handle.send(Command::QueueStyle(2));
         run(&mut audio, 1);
         let snap = handle.snapshot();
-        assert_eq!((snap.style, snap.pending_style), (0, Some(3)));
+        assert_eq!((snap.style, snap.pending_style), (0, Some(2)));
         run(&mut audio, 750);
         let snap = handle.snapshot();
-        assert_eq!((snap.style, snap.pending_style), (3, None));
-        assert_eq!(snap.swing, crate::style::TEXTS[3].swing);
+        assert_eq!((snap.style, snap.pending_style), (2, None));
+        assert_eq!(snap.swing, crate::style::TEXTS[2].swing);
         assert_eq!(snap.bpm, 120.0, "the tempo stays the player's");
     }
 

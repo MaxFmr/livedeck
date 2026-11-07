@@ -178,3 +178,5 @@ Une ligne par contrôle ; « Shift » seulement pour les réglages rares. Tout c
 1. **D8** : maquettes de l'interface groovebox (2–3 pistes basse fidélité, puis une haute fidélité),
    avec cette carte affichée sur la maquette pour la valider en même temps.
 2. Puis R1 → R6 dans l'ordre du § 7, chaque itération jouable et essayée au contrôleur.
+
+- 2026-11-07 : D8 validée (piste 3). **R1 faite** : [027](../iterations/027-r1-rythme-dub-techno.md) — 3 kits, kick à la noire, deck A selon la carte ; essai au contrôleur à faire.

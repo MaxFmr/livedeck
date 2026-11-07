@@ -7,7 +7,7 @@
 //! pattern A) and `target/renders/voicings.wav` (I–vi–IV–V: triads, inversions, 7ths, then in
 //! dorian and major) and `target/renders/arp.wav` (latched I–vi–IV–V arpeggiated up, up-down
 //! on 2 octaves, random in 1/16 triplets, then phrases 1–4 of the hybrid style, a variation and a
-//! transposition) and `target/renders/fx.wav` (dub style at 140: a phrase over latched chords,
+//! transposition) and `target/renders/fx.wav` (Dub kit at 118: a phrase over latched chords,
 //! dry, then with delay, a long-feedback throw, the reverb added, each delay time, and the tails
 //! ringing out; prints the render load).
 //! Offline, so it may allocate and write files.
@@ -327,10 +327,10 @@ fn main() -> io::Result<()> {
     }
     save(&dir.join("arp.wav"), &arp)?;
 
-    // Send effects on the dub style at 140 BPM.
-    let mut engine = Engine::new(SR, 512, 140.0);
+    // Send effects on the Dub kit at 118 BPM.
+    let mut engine = Engine::new(SR, 512, 118.0);
     engine.set_metronome(false);
-    engine.queue_style(1);
+    engine.queue_style(2);
     engine.set_density(0.4);
     engine.set_latch(true);
     engine.start();

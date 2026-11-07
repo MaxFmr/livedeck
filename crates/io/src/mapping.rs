@@ -139,6 +139,10 @@ pub enum Action {
     ClearLoop(u8),
     /// REC: the first empty loop records from the next bar.
     RecLoop,
+    /// Kit (style, 0-based), at the next bar.
+    Kit(u8),
+    /// Drum density change, as a fraction (0.01 = 1 %).
+    NudgeDensity(f32),
     /// Length of the next loop recorded, in steps of 1, 2, 4 bars.
     NudgeLoopBars(i8),
     SetTempo(f64),
@@ -197,6 +201,8 @@ pub enum ActionName {
     LoopClear,
     LoopRec,
     LoopBars,
+    Kit,
+    DensityNudge,
 }
 
 #[derive(Debug, Deserialize)]
@@ -593,6 +599,10 @@ impl Mapping {
             (ActionName::ArpOctaves, Input::Press(true)) => Some(Action::ArpOctaves(binding.value)),
             (ActionName::NoteMode, Input::Press(true)) => Some(Action::ToggleNoteMode),
             (ActionName::LoopRec, Input::Press(true)) => Some(Action::RecLoop),
+            (ActionName::Kit, Input::Press(true)) => Some(Action::Kit(binding.pattern)),
+            (ActionName::DensityNudge, Input::Relative(ticks)) => Some(Action::NudgeDensity(
+                ticks as f32 * binding.step as f32 / 100.0,
+            )),
             (ActionName::Loop, Input::Press(true)) => Some(Action::Loop(binding.pattern)),
             (ActionName::LoopClear, Input::Press(true)) => Some(Action::ClearLoop(binding.pattern)),
             (ActionName::Phrase, Input::Press(true)) => Some(Action::Phrase {
@@ -830,6 +840,7 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::Loop
         | ActionName::LoopClear
         | ActionName::LoopRec
+        | ActionName::Kit
         | ActionName::Chord
         | ActionName::LatchToggle
         | ActionName::Inversion
@@ -863,7 +874,8 @@ fn compatible(kind: Kind, action: ActionName) -> bool {
         | ActionName::Scale
         | ActionName::ArpRate
         | ActionName::Transpose
-        | ActionName::LoopBars => matches!(kind, Kind::Relative),
+        | ActionName::LoopBars
+        | ActionName::DensityNudge => matches!(kind, Kind::Relative),
     }
 }
 
@@ -1105,9 +1117,10 @@ mod tests {
         );
         let knob = ControllerEvent::Knob {
             deck: Deck::A,
-            knob: DeckKnob::Bass,
+            knob: DeckKnob::Filter,
             value: MAX_14BIT,
         };
+        // R1: the cutoff of the bass is on Filter A.
         assert_eq!(m.handle(6, knob), Some(Action::SetBassCutoff(1.0)));
         assert_eq!(
             m.bound(ActionName::BassMute)
@@ -1158,9 +1171,9 @@ mod tests {
         // Shift released: drums again, waiting for 0.3.
         m.handle(6, shift(false));
         assert_eq!(m.handle(7, volume(at(0.6))), None, "drum pickup not met");
-        // The tempo fader has no Shift layer: it still sets the density with Shift held.
+        // The tempo fader A is kept for the bass envelope (R2): nothing yet.
         m.handle(8, shift(true));
-        assert!(matches!(
+        assert_eq!(
             m.handle(
                 9,
                 ControllerEvent::Tempo {
@@ -1168,8 +1181,8 @@ mod tests {
                     value: 100
                 }
             ),
-            Some(Action::SetDensity(_))
-        ));
+            None
+        );
     }
 
     #[test]
@@ -1404,7 +1417,7 @@ mod tests {
     }
 
     #[test]
-    fn shift_jog_scrolls_styles_by_detents() {
+    fn shift_jog_a_sets_the_tempo() {
         let mut m = mapping();
         let jog = |delta| ControllerEvent::Jog {
             deck: Deck::A,
@@ -1412,20 +1425,12 @@ mod tests {
             shift: true,
             delta,
         };
-        let actions: Vec<_> = (0..150).filter_map(|t| m.handle(t, jog(1))).collect();
-        assert_eq!(
-            actions,
-            vec![Action::NudgeStyle(1)],
-            "one style per half turn (124 ticks)"
-        );
-        let back: Vec<_> = (0..150)
-            .filter_map(|t| m.handle(200 + t, jog(-1)))
-            .collect();
-        assert_eq!(back, vec![Action::NudgeStyle(-1)]);
+        assert_eq!(m.handle(0, jog(2)), Some(Action::NudgeTempo(0.5)));
+        assert_eq!(m.handle(1, jog(-1)), Some(Action::NudgeTempo(-0.25)));
     }
 
     #[test]
-    fn sampler_pads_fill_and_play_drums_with_shift() {
+    fn sampler_pads_fill_and_choose_the_kit_with_shift() {
         let mut m = mapping();
         let pad = |pressed, shift| ControllerEvent::Pad {
             deck: Deck::A,
@@ -1437,14 +1442,7 @@ mod tests {
         };
         assert_eq!(m.handle(40, pad(true, false)), Some(Action::Fill(0)));
         assert_eq!(m.handle(41, pad(false, false)), None);
-        assert_eq!(
-            m.handle(42, pad(true, true)),
-            Some(Action::Drum {
-                voice: DrumVoice::Kick,
-                velocity: 1.0,
-                ts_us: 42
-            })
-        );
+        assert_eq!(m.handle(42, pad(true, true)), Some(Action::Kit(0)));
         assert_eq!(m.handle(43, pad(false, true)), None);
         let leds: Vec<_> = m.bound(ActionName::Fill).filter_map(led_of).collect();
         assert!(leds.contains(&Led::Pad {
@@ -1462,7 +1460,7 @@ mod tests {
     }
 
     #[test]
-    fn hot_cue_pads_queue_patterns_and_jog_edge_swings() {
+    fn hot_cue_pads_queue_patterns_and_jog_edge_sets_density() {
         let mut m = mapping();
         let pad = ControllerEvent::Pad {
             deck: Deck::A,
@@ -1480,7 +1478,7 @@ mod tests {
             delta: 5,
         };
         match m.handle(0, jog) {
-            Some(Action::NudgeSwing(d)) => assert!((d - 0.01).abs() < 1.0e-6),
+            Some(Action::NudgeDensity(d)) => assert!((d - 0.01).abs() < 1.0e-6),
             other => panic!("{other:?}"),
         }
         let pads: Vec<_> = m.indexed(ActionName::Pattern).collect();
@@ -1536,13 +1534,9 @@ mod tests {
     }
 
     #[test]
-    fn tempo_fader_sets_density_directly() {
+    fn tempo_fader_a_waits_for_the_bass_envelope() {
         let mut m = mapping();
-        assert_eq!(m.handle(0, tempo_event(0)), Some(Action::SetDensity(0.0)));
-        assert_eq!(
-            m.handle(0, tempo_event(MAX_14BIT)),
-            Some(Action::SetDensity(1.0))
-        );
+        assert_eq!(m.handle(0, tempo_event(MAX_14BIT)), None);
     }
 
     #[test]
@@ -1650,19 +1644,26 @@ mod tests {
             shift: false,
             delta: 1,
         };
-        // Flicker while spinning the edge: ticks are held, then go to the edge (swing) on release.
+        // Flicker while spinning the edge: ticks are held, then go to the edge (density) on
+        // release.
         m.handle(0, touch(true));
         assert_eq!(m.handle(10 * MS, top), None);
         assert_eq!(m.handle(20 * MS, top), None);
         match m.handle(30 * MS, touch(false)) {
+            Some(Action::NudgeDensity(d)) => assert!((d - 0.004).abs() < 1.0e-6),
+            other => panic!("{other:?}"),
+        }
+        // Real touch: early ticks are held, then join the top (swing) once confirmed.
+        m.handle(200 * MS, touch(true));
+        assert_eq!(m.handle(210 * MS, top), None);
+        match m.handle(300 * MS, top) {
             Some(Action::NudgeSwing(d)) => assert!((d - 0.004).abs() < 1.0e-6),
             other => panic!("{other:?}"),
         }
-        // Real touch: early ticks are held, then join the top (tempo) once confirmed.
-        m.handle(200 * MS, touch(true));
-        assert_eq!(m.handle(210 * MS, top), None);
-        assert_eq!(m.handle(300 * MS, top), Some(Action::NudgeTempo(0.5)));
-        assert_eq!(m.handle(310 * MS, top), Some(Action::NudgeTempo(0.25)));
+        assert!(matches!(
+            m.handle(310 * MS, top),
+            Some(Action::NudgeSwing(_))
+        ));
         assert_eq!(m.handle(400 * MS, touch(false)), None);
     }
 

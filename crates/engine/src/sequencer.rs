@@ -296,6 +296,14 @@ impl Sequencer {
         }
     }
 
+    /// Switches to style `index` at once (engine start).
+    pub fn load_style(&mut self, index: u8, kit: &mut DrumKit, bass: &mut BassVoice) {
+        if usize::from(index) < STYLES {
+            self.pending_style = Some(index);
+            self.apply_style(kit, bass);
+        }
+    }
+
     /// Switches to the queued style: patterns, fills, bass lines, kit and bass sound, swing. The
     /// pattern and bass line indexes playing are kept.
     pub fn apply_style(&mut self, kit: &mut DrumKit, bass: &mut BassVoice) {
