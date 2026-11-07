@@ -108,6 +108,7 @@ filtres, basses, crossfader et pads des autres modes recevront leurs actions ave
 
 | Date | Évènement |
 |---|---|
+| 2026-11-07 | **Refonte « groovebox » dub techno** décidée après le 2e essai de 026 (boucles peu fiables, trop de gestes) : brief [refonte-groovebox](docs/design/refonte-groovebox.md) à valider, puis R0–R6. |
 | 2026-11-07 | Cap changé : pas de scènes (trop de complexité dans le jeu), impro à la volée ; 026 = notes jouées au pad + boucles de mélodie enregistrées sur les pads Sampler B. |
 | 2026-11-05 | **Phase 5 terminée** (020–023) : fenêtre egui conforme à D4, essai groupé et revue sur scène D7 validés ; 0 xrun, charge max 3,5 %, fenêtre 8,4 % CPU en lecture, 0,2 image/s à l'arrêt, 59 Mo. Prochaine : phase 6 (scènes, morph au crossfader). |
 | 2026-11-03 | D5 validé : jetons dans `crates/app/src/theme.rs` (4 tailles de police, 5 gris, 4 familles de couleur à 5 états, contrastes testés). Prochaine : phase 5, coquille eframe. |

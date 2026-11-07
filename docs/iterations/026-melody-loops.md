@@ -2,7 +2,7 @@
 
 - Date de début : 2026-11-07
 - Phase : 6
-- Statut : en cours — premier essai au contrôleur (2026-11-07) : retours traités, second essai à faire
+- Statut : arrêtée — remplacée par la refonte groovebox (docs/design/refonte-groovebox.md)
 
 ## Objectif
 Changement de cap de l'utilisateur (2026-11-07) : les scènes (025) compliquaient le jeu ; on mise sur
@@ -66,3 +66,9 @@ Corrections (**choix par défaut, à revoir**) :
   l'appui, même en latch).
 - Rappel « PFL B = rec · Shift + pad = efface » au-dessus de la bande Boucles.
 Vérifié sans contrôleur : PFL B → B1 armée → enregistre I, IV, vi → tourne (3 notes). 165 tests.
+
+## Second essai (2026-11-07) : arrêt
+Lecture des boucles peu fiable (journal : deux boucles « tourne » en même temps, un appui pendant
+« s'arrête à la mesure » relance), enchaînements peu clairs, trop de gestes, voix guide qui parle
+pendant le jeu libre. L'utilisateur demande une refonte orientée groovebox dub techno : voir
+`docs/design/refonte-groovebox.md`. Le looper reste dans le code jusqu'à son remplacement (R3).
