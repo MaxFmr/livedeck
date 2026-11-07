@@ -2,7 +2,7 @@
 
 - Date : 2026-11-07
 - Origine : retour de l'utilisateur après le second essai de 026 (boucles de mélodie)
-- Statut : **brief à valider** avant toute itération de code
+- Statut : décisions R0 prises le 2026-11-07 ; carte du contrôleur à valider avec les maquettes D8
 
 ## 1. Constat
 
@@ -103,12 +103,70 @@ Styles visés : dub techno, techno minimale / deep, avec un pied à la noire et 
 Le code existant est gardé quand il sert (moteur, synthé, effets) ; les modules retirés (looper 026,
 phrases, styles) sortent au fil des itérations, chacune restant jouable.
 
-## 8. Questions à trancher (R0)
+## 8. Décisions (R0, 2026-11-07)
 
-1. Basse et rythme sur le même deck gauche (couches) ou la basse sur le deck droit avec la mélodie ?
-2. Mélodie : générer à partir de rien (dés) ou muter ce qu'on a joué, ou les deux ?
-3. Faut-il garder le mode « jouer les notes au pad », ou seulement des accords + la phrase générée ?
-4. Combien de kits de batterie : un seul très travaillé, ou 3–4 (808-like, 909-like, dub) ?
-5. Les potards du contrôleur : quelles macros sur quels potards (le contrôleur en a peu : volume,
-   filtre, bass par deck, master, headphone) ?
-6. Garde-t-on le jog pour le tempo et la transposition, ou pour faire défiler les variations ?
+| Question | Décision |
+|---|---|
+| Où joue la basse ? | **Deck gauche, avec le rythme** : section rythmique à gauche, harmonie et mélodie à droite |
+| D'où part la mélodie ? | **Les deux** : générer une phrase dans la gamme, ou jouer / enregistrer par-dessus ; puis muter ou figer |
+| Que jouent les pads B ? | **Accords + gestes de la boucle** (générer, muter, figer, effacer) ; plus de notes isolées, plus de bascule de mode |
+| Combien de kits ? | **3 kits travaillés** : boom analogique, techno claquante, dub ; changés à la mesure |
+| Potards du deck gauche | **Son de la basse** : Filter A = coupure, Bass A = résonance (Shift : quantité d'enveloppe), fader Tempo A = decay de l'enveloppe, Volume A = rythme (Shift : basse) |
+| Potards du deck droit | **Hasard et son** : fader Tempo B = densité de la phrase, Filter B = brillance, Bass B = envoi delay (Shift : répétitions), Volume B = mélodie ; Headphone = réverb |
+| Jog | **Variations** : jog A = densité de la batterie, jog B = registre et transposition de la phrase ; tempo sur Shift + jog A |
+
+## 9. Carte du contrôleur (proposition, à confirmer avec D8)
+
+Une ligne par contrôle ; « Shift » seulement pour les réglages rares. Tout ce qui change la musique
+(pattern, kit, accord tenu mis à part) tombe à la mesure.
+
+### Deck gauche — rythme et basse
+
+| Contrôle | Fonction | Shift |
+|---|---|---|
+| Pads Hot Cue | patterns 1–4 (kick à la noire dans chacun) | lignes de basse 1–4 |
+| Pads Sampler | remplissages 1–4 | kits 1–3 · 4 = ligne de basse au hasard dans la gamme |
+| Pads FX | mutes : kick · snare/clap · hats · perc | — |
+| Pads Loop | beat-repeat 1/4 … 1/32, tenu | — |
+| Jog (tranche) | densité de la batterie | tempo |
+| Jog (dessus) | swing | tempo fin |
+| Filter | coupure de la basse | — |
+| Bass | résonance de la basse | quantité d'enveloppe |
+| Fader Tempo | decay de l'enveloppe de la basse | decay de l'amplitude |
+| Volume | niveau du rythme | niveau de la basse |
+| Cue | mute de la basse | — |
+| Sync | tap tempo | — |
+| PFL | métronome | — |
+| Play | lecture / arrêt | reprise à la mesure 1 |
+
+### Deck droit — accords et mélodie
+
+| Contrôle | Fonction | Shift |
+|---|---|---|
+| Pads Hot Cue | accords dub (4 degrés de la gamme, stabs 7e / 9e) | 4 autres degrés |
+| Pads Sampler | **boucle** : générer · muter · figer · effacer | — |
+| Pads FX | throw delay (tenu) · throw réverb (tenu) · temps du delay · arpège on/off | — |
+| Pads Loop | enregistrer par-dessus (tenu = enregistre) · latch · octave · extension | — |
+| Jog (tranche) | registre de la phrase | gamme |
+| Jog (dessus) | transposition dans la gamme | — |
+| Filter | brillance du synthé | — |
+| Bass | envoi au delay | répétitions |
+| Fader Tempo | densité de la phrase générée | — |
+| Volume | niveau de la mélodie | — |
+| Cue | tonique −1 | tonique +1 |
+| Sync, PFL | libres (réservés) | PFL : temps du delay |
+| Play | lecture / arrêt | — |
+
+### Mixer
+
+| Contrôle | Fonction |
+|---|---|
+| Crossfader | fondu rythme ↔ mélodie (024) |
+| Master | niveau général |
+| Headphone | envoi à la réverb |
+
+## 10. Suite
+
+1. **D8** : maquettes de l'interface groovebox (2–3 pistes basse fidélité, puis une haute fidélité),
+   avec cette carte affichée sur la maquette pour la valider en même temps.
+2. Puis R1 → R6 dans l'ordre du § 7, chaque itération jouable et essayée au contrôleur.
